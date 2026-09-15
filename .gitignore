@@ -1,15 +1,31 @@
+# dependencies
 node_modules/
 .pnpm-store/
+
+# build output
 dist/
 build/
+out/
 coverage/
+
+# typescript
+*.tsbuildinfo
+
+# environment (only the example is committed)
 .env
 .env.*
 !.env.example
-*.log
-.DS_Store
+
+# editors / OS
 .idea/
 .vscode/
+.DS_Store
+
+# logs
+*.log
+pnpm-debug.log*
+
+# frontend app artifacts (later waves)
 .next/
 .expo/
 
