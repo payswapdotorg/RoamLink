@@ -99,4 +99,18 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   IDs, foreign ADCOS references, UTC instants, evidence classes, error
   taxonomy, command envelope, versioning, canonical JSON + SHA-256 digests,
   freshness primitives, env schema. No domain logic, no business authority.
+- `packages/edge` — edge capability contract package (RL-040): closed
+  capability vocabulary with platform scope + evidence requirements, the
+  immutable versioned capability snapshot, the pure evidence-based
+  capability gate (`assertCapability`), device action request/result
+  contracts, and the desired-state + encrypted-outbox record shapes.
+  Contracts only — platform adapters (RL-043) and the sync engine (RL-042)
+  come later.
+- `packages/observability` — platform observability contracts: correlation-ID
+  context propagation from the Wave-0 command envelope, the redacting
+  structured log record contract, the counter/gauge/histogram naming + label
+  contract (no vendor SDK), and health/readiness aggregation.
+- `packages/testkit` — deterministic test primitives: monotonic injectable
+  clock, deterministic ID generators, in-memory event/command recorders, and
+  fixture builders for the Wave-0 contract types.
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018).
