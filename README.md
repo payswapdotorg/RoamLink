@@ -46,3 +46,57 @@ The orchestrator is responsible for sequencing, contract review, integration, do
 ## Frozen scope rule
 
 No worker may introduce a new authority for identity, connectivity sessions, paths, routing, provider state, topology, or ADCOS commercial settlement. Any proposed architectural change must go through `spec/adr/` and the architecture change process defined in `spec/architecture-lock.md`.
+
+## Development
+
+### Prerequisites
+
+- Node.js >= 22 (enforced via `engines` and `.npmrc` `engine-strict`)
+- pnpm 10 (pinned by the root `packageManager` field; `corepack enable` or `npm install -g pnpm@10.0.0`)
+
+### Setup
+
+```bash
+pnpm install              # installs workspace deps, wires the lockfile, installs git hooks
+cp .env.example .env      # optional for pure unit work; services validate keys at boot
+```
+
+### Everyday commands
+
+| Command | What it does |
+|---|---|
+| `pnpm check` | full gate used by CI: `lint` + `typecheck` + `test` + `architecture:check` |
+| `pnpm lint` / `pnpm typecheck` / `pnpm test` | run in every workspace package that declares them (`pnpm -r`) |
+| `pnpm dev` | starts watch mode (e.g. vitest watch) in every package that declares a `dev` script |
+| `pnpm architecture:check` | the frozen sanity script (`scripts/check-architecture.mjs`) |
+
+Architecture conformance is additionally enforced by real tests in
+`tests/architecture` (forbidden ADCOS-internal imports, contracts purity,
+env-schema/.env.example parity) which run as part of `pnpm test` and fail the
+build on violation (RL-LOCK-018).
+
+### Commit hooks
+
+A dependency-free pre-commit hook is installed automatically by
+`pnpm install` (root `prepare` script, see `scripts/hooks/`). It:
+
+1. blocks staging of local `.env` files (only `.env.example` is committed);
+2. scans added diff content for common credential patterns (RL-LOCK-016);
+3. lints staged TS/JS files using the ESLint config of their owning package.
+
+### Environment
+
+Configuration is validated fail-closed by `parseEnv` from
+`@roamlink/contracts` (`packages/contracts/src/env/env-schema.ts`). The
+recognized key set matches `.env.example` exactly. `NODE_ENV` is always
+required; production additionally requires the service/ADCOS keys and fails
+loudly, naming the missing KEY but never echoing values. `ADCOS_API_VERSION`
+is pinned to `2.0`, the only supported ADCOS Developer API line.
+
+### Package layout (current)
+
+- `packages/contracts` — lowest-level shared contract package (RL-002): opaque
+  IDs, foreign ADCOS references, UTC instants, evidence classes, error
+  taxonomy, command envelope, versioning, canonical JSON + SHA-256 digests,
+  freshness primitives, env schema. No domain logic, no business authority.
+- `tests/architecture` — architecture conformance suite (RL-LOCK-018).
