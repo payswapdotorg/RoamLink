@@ -1,0 +1,19 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.idea/
+.vscode/
+.next/
+.expo/
+
+# local database / runtime state
+*.sqlite
+*.sqlite3
+.tmp/
