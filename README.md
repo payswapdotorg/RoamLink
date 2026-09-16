@@ -312,6 +312,39 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
 - `packages/testkit` — deterministic test primitives: monotonic injectable
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.
+- `packages/app-kit` — the shared application kit for the RL-060/RL-061
+  product surfaces: the public application API contract (spec/api.md) as
+  schema-first typed wire resources with fail-closed parsers, the
+  mutation-outcome stages (`accepted`/`executed`/`delivered`/`billable-final`
+  as separate, individually absent-or-present facts), the typed
+  `RoamLinkApiClient` over an injectable transport (every mutation carries
+  request/correlation/idempotency ids, actor/tenant context and the
+  optimistic version; retries with the same idempotency key replay the
+  original acknowledgement), a deterministic in-memory fake API implementing
+  the contract semantics (idempotency dedupe, optimistic-version conflicts,
+  fail-closed tenant scoping and admin authorization, freshness evaluated at
+  the query instant, the SHA-256 audit chain, evidence-driven stage
+  progression), and the framework-free typed HTML view core both apps render
+  with. Depends only on `@roamlink/contracts`; the state vocabularies are
+  drift-guarded mirrors of the owning domain packages (never redefinitions).
+- `apps/web` — the customer web application (RL-060): a pure view + command
+  surface over the public application API (zero authority logic): the
+  connectivity aggregate (projections + observations + freshness, never a
+  single opaque status), devices, experience-intent create/version/supersede
+  flows, products/orders/subscriptions/payments, notifications, and the
+  customer support thread — with the four-stage acknowledgement pipeline
+  rendered separately on every mutation and typed conflict/error panels on
+  failures.
+- `apps/admin` — the admin/operations console (RL-061): operational read
+  surfaces over the same public APIs (tenant/org management, audit/security
+  event review with digest-chain verification, reconciliation job
+  monitoring, projection freshness/SLO health dashboards, support-case
+  triage) plus admin commands through the same command semantics. Privilege
+  escalation is the top threat: every surface resolves the actor session
+  fail-closed BEFORE fetching any data (a denied actor never triggers the
+  surface request — proven by transport-capture tests), and denials are
+  audited server-side.
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018),
-  including dependency-direction proofs for the Wave-2 and Wave-3 worker
-  packages.
+  including dependency-direction proofs for the Wave-2, Wave-3 and Wave-4
+  worker packages (apps consume only the application kit; the app contract
+  mirrors the owning domain vocabularies without merging state families).
