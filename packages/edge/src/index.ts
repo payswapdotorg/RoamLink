@@ -29,6 +29,8 @@ export * from "./capability/capability-gating.js";
 export * from "./action/device-action.js";
 export * from "./sync/desired-state.js";
 export * from "./sync/outbox.js";
+export * from "./sync/payload-codec.js";
+export * from "./sync/offline-outbox.js";
 export * from "./observation/observation.js";
 export * from "./observation/context-snapshot.js";
 export * from "./observation/observation-engine.js";
