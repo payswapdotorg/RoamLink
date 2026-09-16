@@ -35,6 +35,12 @@ export type EdgeDesiredStateId = Branded<"EdgeDesiredStateId">;
 /** Identity of an outbox record (locally generated UUID). */
 export type EdgeOutboxRecordId = Branded<"EdgeOutboxRecordId">;
 
+/** Identity of an edge context snapshot (locally generated UUID; RL-041). */
+export type EdgeContextSnapshotId = Branded<"EdgeContextSnapshotId">;
+
+/** Identity of a raw edge observation (locally generated UUID; RL-041). */
+export type EdgeObservationId = Branded<"EdgeObservationId">;
+
 export function parseEdgeDeviceRef(value: unknown): EdgeDeviceRef {
   return parseForeignRefAs<EdgeDeviceRef>(value, "EdgeDeviceRef");
 }
@@ -72,5 +78,21 @@ export function parseEdgeOutboxRecordId(value: unknown): EdgeOutboxRecordId {
 }
 
 export function isEdgeOutboxRecordId(value: unknown): value is EdgeOutboxRecordId {
+  return isCanonicalUuid(value);
+}
+
+export function parseEdgeContextSnapshotId(value: unknown): EdgeContextSnapshotId {
+  return parseCanonicalUuidAs<EdgeContextSnapshotId>(value, "EdgeContextSnapshotId");
+}
+
+export function isEdgeContextSnapshotId(value: unknown): value is EdgeContextSnapshotId {
+  return isCanonicalUuid(value);
+}
+
+export function parseEdgeObservationId(value: unknown): EdgeObservationId {
+  return parseCanonicalUuidAs<EdgeObservationId>(value, "EdgeObservationId");
+}
+
+export function isEdgeObservationId(value: unknown): value is EdgeObservationId {
   return isCanonicalUuid(value);
 }

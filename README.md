@@ -117,13 +117,38 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   Access classes are PREFERENCES ONLY; no ADCOS types are imported or
   modeled (RL-LOCK-007) — compilation to ADCOS ConnectivityIntent is
   RL-012 (Wave 2).
-- `packages/edge` — edge capability contract package (RL-040): closed
-  capability vocabulary with platform scope + evidence requirements, the
-  immutable versioned capability snapshot, the pure evidence-based
-  capability gate (`assertCapability`), device action request/result
-  contracts, and the desired-state + encrypted-outbox record shapes.
-  Contracts only — platform adapters (RL-043) and the sync engine (RL-042)
-  come later.
+- `packages/edge` — edge capability contracts + engines (RL-040 + RL-041 +
+  RL-042): closed capability vocabulary with platform scope + evidence
+  requirements, the immutable versioned capability snapshot, the pure
+  evidence-based capability gate (`assertCapability`), device action
+  request/result contracts, the desired-state + encrypted-outbox record
+  shapes (RL-040); the observation engine that folds raw platform probes
+  into evidence-tagged capability/context snapshot chains under the closed
+  evidence-kind→class map (AUTHENTICATED unreachable locally, RL-LOCK-011);
+  and the encrypted offline outbox/sync engine — ciphertext-only payloads at
+  rest, batched sync with an explicit conflict policy, replay-safe
+  redelivery and honest boundary states (RL-LOCK-015/016). Platform
+  adapters (RL-043) come later.
+- `packages/secrets` — the secrets/credentials boundary (RL-050): typed
+  log-safe secret references, the `SecretsResolver` port with a closed
+  failure taxonomy, rotation-aware versioning, `SecretMaterial` redacted
+  from every serialization path, value-free access notifications (the
+  RL-051 audit seam), the RL-042 byte-key provider adapter, and an
+  in-memory fake. Secret values only ever enter a running component
+  through this boundary (RL-LOCK-016).
+- `packages/audit` — the append-only audit/security event stream (RL-051):
+  immutable UTC-instanced events with actor/tenant/command correlation and
+  a closed security taxonomy (auth, secret-access, authority-decision,
+  admin-override), tamper-evident SHA-256 digest chaining over canonical
+  JSON, append-only-by-construction stores (no mutation API exists), and
+  queries by correlation ID, actor, tenant, category and time range.
+- `packages/resilience` — rate limits, retries and circuit breakers
+  (RL-053): token-bucket and sliding-window limiters, bounded exponential
+  retry policies with injectable (deterministic or production) jitter,
+  attempt and wall-clock budgets classified through the Wave-0 error
+  taxonomy, and a closed/open/half-open circuit breaker with rolling-window
+  tripping, cooldown and bounded half-open probing. Pure/typed primitives,
+  in-memory state only.
 - `packages/integration` — the ADCOS integration adapters (RL-031 + RL-032):
   the `AdcosClient` seam implementation over a typed HTTP transport (closed
   v2 route table, canonical request bytes, idempotency-key enforcement,
@@ -146,11 +171,17 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   surface with optimistic concurrency, out-of-order/idempotency ordering
   defense, and explicit STALE/UNKNOWN degradation when canonical truth is
   unreachable — never a guess (RL-LOCK-010).
-- `packages/observability` — platform observability contracts: correlation-ID
-  context propagation from the Wave-0 command envelope, the redacting
-  structured log record contract, the counter/gauge/histogram naming + label
-  contract (no vendor SDK), and health/readiness aggregation.
+- `packages/observability` — platform observability contracts (RL-040 +
+  RL-052): correlation-ID context propagation from the Wave-0 command
+  envelope, the redacting structured log record contract, the
+  counter/gauge/histogram naming + label contract (no vendor SDK),
+  health/readiness aggregation, and the service-level objective /
+  error-budget primitives — typed SLOs, good/bad event recording with pure
+  window evaluation, burn-rate calculation, multi-window burn rates, and
+  composition with the health registry, metrics contract and correlated
+  logger (no-data is never silently healthy).
 - `packages/testkit` — deterministic test primitives: monotonic injectable
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.
-- `tests/architecture` — architecture conformance suite (RL-LOCK-018).
+- `tests/architecture` — architecture conformance suite (RL-LOCK-018),
+  including dependency-direction proofs for the Wave-2 Worker C packages.
