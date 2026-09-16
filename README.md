@@ -124,6 +124,28 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   contracts, and the desired-state + encrypted-outbox record shapes.
   Contracts only — platform adapters (RL-043) and the sync engine (RL-042)
   come later.
+- `packages/integration` — the ADCOS integration adapters (RL-031 + RL-032):
+  the `AdcosClient` seam implementation over a typed HTTP transport (closed
+  v2 route table, canonical request bytes, idempotency-key enforcement,
+  fail-closed response validation), the deterministic intent-command mapping
+  with full §5 command envelopes and retry-safe resubmission, the
+  offer/reservation (contract/lease) command + read surface with typed
+  `route-unknown` degradation for surfaces v2 does not expose, the closed
+  ADCOS→RoamLink error adaptation, and the §9 compatibility gate with
+  fail-closed mutations.
+- `packages/webhook-inbox` — the durable ADCOS webhook inbox (RL-033): the
+  HMAC webhook verifier implementing the `WebhookVerifier` seam (signature,
+  replay window, closed envelope, environment/version fail-closed) and
+  durable admission on the persistence primitives (dedupe by ADCOS event id,
+  immutable extended records, acknowledge-after-commit, async projection via
+  the `AdcosWebhookProjector` port). Webhooks are signals, not truth
+  (RL-LOCK-009).
+- `packages/projections` — the ADCOS projection engine (RL-034):
+  canonical-resource projections with the exact §8 record shape
+  (provenance, freshness, evidence), the integration-boundary-only writer
+  surface with optimistic concurrency, out-of-order/idempotency ordering
+  defense, and explicit STALE/UNKNOWN degradation when canonical truth is
+  unreachable — never a guess (RL-LOCK-010).
 - `packages/observability` — platform observability contracts: correlation-ID
   context propagation from the Wave-0 command envelope, the redacting
   structured log record contract, the counter/gauge/histogram naming + label
