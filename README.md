@@ -107,16 +107,47 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   tenant-scoped repository ports with in-memory adapters that prove
   cross-tenant access fails closed. RoamLink identity only — no ADCOS
   fields (RL-LOCK-003).
-- `packages/domain-experience` — the Experience domain (RL-010 + RL-011):
-  the Device aggregate (lifecycle, ownership, platform metadata), immutable
-  evidence-tagged `DeviceCapabilitySnapshot` over the closed 11-name
-  capability vocabulary mirroring spec/architecture.md §7 (drift-guarded),
-  the privacy-classified, minimized `DeviceContextSnapshot` with
-  consent-gated fine location, and `ExperienceIntent` with immutable
-  versions linked by a supersession chain plus a validated state machine.
-  Access classes are PREFERENCES ONLY; no ADCOS types are imported or
-  modeled (RL-LOCK-007) — compilation to ADCOS ConnectivityIntent is
-  RL-012 (Wave 2).
+- `packages/domain-experience` — the Experience domain (RL-010 + RL-011 +
+  RL-013): the Device aggregate (lifecycle, ownership, platform metadata),
+  immutable evidence-tagged `DeviceCapabilitySnapshot` over the closed
+  11-name capability vocabulary mirroring spec/architecture.md §7
+  (drift-guarded), the privacy-classified, minimized
+  `DeviceContextSnapshot` with consent-gated fine location, and
+  `ExperienceIntent` with immutable versions linked by a supersession
+  chain plus a validated state machine. Access classes are PREFERENCES
+  ONLY; no ADCOS types are imported or modeled (RL-LOCK-007) —
+  compilation to ADCOS ConnectivityIntent is RL-012 (Wave 2). The
+  additive RL-013 decision read model builds explainable, immutable
+  `ExperienceDecision` snapshots from an intent + the device's latest
+  capability/context evidence: derived customer status is a SEPARATE
+  read-side vocabulary (authoritative statuses are referenced, never
+  overwritten), every input carries freshness/evidence class/weight
+  (STALE and UNKNOWN evidence weighs zero) and every outcome factor
+  traces to the input evidence that produced it; decisions reference
+  connectivity, they never authorize it.
+- `packages/intent-compiler` — the ExperienceIntent compiler (RL-012,
+  Wave 2): deterministic, pure compilation of an immutable intent version
+  into the technology-neutral ADCOS ConnectivityIntent command shape per
+  spec/adcos-integration.md §4 — schema validation, policy
+  normalization, hard/soft constraint classification, privacy/service
+  constraint mapping, validity-window calculation, deterministic
+  canonical serialization, SHA-256 digest and command creation with full
+  source-intent traceability. The structural output is exactly the
+  RL-031 intent-command input (no dependency edge to the integration
+  package, RL-LOCK-019); depends only on contracts +
+  domain-experience.
+- `packages/domain-commerce` — the Commerce domain (RL-020 + RL-021,
+  Wave 2): the Product/ProductVariant catalog with a tenant-scoped,
+  deterministic catalog read model, and the Order/OrderLine/Subscription
+  lifecycle with append-only chain-sequenced event sourcing and
+  supersession of subscription changes. Commerce records express
+  COMMERCIAL INTENT ONLY (RL-LOCK-008 "payment is not delivery"): no
+  reservation/session/path/usage/settlement state lives here, payments
+  are RL-022 and the commerce-to-connectivity reference model is RL-023
+  (both Wave 3). Sessions wrap the RL-003 persistence units of work, so
+  multi-aggregate writes commit atomically and concurrent races surface
+  as typed ConflictErrors; commands are §5-envelope-gated and idempotent;
+  reads are tenant-scoped and fail closed (RL-LOCK-018).
 - `packages/edge` — edge capability contracts + engines (RL-040 + RL-041 +
   RL-042): closed capability vocabulary with platform scope + evidence
   requirements, the immutable versioned capability snapshot, the pure
@@ -184,4 +215,5 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018),
-  including dependency-direction proofs for the Wave-2 Worker C packages.
+  including dependency-direction proofs for the Wave-2 Worker A, B and C
+  packages.
