@@ -162,6 +162,8 @@ export class FakeAdcos implements AdcosClient {
   private readonly eventLog: FakeAdcosEvent[] = [];
   private readonly delayedEvents: FakeAdcosEvent[] = [];
   private readonly allEvents: FakeAdcosEvent[] = [];
+  private readonly lifecycleStateOverrides = new Map<string, string>();
+  private omitResourceVersions = false;
 
   /** Configurable webhook delivery behavior knobs. */
   webhookDelivery: FakeWebhookDeliveryBehavior = { ...DEFAULT_FAKE_WEBHOOK_DELIVERY };
@@ -202,6 +204,46 @@ export class FakeAdcos implements AdcosClient {
   /** Makes an operation permanently answer `route-unknown` (endpoint gone). */
   disableRoute(operation: string): this {
     this.disabledRoutes.add(operation);
+    return this;
+  }
+
+  /**
+   * Removes a canonical resource from the fake's server-side model WITHOUT
+   * emitting any event (RL-035/RL-036 knob): subsequent reads answer
+   * `resource-unknown` - the authority says the resource is gone.
+   */
+  forgetResource(
+    kind: "connectivity_intent" | "connectivity_contract" | "connectivity_lease",
+    resourceId: string,
+  ): this {
+    const store =
+      kind === "connectivity_intent"
+        ? this.intents
+        : kind === "connectivity_contract"
+          ? this.contracts
+          : this.leases;
+    if (!store.delete(resourceId)) {
+      throw new AdcosApiError("resource-unknown", `fake ADCOS: ${kind} resource does not exist`);
+    }
+    return this;
+  }
+
+  /**
+   * Makes intent lifecycle reads report an ARBITRARY state string
+   * (RL-036 knob): simulates an ADCOS instance speaking a lifecycle
+   * vocabulary outside the pinned 13-state contract.
+   */
+  overrideIntentLifecycleState(intentId: string, state: string): this {
+    this.lifecycleStateOverrides.set(intentId, state);
+    return this;
+  }
+
+  /**
+   * Omits `resource_version` from every returned document (RL-036 knob):
+   * simulates an ADCOS instance violating the required response fields.
+   */
+  stripResourceVersions(): this {
+    this.omitResourceVersions = true;
     return this;
   }
 
@@ -449,7 +491,7 @@ export class FakeAdcos implements AdcosClient {
     return Object.freeze({
       id: intent.id,
       state: intent.state,
-      resource_version: intent.version,
+      ...(this.omitResourceVersions ? {} : { resource_version: intent.version }),
       recorded_at: (intent.request as Record<string, unknown>)["recorded_at"],
     });
   }
@@ -459,7 +501,7 @@ export class FakeAdcos implements AdcosClient {
       id: contract.id,
       intent_id: contract.intentId,
       state: contract.state,
-      resource_version: contract.version,
+      ...(this.omitResourceVersions ? {} : { resource_version: contract.version }),
     });
   }
 
@@ -468,7 +510,7 @@ export class FakeAdcos implements AdcosClient {
       id: lease.id,
       contract_id: lease.contractId,
       status: lease.status,
-      resource_version: lease.version,
+      ...(this.omitResourceVersions ? {} : { resource_version: lease.version }),
     });
   }
 
@@ -772,9 +814,10 @@ export class FakeAdcos implements AdcosClient {
     this.consumeFault("pre");
     const intent = this.mustFind(this.intents, intentId, "intent");
     const contract = [...this.contracts.values()].find((c) => c.intentId === intent.id);
+    const override = this.lifecycleStateOverrides.get(intentId);
     return structuredClone({
       intent_id: intent.id,
-      state: contract === undefined ? intent.state : contract.state,
+      state: override ?? (contract === undefined ? intent.state : contract.state),
       resource_version: contract === undefined ? intent.version : contract.version,
     });
   }
@@ -817,7 +860,7 @@ export class FakeAdcos implements AdcosClient {
     const contract = this.mustFind(this.contracts, contractId, "contract");
     return structuredClone({
       contract_id: contract.id,
-      resource_version: contract.version,
+      ...(this.omitResourceVersions ? {} : { resource_version: contract.version }),
       usage: { bytes: 0, sessions: 0 },
     });
   }
@@ -828,7 +871,7 @@ export class FakeAdcos implements AdcosClient {
     const contract = this.mustFind(this.contracts, contractId, "contract");
     return structuredClone({
       contract_id: contract.id,
-      resource_version: contract.version,
+      ...(this.omitResourceVersions ? {} : { resource_version: contract.version }),
       assurance: { satisfied: true },
     });
   }
