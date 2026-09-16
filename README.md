@@ -344,6 +344,37 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   fail-closed BEFORE fetching any data (a denied actor never triggers the
   surface request — proven by transport-capture tests), and denials are
   audited server-side.
+- `packages/enterprise` — the enterprise onboarding/API surface (RL-063,
+  Wave 4): the organization enrollment journey (own closed state machine;
+  the tenant is bound ONLY through the registrar port — auth stays the
+  identity authority), reference-only tenant federation, enterprise API
+  keys with scoped service authorization through the RL-050 secrets
+  boundary (records carry typed key references, material verified in
+  constant time, rotation-aware versioning, no-leak proofs via the RL-054
+  scanner), connector provisioning over the RL-044 closed vocabularies
+  (the observation + user-guided degradation floor provisions honestly)
+  plus managed-edge enrollment records, the RoamLink-side customer webhook
+  contract (emissions ONLY from validated RoamLink durable state
+  transitions — RL-LOCK-009 — with HMAC-SHA256 authentication, replay
+  windows, per-endpoint dedupe + bounded retries), and the typed,
+  versioned, additive-tolerant `/v1/enterprise/...` public API surface
+  (route table, fail-closed parsers, the four-stage acknowledgement
+  mirror, typed client, deterministic in-memory fake).
+- `apps/mobile` — the mobile/edge UX shell (RL-062, Wave 4): the
+  observation/experience/synchronization agent surface per spec/mobile.md —
+  the edge desired-state loop UI (local context -> policy evaluation ->
+  capability-gated desired action -> encrypted offline outbox -> sync ->
+  authoritative result -> local projection update). The shell reuses the
+  edge packages (@roamlink/edge capability model + observation engine +
+  offline outbox, @roamlink/edge-actions device-action adapter) and
+  contains NO radio/network authority logic: freshness is ALWAYS rendered
+  (FRESH degrades to STALE; UNKNOWN presented, never hidden; connectivity
+  is never fabricated), offline continues observation + bounded telemetry
+  + desired-state changes, degraded controls render observation/manual
+  guidance, and the enrollment publishes a signed/versioned/expiring
+  capability snapshot through an injectable signer port (key material
+  never enters the shell). Host-agnostic by construction — platform
+  seams (probe/executor/cipher/signer/transport) are all injected.
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018),
   including dependency-direction proofs for the Wave-2, Wave-3 and Wave-4
   worker packages (apps consume only the application kit; the app contract
