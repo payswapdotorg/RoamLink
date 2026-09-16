@@ -730,6 +730,134 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.2)
 
+  tests/conformance:
+    dependencies:
+      '@roamlink/adcos':
+        specifier: workspace:*
+        version: link:../../packages/adcos
+      '@roamlink/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
+      '@roamlink/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@roamlink/commerce-connectivity':
+        specifier: workspace:*
+        version: link:../../packages/commerce-connectivity
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@roamlink/domain-commerce':
+        specifier: workspace:*
+        version: link:../../packages/domain-commerce
+      '@roamlink/domain-experience':
+        specifier: workspace:*
+        version: link:../../packages/domain-experience
+      '@roamlink/edge':
+        specifier: workspace:*
+        version: link:../../packages/edge
+      '@roamlink/edge-actions':
+        specifier: workspace:*
+        version: link:../../packages/edge-actions
+      '@roamlink/integration':
+        specifier: workspace:*
+        version: link:../../packages/integration
+      '@roamlink/intent-compiler':
+        specifier: workspace:*
+        version: link:../../packages/intent-compiler
+      '@roamlink/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@roamlink/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
+      '@roamlink/projections':
+        specifier: workspace:*
+        version: link:../../packages/projections
+      '@roamlink/reconciliation':
+        specifier: workspace:*
+        version: link:../../packages/reconciliation
+      '@roamlink/retention':
+        specifier: workspace:*
+        version: link:../../packages/retention
+      '@roamlink/secrets':
+        specifier: workspace:*
+        version: link:../../packages/secrets
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@roamlink/webhook-inbox':
+        specifier: workspace:*
+        version: link:../../packages/webhook-inbox
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
+  tests/simulation:
+    dependencies:
+      '@roamlink/adcos':
+        specifier: workspace:*
+        version: link:../../packages/adcos
+      '@roamlink/commerce-connectivity':
+        specifier: workspace:*
+        version: link:../../packages/commerce-connectivity
+      '@roamlink/compat':
+        specifier: workspace:*
+        version: link:../../packages/compat
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@roamlink/domain-commerce':
+        specifier: workspace:*
+        version: link:../../packages/domain-commerce
+      '@roamlink/edge':
+        specifier: workspace:*
+        version: link:../../packages/edge
+      '@roamlink/integration':
+        specifier: workspace:*
+        version: link:../../packages/integration
+      '@roamlink/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
+      '@roamlink/projections':
+        specifier: workspace:*
+        version: link:../../packages/projections
+      '@roamlink/reconciliation':
+        specifier: workspace:*
+        version: link:../../packages/reconciliation
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@roamlink/webhook-inbox':
+        specifier: workspace:*
+        version: link:../../packages/webhook-inbox
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.2':
