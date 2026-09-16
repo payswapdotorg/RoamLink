@@ -77,6 +77,28 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.2)
 
+  packages/domain-experience:
+    dependencies:
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
   packages/edge:
     dependencies:
       '@roamlink/contracts':
