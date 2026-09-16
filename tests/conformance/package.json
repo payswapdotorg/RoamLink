@@ -1,0 +1,41 @@
+{
+  "name": "@roamlink/tests-conformance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "@roamlink/adcos": "workspace:*",
+    "@roamlink/auth": "workspace:*",
+    "@roamlink/audit": "workspace:*",
+    "@roamlink/commerce-connectivity": "workspace:*",
+    "@roamlink/contracts": "workspace:*",
+    "@roamlink/domain-commerce": "workspace:*",
+    "@roamlink/domain-experience": "workspace:*",
+    "@roamlink/edge": "workspace:*",
+    "@roamlink/edge-actions": "workspace:*",
+    "@roamlink/integration": "workspace:*",
+    "@roamlink/intent-compiler": "workspace:*",
+    "@roamlink/notifications": "workspace:*",
+    "@roamlink/observability": "workspace:*",
+    "@roamlink/persistence": "workspace:*",
+    "@roamlink/projections": "workspace:*",
+    "@roamlink/reconciliation": "workspace:*",
+    "@roamlink/retention": "workspace:*",
+    "@roamlink/secrets": "workspace:*",
+    "@roamlink/testkit": "workspace:*",
+    "@roamlink/webhook-inbox": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

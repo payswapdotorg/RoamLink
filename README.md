@@ -75,6 +75,16 @@ Architecture conformance is additionally enforced by real tests in
 env-schema/.env.example parity) which run as part of `pnpm test` and fail the
 build on violation (RL-LOCK-018).
 
+### The RL-070/RL-071 test matrix
+
+Beyond `tests/architecture`, two dedicated suites prove the architecture
+locks end-to-end (they also run as part of `pnpm test`):
+
+| Suite | What it proves |
+|---|---|
+| `tests/conformance` (RL-070) | NEGATIVE-PROOF suites per authority/dependency lock (RL-LOCK-001 through RL-LOCK-019, minus the meta-locks 018/020 covered elsewhere): each suite carries a green proof on the current tree AND a violating fixture that MUST turn it red. Behavioral suites assert typed rejection of violating inputs (delivery state on payments, ADCOS identity fields on Users, provider authority in evidence, path/session resource kinds, forged webhook origins, unversioned records, AI-SDK imports, ...). Structural suites scan manifests + sources and merge a VIRTUAL violating overlay when toggled. Toggle any lock's fixture with `ROAMLINK_CONFORMANCE_VIOLATION=<LOCK-ID> pnpm -C tests/conformance test` (e.g. `ROAMLINK_CONFORMANCE_VIOLATION=RL-LOCK-008`) - exactly that lock's negative proofs go red on a conforming tree, proving the suite fails when the implementation violates the lock (RL-LOCK-018). |
+| `tests/simulation` (RL-071) | end-to-end failure-mode simulations over the composed public packages + the §10 ADCOS fake: duplicate command delivery at EVERY boundary (intent adapter timeouts, webhook redelivery, commerce commands, reconciliation re-runs, edge outbox re-enqueue), reordering (reversed webhook events vs projection ordering defense + convergence), loss (dropped events + silent canonical changes -> reconciler repair with digest-verified payloads), delay (freshness decay to STALE, delayed truth re-establishing freshness, commerce read model re-evaluating at the query instant), partition (offline edge convergence on reconnect, exactly-once server effects via idempotency-key dedupe), partial failure (UnitOfWork atomicity + transactional outbox retry convergence) and byzantine inputs (forged/malformed webhooks rejected at admission; schema drift -> §9 gate fails CLOSED for mutations). Deterministic throughout: testkit clock/ids/recorder, no sleeps, no network, no ADCOS internals. |
+
 ### Commit hooks
 
 A dependency-free pre-commit hook is installed automatically by
@@ -379,3 +389,21 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   including dependency-direction proofs for the Wave-2, Wave-3 and Wave-4
   worker packages (apps consume only the application kit; the app contract
   mirrors the owning domain vocabularies without merging state families).
+- `tests/conformance` — the RL-070 authority conformance suite: one
+  negative-proof suite per architecture lock (ADCOS-the-only-authority,
+  one integration boundary, no duplicate identity/session/path/provider
+  authority, intent separation, payment != delivery, webhooks-are-signals,
+  evidence/freshness first-class, capability evidence-based, AI advisory-only,
+  no provider SDK leakage, idempotent commands, offline convergence, no
+  secret leakage, versioned contracts, three-worker-safe ownership). Every
+  suite has a green proof on the current tree and a toggleable violating
+  fixture (`ROAMLINK_CONFORMANCE_VIOLATION=<LOCK-ID>`) that must turn it
+  red - a suite that cannot fail is not a proof.
+- `tests/simulation` — the RL-071 failure/reordering/duplicate simulation
+  suite: deterministic end-to-end scenarios (duplicates at every boundary,
+  reordering vs projection ordering defense, loss -> reconciliation repair,
+  delay -> STALE decay and recovery, offline partition convergence,
+  UnitOfWork atomicity + outbox retry, byzantine webhook rejection and
+  schema-drift fail-closed) asserting the ARCHITECTURAL invariants (no
+  duplicate effects, no fabricated truth, no lost work) over the public
+  packages and the §10 ADCOS fake only.
