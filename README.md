@@ -99,6 +99,24 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   IDs, foreign ADCOS references, UTC instants, evidence classes, error
   taxonomy, command envelope, versioning, canonical JSON + SHA-256 digests,
   freshness primitives, env schema. No domain logic, no business authority.
+- `packages/auth` — RoamLink auth/tenant boundary (RL-004): User /
+  Organization / Membership aggregates with the frozen account permission
+  map, the server-side session abstraction (opaque tokens, digest-only
+  storage, bounded lifetime), the password-hashing port (no vendor lock),
+  actor→tenant resolution with fail-closed boundary authorization, and
+  tenant-scoped repository ports with in-memory adapters that prove
+  cross-tenant access fails closed. RoamLink identity only — no ADCOS
+  fields (RL-LOCK-003).
+- `packages/domain-experience` — the Experience domain (RL-010 + RL-011):
+  the Device aggregate (lifecycle, ownership, platform metadata), immutable
+  evidence-tagged `DeviceCapabilitySnapshot` over the closed 11-name
+  capability vocabulary mirroring spec/architecture.md §7 (drift-guarded),
+  the privacy-classified, minimized `DeviceContextSnapshot` with
+  consent-gated fine location, and `ExperienceIntent` with immutable
+  versions linked by a supersession chain plus a validated state machine.
+  Access classes are PREFERENCES ONLY; no ADCOS types are imported or
+  modeled (RL-LOCK-007) — compilation to ADCOS ConnectivityIntent is
+  RL-012 (Wave 2).
 - `packages/edge` — edge capability contract package (RL-040): closed
   capability vocabulary with platform scope + evidence requirements, the
   immutable versioned capability snapshot, the pure evidence-based
