@@ -202,6 +202,27 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   surface with optimistic concurrency, out-of-order/idempotency ordering
   defense, and explicit STALE/UNKNOWN degradation when canonical truth is
   unreachable — never a guess (RL-LOCK-010).
+- `packages/reconciliation` — the ADCOS reconciliation engine (RL-035,
+  Wave 3): the `ReconciliationJob` orchestration of spec §7 that
+  periodically compares projection freshness against canonical ADCOS
+  resources and repairs missed webhooks, duplicate webhooks, out-of-order
+  events, stale projections, partially applied projections and transient
+  ADCOS/API failures. Jobs are §5-envelope-carrying durable records on the
+  persistence primitives — re-running a crashed job converges instead of
+  duplicating (RL-LOCK-014). The boundary factory is the §8 composition
+  point: it captures the projection writer capability (only the
+  reconciler/integration boundary writes ADCOS-derived projections) and
+  binds the webhook inbox projector through the boundary-owned engine.
+  Truth-unreachable degrades to STALE/UNKNOWN — never a guess.
+- `packages/compat` — the ADCOS compatibility suite (RL-036, Wave 3): the
+  executable §9 startup gate — composes the Wave-2 compatibility gate with
+  server-driven checks (lifecycle-state vocabulary, required
+  `resource_version` fields, end-to-end webhook-delivery verification,
+  verifier semantics accept/reject matrices, single-site version pin,
+  fail-closed mutation-gate wiring). Incompatible ADCOS versions fail
+  CLOSED for mutations with a diagnosable, value-free health report.
+  Runs against any public `AdcosClient` — the local §10 fake in tests, real
+  clients at startup; no ADCOS internals.
 - `packages/observability` — platform observability contracts (RL-040 +
   RL-052): correlation-ID context propagation from the Wave-0 command
   envelope, the redacting structured log record contract, the
@@ -215,5 +236,5 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018),
-  including dependency-direction proofs for the Wave-2 Worker A, B and C
+  including dependency-direction proofs for the Wave-2 and Wave-3 worker
   packages.

@@ -84,6 +84,37 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.2)
 
+  packages/compat:
+    dependencies:
+      '@roamlink/adcos':
+        specifier: workspace:*
+        version: link:../adcos
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@roamlink/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      '@roamlink/webhook-inbox':
+        specifier: workspace:*
+        version: link:../webhook-inbox
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
   packages/contracts:
     devDependencies:
       '@types/node':
@@ -273,6 +304,43 @@ importers:
       '@roamlink/testkit':
         specifier: workspace:*
         version: link:../testkit
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
+  packages/reconciliation:
+    dependencies:
+      '@roamlink/adcos':
+        specifier: workspace:*
+        version: link:../adcos
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@roamlink/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@roamlink/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+      '@roamlink/projections':
+        specifier: workspace:*
+        version: link:../projections
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../testkit
+      '@roamlink/webhook-inbox':
+        specifier: workspace:*
+        version: link:../webhook-inbox
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
