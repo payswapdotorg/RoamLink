@@ -95,9 +95,6 @@ importers:
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../persistence
-      '@roamlink/projections':
-        specifier: workspace:*
-        version: link:../projections
     devDependencies:
       '@roamlink/testkit':
         specifier: workspace:*

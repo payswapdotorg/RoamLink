@@ -13,18 +13,19 @@
  * vocabulary, never merged with order/payment/subscription/ADCOS state
  * (spec/data-model.md "State separation").
  *
- * The model is READ-ONLY towards both sides: it consumes the RL-034
- * projection read surface through the DeliveryEvidenceSource port (never
- * writes projections, never commands ADCOS - RL-LOCK-002/005) and consumes
- * domain-commerce's committed read views through the CommercialSubjectReader
- * port (never writes commerce state). Commands are §5-envelope-gated,
- * idempotent (reusing the domain-commerce ledger semantics) and CAS-aware;
- * every transition appends a chain-sequenced immutable event retaining the
- * full observation history.
+ * The model is READ-ONLY towards both sides: it consumes ADCOS-derived
+ * observations through the DeliveryEvidenceSource port (bound at the
+ * composition layer to the integration boundary's exposed get/list/count
+ * projection reader - never here, RL-LOCK-002; it never writes projections
+ * and never commands ADCOS, RL-LOCK-005) and consumes domain-commerce's
+ * committed read views through the CommercialSubjectReader port (never
+ * writes commerce state). Commands are §5-envelope-gated, idempotent
+ * (reusing the domain-commerce ledger semantics) and CAS-aware; every
+ * transition appends a chain-sequenced immutable event retaining the full
+ * observation history.
  *
- * Depends on @roamlink/contracts + @roamlink/persistence (Wave-0),
- * @roamlink/domain-commerce (subject facts + idempotency ledger) and
- * @roamlink/projections (READ surface only, bound in ./adapters.ts).
+ * Depends on @roamlink/contracts + @roamlink/persistence (Wave-0) and
+ * @roamlink/domain-commerce (subject facts + idempotency ledger).
  */
 export * from "./version.js";
 export * from "./ids.js";

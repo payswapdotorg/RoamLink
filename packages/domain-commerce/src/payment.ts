@@ -52,8 +52,8 @@ import {
 
 /**
  * The CLOSED `customer_payment_state` vocabulary. Deliberately disjoint from
- * ORDER_STATUSES in both name and values; a payment is never "placed",
- * "completed" or "active" and an order is never "succeeded".
+ * the order status vocabulary in both name and values; a payment is never
+ * "placed", "completed" or "active" and an order is never "succeeded".
  */
 export const CUSTOMER_PAYMENT_STATES = [
   "pending",

@@ -136,18 +136,27 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   RL-031 intent-command input (no dependency edge to the integration
   package, RL-LOCK-019); depends only on contracts +
   domain-experience.
-- `packages/domain-commerce` — the Commerce domain (RL-020 + RL-021,
-  Wave 2): the Product/ProductVariant catalog with a tenant-scoped,
-  deterministic catalog read model, and the Order/OrderLine/Subscription
+- `packages/domain-commerce` — the Commerce domain (RL-020 + RL-021 +
+  RL-022): the Product/ProductVariant catalog with a tenant-scoped,
+  deterministic catalog read model, the Order/OrderLine/Subscription
   lifecycle with append-only chain-sequenced event sourcing and
-  supersession of subscription changes. Commerce records express
-  COMMERCIAL INTENT ONLY (RL-LOCK-008 "payment is not delivery"): no
-  reservation/session/path/usage/settlement state lives here, payments
-  are RL-022 and the commerce-to-connectivity reference model is RL-023
-  (both Wave 3). Sessions wrap the RL-003 persistence units of work, so
-  multi-aggregate writes commit atomically and concurrent races surface
-  as typed ConflictErrors; commands are §5-envelope-gated and idempotent;
-  reads are tenant-scoped and fail closed (RL-LOCK-018).
+  supersession of subscription changes, and the customer-facing money
+  lifecycle — CustomerPayment, CustomerInvoice with reconciliation PROVEN
+  from recorded money facts (succeeded payments minus succeeded refunds,
+  same currency), and CustomerRefund with closed reason codes and
+  partial-refund bounds — each aggregate carrying its OWN closed state
+  vocabulary (`customer_payment_state` / `invoice_state` /
+  `customer_refund_state`, never merged with order/subscription or any
+  delivery state). Commerce records express COMMERCIAL INTENT and MONEY
+  FACTS ONLY (RL-LOCK-008 "payment is not delivery"): no
+  reservation/session/path/usage/delivery/settlement state lives here,
+  and the commerce-to-connectivity reference model is RL-023 (sibling
+  package `@roamlink/commerce-connectivity`). Money is integer minor
+  units + ISO-4217-style codes only (no floats, no rounding, typed
+  currency-mismatch errors). Sessions wrap the RL-003 persistence units
+  of work, so multi-aggregate writes commit atomically and concurrent
+  races surface as typed ConflictErrors; commands are §5-envelope-gated
+  and idempotent; reads are tenant-scoped and fail closed (RL-LOCK-018).
 - `packages/edge` — edge capability contracts + engines (RL-040 + RL-041 +
   RL-042): closed capability vocabulary with platform scope + evidence
   requirements, the immutable versioned capability snapshot, the pure
@@ -263,6 +272,43 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   window evaluation, burn-rate calculation, multi-window burn rates, and
   composition with the health registry, metrics contract and correlated
   logger (no-data is never silently healthy).
+- `packages/commerce-connectivity` — the commerce-to-connectivity reference
+  model (RL-023, Wave 3): the explicit, evidence-carrying reference layer
+  between commercial subjects (orders/subscriptions) and the ADCOS-derived
+  projections — an order does NOT imply delivery (RL-LOCK-008). The ONLY
+  sanctioned way the commerce surface reads connectivity status:
+  `delivery_evidence_state` is its own closed vocabulary (UNEVIDENCED |
+  EVIDENCED, never merged with commerce/ADCOS state), evidence snapshots
+  mirror the §8 projection field semantics (evidence class +
+  observedAt/receivedAt/freshUntil + freshness + canonical refs + digest,
+  RL-LOCK-010), and the read model exposes the subject's commercial state
+  plus the evidence freshness re-evaluated at the query instant — FRESH
+  degrades to STALE monotonically, UNKNOWN is presented, never hidden, and
+  no combined opaque status exists. Evidence enters only through the
+  read-only `DeliveryEvidenceSource` port (§8-shaped observations; the
+  composition layer binds it to the integration boundary's exposed
+  get/list/count projection reader — the package itself never imports the
+  projection package, RL-LOCK-002); a missing projection is a typed
+  NotFound (absence is presented, never guessed). Relinks snapshot
+  immutably; the event chain keeps every observation (audit).
+- `packages/notifications` — the notifications/support domain (RL-014,
+  Wave 3): durable notifications, typed channel/preference contracts and
+  support cases with event correlation. RL-LOCK-009 is enforced
+  structurally: the `TransitionOrigin` contract (closed single-member
+  origin vocabulary `roamlink_state_transition`, closed RoamLink
+  aggregate-type vocabulary, REQUIRED durable event id) leaves no shape
+  for a raw ADCOS payload to pass — notifications are emitted only from
+  RoamLink's own durable state transitions. A preference mute produces a
+  durable SUPPRESSED notification (a state, never a deletion); channel
+  deliveries are immutable attempt records (first success delivers; failed
+  only once every effective channel failed). Support cases carry typed
+  related-ref correlation (orders/subscriptions/payments/invoices/refunds/
+  connectivity references) and a structural customer/internal visibility
+  boundary (internal messages gated behind `support_case:internal` and
+  absent from the customer thread view by construction). The
+  /v1/notifications resource mapper exposes RoamLink state + the source
+  transition + evidence summaries (freshness + canonical refs) — never
+  internal ADCOS types.
 - `packages/testkit` — deterministic test primitives: monotonic injectable
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.

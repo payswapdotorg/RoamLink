@@ -43,10 +43,6 @@ import {
   type CommerceReadViews,
 } from "@roamlink/domain-commerce";
 import {
-  ADCOS_PROJECTION_RESOURCE_TYPES,
-  InMemoryProjectionStore,
-} from "@roamlink/projections";
-import {
   DeterministicClock,
   DeterministicUuidGenerator,
   fixtureCommandEnvelope,
@@ -54,7 +50,6 @@ import {
 
 import {
   commerceReadViewsAsSubjectReader,
-  projectionReaderAsEvidenceSource,
   createInMemoryConnectivityReferenceStore,
   describeSubjectConnectivity,
   ConnectivityReference,
@@ -64,6 +59,7 @@ import {
   parseDeliveryEvidence,
   type DeliveryEvidence,
   type DeliveryEvidenceObservation,
+  type DeliveryEvidenceSource,
 } from "../src/index.js";
 
 const T0 = "2026-01-15T08:30:00.000Z";
@@ -81,9 +77,35 @@ const REFERENCE = new DeterministicUuidGenerator(600).next();
 const at = (iso: string) => parseUtcInstant(iso);
 
 // ---------------------------------------------------------------------------
-// The deterministic world: commerce store + services, projection store,
-// reference store + service (with the REAL adapters bound).
+// The deterministic world: commerce store + services, a §8-shaped fake
+// evidence source (the composition layer binds the projection reader to
+// the port - domain packages never import the projection package),
+// reference store + service (with the REAL commerce adapter bound).
 // ---------------------------------------------------------------------------
+
+/**
+ * A §8-shaped in-memory evidence source standing in for the integration
+ * boundary's exposed projection reader (get/list/count only). Observations
+ * are stored in the exact snake_case §8 field shape the port consumes.
+ */
+class FakeEvidenceSource implements DeliveryEvidenceSource {
+  readonly #observations = new Map<string, DeliveryEvidenceObservation>();
+
+  set(observation: DeliveryEvidenceObservation): this {
+    this.#observations.set(
+      `${observation.canonical_resource_type}:${observation.canonical_resource_id}`,
+      Object.freeze(structuredClone(observation)),
+    );
+    return this;
+  }
+
+  async get(
+    canonicalResourceType: string,
+    canonicalResourceId: string,
+  ): Promise<DeliveryEvidenceObservation | null> {
+    return this.#observations.get(`${canonicalResourceType}:${canonicalResourceId}`) ?? null;
+  }
+}
 
 function makeWorld(startAt: string = T0) {
   const clock = new DeterministicClock(startAt);
@@ -92,7 +114,7 @@ function makeWorld(startAt: string = T0) {
   const commerceViews: CommerceReadViews = commerceStore.read;
   const ledger = new InMemoryCommerceIdempotencyLedger();
   const referenceStore = createInMemoryConnectivityReferenceStore();
-  const projectionStore = new InMemoryProjectionStore();
+  const evidenceSource = new FakeEvidenceSource();
 
   const commerceDeps = {
     store: commerceStore,
@@ -110,7 +132,7 @@ function makeWorld(startAt: string = T0) {
     policy: { authorize: async () => undefined },
     ledger,
     subjects: commerceReadViewsAsSubjectReader(commerceViews),
-    evidenceSource: projectionReaderAsEvidenceSource(projectionStore),
+    evidenceSource,
     now: () => clock.now(),
     generateId: () => ids.next(),
   });
@@ -130,7 +152,7 @@ function makeWorld(startAt: string = T0) {
         : {}),
     });
 
-  return { clock, ids, commerceStore, projectionStore, referenceStore, catalog, orders, payments, service, envelope };
+  return { clock, ids, commerceStore, evidenceSource, referenceStore, catalog, orders, payments, service, envelope };
 }
 
 type World = ReturnType<typeof makeWorld>;
@@ -164,10 +186,10 @@ async function seedPlacedOrder(world: World) {
 }
 
 /**
- * Applies a §8 projection record into the world's projection store
- * (freshUntil = received + ttlMs by default; null timestamps for UNKNOWN).
+ * Seeds a §8-shaped observation into the world's fake evidence source
+ * (freshUntil default 08:31:00; null timestamps for UNKNOWN).
  */
-async function applyProjection(
+function applyObservation(
   world: World,
   options?: {
     readonly resourceId?: string;
@@ -177,17 +199,16 @@ async function applyProjection(
     readonly freshnessState?: "FRESH" | "STALE" | "UNKNOWN";
     readonly payload?: Record<string, unknown>;
     readonly evidenceClass?: "AUTHENTICATED" | "OBSERVED" | "REPORTED" | "DERIVED" | "INFERRED" | "STALE" | "UNKNOWN";
-    readonly projectionVersion?: number;
+    readonly sourceVersion?: number;
   },
 ) {
   const resourceId = options?.resourceId ?? "contract-77";
   const payload = options?.payload ?? { status: "active", region: "eu-west" };
-  const record = {
-    projection_id: `prj.connectivity_contract.${resourceId}`,
+  const observation = {
     source_authority: "adcos",
     canonical_resource_type: "connectivity_contract",
     canonical_resource_id: resourceId,
-    source_version: 3,
+    source_version: options?.sourceVersion ?? 3,
     event_id: `evt-${resourceId}`,
     payload_digest: canonicalJsonDigest(payload),
     observed_at: options?.observedAt === undefined ? T0 : options.observedAt,
@@ -195,11 +216,10 @@ async function applyProjection(
     fresh_until: options?.freshUntil === undefined ? "2026-01-15T08:31:00.000Z" : options.freshUntil,
     freshness_state: options?.freshnessState ?? "FRESH",
     evidence_class: options?.evidenceClass ?? "AUTHENTICATED",
-    projection_version: options?.projectionVersion ?? 1,
     payload,
-  };
-  await world.projectionStore.apply(record as never, options?.projectionVersion === undefined ? null : options.projectionVersion - 1);
-  return record;
+  } as DeliveryEvidenceObservation;
+  world.evidenceSource.set(observation);
+  return observation;
 }
 
 async function seededReference(world: World) {
@@ -406,7 +426,7 @@ describe("ConnectivityReferenceService.linkDeliveryEvidence", () => {
   it("links a FRESH §8 observation through the read-only source port", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world);
+    await applyObservation(world);
     const linked = await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
       expectedRevision: 1,
@@ -440,7 +460,7 @@ describe("ConnectivityReferenceService.linkDeliveryEvidence", () => {
   it("relinks capture a NEW immutable snapshot and keep the previous digest on the chain", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world, { payload: { status: "active" } });
+    await applyObservation(world, { payload: { status: "active" } });
     await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
       expectedRevision: 1,
@@ -448,9 +468,9 @@ describe("ConnectivityReferenceService.linkDeliveryEvidence", () => {
       canonicalResourceId: "contract-77",
     });
     // a newer observation arrives
-    await applyProjection(world, {
+    applyObservation(world, {
       payload: { status: "active", region: "eu-west-2" },
-      projectionVersion: 2,
+      sourceVersion: 4,
     });
     await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
@@ -476,7 +496,7 @@ describe("ConnectivityReferenceService.linkDeliveryEvidence", () => {
   it("enforces CAS and refuses retired references", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world);
+    await applyObservation(world);
     await expect(
       world.service.linkDeliveryEvidence(world.envelope(), {
         referenceId: REFERENCE,
@@ -509,7 +529,7 @@ describe("read-model freshness transitions (FRESH / STALE / UNKNOWN)", () => {
     const world = makeWorld();
     await seededReference(world);
     // fresh_until = 08:31:00; the world clock starts at 08:30:00
-    await applyProjection(world);
+    await applyObservation(world);
     await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
       expectedRevision: 1,
@@ -531,10 +551,10 @@ describe("read-model freshness transitions (FRESH / STALE / UNKNOWN)", () => {
     expect(stale.evidence?.freshness.freshnessState).toBe("STALE");
 
     // a newer observation with a longer guarantee relinks -> FRESH again
-    await applyProjection(world, {
+    applyObservation(world, {
       payload: { status: "active", region: "eu-west-2" },
       freshUntil: "2026-01-15T09:00:00.000Z",
-      projectionVersion: 2,
+      sourceVersion: 4,
     });
     await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
@@ -562,7 +582,7 @@ describe("read-model freshness transitions (FRESH / STALE / UNKNOWN)", () => {
   it("UNKNOWN freshness is presented when the observation lacks timestamps (a valid state)", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world, {
+    await applyObservation(world, {
       observedAt: null,
       receivedAt: null,
       freshUntil: null,
@@ -650,7 +670,7 @@ describe("payment is not delivery (RL-LOCK-008, RL-023)", () => {
   it("even an EVIDENCED reference never claims the ORDER is delivered: states stay separate", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world);
+    await applyObservation(world);
     await world.service.linkDeliveryEvidence(world.envelope(), {
       referenceId: REFERENCE,
       expectedRevision: 1,
@@ -687,9 +707,16 @@ describe("state-separation drift guards", () => {
     expect(SUBSCRIPTION_STATUSES).not.toContain("EVIDENCED");
   });
 
-  it("the linkable canonical-resource vocabulary is pinned to the projection §8 vocabulary", () => {
+  it("the linkable canonical-resource vocabulary is pinned to the §8 canonical resource types (the projection vocabulary - pinned textually here; the architecture suite cross-checks the real projection source)", () => {
     expect([...LINKABLE_CANONICAL_RESOURCE_TYPES].sort()).toEqual(
-      [...ADCOS_PROJECTION_RESOURCE_TYPES].sort(),
+      [
+        "connectivity_intent",
+        "connectivity_contract",
+        "connectivity_lease",
+        "contract_usage",
+        "contract_assurance",
+        "webhook_endpoint",
+      ].sort(),
     );
   });
 
@@ -733,7 +760,7 @@ describe("reference command idempotency and events", () => {
     });
     expect(replay).toEqual(first);
 
-    await applyProjection(world);
+    await applyObservation(world);
     const linkEnvelope = world.envelope({ key: "link-once" });
     const linked = await world.service.linkDeliveryEvidence(linkEnvelope, {
       referenceId: REFERENCE,
@@ -783,7 +810,7 @@ describe("reference command idempotency and events", () => {
   it("events carry the full command correlation and stay chain-sequenced", async () => {
     const world = makeWorld();
     await seededReference(world);
-    await applyProjection(world);
+    await applyObservation(world);
     const linkEnvelope = world.envelope();
     await world.service.linkDeliveryEvidence(linkEnvelope, {
       referenceId: REFERENCE,
@@ -808,18 +835,24 @@ describe("reference command idempotency and events", () => {
 // ---------------------------------------------------------------------------
 
 describe("DeliveryEvidenceSource port discipline", () => {
-  it("the projections adapter binds the read surface structurally (§8 fields pass through)", async () => {
+  it("the service consumes the §8 observation shape through the port; absent resources return null (absence, never a guess)", async () => {
     const world = makeWorld();
-    const applied = await applyProjection(world);
-    const source = projectionReaderAsEvidenceSource(world.projectionStore);
-    const observation: DeliveryEvidenceObservation | null = await source.get(
-      "connectivity_contract",
-      "contract-77",
-    );
-    expect(observation).not.toBeNull();
-    expect(observation?.payload_digest).toBe(applied.payload_digest);
-    expect(observation?.freshness_state).toBe("FRESH");
-    expect(observation?.evidence_class).toBe("AUTHENTICATED");
-    expect(await source.get("connectivity_contract", "missing")).toBeNull();
+    const applied = applyObservation(world);
+    expect(applied.payload_digest).toMatch(/^[0-9a-f]{64}$/);
+
+    await seededReference(world);
+    const linked = await world.service.linkDeliveryEvidence(world.envelope(), {
+      referenceId: REFERENCE,
+      expectedRevision: 1,
+      canonicalResourceType: "connectivity_contract",
+      canonicalResourceId: "contract-77",
+    });
+    expect(linked).toMatchObject({ freshnessState: "FRESH", deliveryEvidenceState: "EVIDENCED" });
+
+    // the port's absent-resource contract is null - the service surfaces it
+    // as a typed NotFound (proved elsewhere); the fake honours the same
+    // contract the integration boundary's exposed reader provides.
+    const missing = await world.evidenceSource.get("connectivity_contract", "missing");
+    expect(missing).toBeNull();
   });
 });

@@ -19,8 +19,7 @@
   "dependencies": {
     "@roamlink/contracts": "workspace:*",
     "@roamlink/persistence": "workspace:*",
-    "@roamlink/domain-commerce": "workspace:*",
-    "@roamlink/projections": "workspace:*"
+    "@roamlink/domain-commerce": "workspace:*"
   },
   "devDependencies": {
     "@roamlink/testkit": "workspace:*",
