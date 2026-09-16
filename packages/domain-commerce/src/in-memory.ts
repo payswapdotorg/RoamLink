@@ -34,9 +34,12 @@ import {
 } from "@roamlink/persistence";
 
 import { CommerceEvent, type CommerceEventRecord } from "./events.js";
+import type { CustomerInvoiceRecord } from "./invoice.js";
 import type { OrderLineRecord, OrderRecord } from "./order.js";
+import type { CustomerPaymentRecord } from "./payment.js";
 import type { ProductRecord } from "./product.js";
 import type { ProductVariantRecord } from "./product-variant.js";
+import type { CustomerRefundRecord } from "./refund.js";
 import type { SubscriptionRecord } from "./subscription.js";
 import type {
   CommerceEventReader,
@@ -44,6 +47,12 @@ import type {
   CommerceReadViews,
   CommerceSession,
   CommerceStore,
+  CustomerInvoiceReader,
+  CustomerInvoiceRepository,
+  CustomerPaymentReader,
+  CustomerPaymentRepository,
+  CustomerRefundReader,
+  CustomerRefundRepository,
   OrderLineReader,
   OrderLineRepository,
   OrderReader,
@@ -62,6 +71,9 @@ const REPOSITORY_NAMES = {
   orders: "commerce-orders",
   orderLines: "commerce-order-lines",
   subscriptions: "commerce-subscriptions",
+  payments: "commerce-customer-payments",
+  invoices: "commerce-customer-invoices",
+  refunds: "commerce-customer-refunds",
   events: "commerce-events",
 } as const;
 
@@ -329,6 +341,149 @@ class SubscriptionSessionView implements SubscriptionRepository {
   }
 }
 
+class CustomerPaymentSessionView implements CustomerPaymentRepository {
+  readonly #uow: UnitOfWork;
+
+  constructor(uow: UnitOfWork) {
+    this.#uow = uow;
+  }
+
+  async save(record: CustomerPaymentRecord): Promise<void> {
+    await casSave(
+      this.#uow,
+      REPOSITORY_NAMES.payments,
+      recordKey(record.tenantId, record.paymentId),
+      record,
+    );
+  }
+
+  async findById(tenantId: CustomerPaymentRecord["tenantId"], paymentId: string) {
+    const stored = await this.#uow
+      .records(REPOSITORY_NAMES.payments)
+      .get(recordKey(tenantId, paymentId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerPaymentRecord>(stored, tenantId);
+  }
+
+  async listForOrder(tenantId: CustomerPaymentRecord["tenantId"], orderId: string) {
+    const out: CustomerPaymentRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.payments).list()) {
+      const record = decodeTenantScoped<CustomerPaymentRecord>(stored, tenantId);
+      if (record !== undefined && record.orderId === orderId) out.push(record);
+    }
+    return Object.freeze(out.sort((a, b) => (a.paymentId < b.paymentId ? -1 : 1)));
+  }
+
+  async listByTenant(tenantId: CustomerPaymentRecord["tenantId"]) {
+    const out: CustomerPaymentRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.payments).list()) {
+      const record = decodeTenantScoped<CustomerPaymentRecord>(stored, tenantId);
+      if (record !== undefined) out.push(record);
+    }
+    return Object.freeze(out);
+  }
+}
+
+class CustomerInvoiceSessionView implements CustomerInvoiceRepository {
+  readonly #uow: UnitOfWork;
+
+  constructor(uow: UnitOfWork) {
+    this.#uow = uow;
+  }
+
+  async save(record: CustomerInvoiceRecord): Promise<void> {
+    await casSave(
+      this.#uow,
+      REPOSITORY_NAMES.invoices,
+      recordKey(record.tenantId, record.invoiceId),
+      record,
+    );
+  }
+
+  async findById(tenantId: CustomerInvoiceRecord["tenantId"], invoiceId: string) {
+    const stored = await this.#uow
+      .records(REPOSITORY_NAMES.invoices)
+      .get(recordKey(tenantId, invoiceId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerInvoiceRecord>(stored, tenantId);
+  }
+
+  async findByNumber(tenantId: CustomerInvoiceRecord["tenantId"], invoiceNumber: string) {
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.invoices).list()) {
+      const record = decodeTenantScoped<CustomerInvoiceRecord>(stored, tenantId);
+      if (record !== undefined && record.invoiceNumber === invoiceNumber) return record;
+    }
+    return undefined;
+  }
+
+  async listForOrder(tenantId: CustomerInvoiceRecord["tenantId"], orderId: string) {
+    const out: CustomerInvoiceRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.invoices).list()) {
+      const record = decodeTenantScoped<CustomerInvoiceRecord>(stored, tenantId);
+      if (record !== undefined && record.orderId === orderId) out.push(record);
+    }
+    return Object.freeze(out.sort((a, b) => (a.invoiceId < b.invoiceId ? -1 : 1)));
+  }
+
+  async listByTenant(tenantId: CustomerInvoiceRecord["tenantId"]) {
+    const out: CustomerInvoiceRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.invoices).list()) {
+      const record = decodeTenantScoped<CustomerInvoiceRecord>(stored, tenantId);
+      if (record !== undefined) out.push(record);
+    }
+    return Object.freeze(out);
+  }
+}
+
+class CustomerRefundSessionView implements CustomerRefundRepository {
+  readonly #uow: UnitOfWork;
+
+  constructor(uow: UnitOfWork) {
+    this.#uow = uow;
+  }
+
+  async save(record: CustomerRefundRecord): Promise<void> {
+    await casSave(
+      this.#uow,
+      REPOSITORY_NAMES.refunds,
+      recordKey(record.tenantId, record.refundId),
+      record,
+    );
+  }
+
+  async findById(tenantId: CustomerRefundRecord["tenantId"], refundId: string) {
+    const stored = await this.#uow
+      .records(REPOSITORY_NAMES.refunds)
+      .get(recordKey(tenantId, refundId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerRefundRecord>(stored, tenantId);
+  }
+
+  async listForPayment(tenantId: CustomerRefundRecord["tenantId"], paymentId: string) {
+    const out: CustomerRefundRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.refunds).list()) {
+      const record = decodeTenantScoped<CustomerRefundRecord>(stored, tenantId);
+      if (record !== undefined && record.paymentId === paymentId) out.push(record);
+    }
+    return Object.freeze(out.sort((a, b) => (a.refundId < b.refundId ? -1 : 1)));
+  }
+
+  async listForOrder(tenantId: CustomerRefundRecord["tenantId"], orderId: string) {
+    const out: CustomerRefundRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.refunds).list()) {
+      const record = decodeTenantScoped<CustomerRefundRecord>(stored, tenantId);
+      if (record !== undefined && record.orderId === orderId) out.push(record);
+    }
+    return Object.freeze(out.sort((a, b) => (a.refundId < b.refundId ? -1 : 1)));
+  }
+
+  async listByTenant(tenantId: CustomerRefundRecord["tenantId"]) {
+    const out: CustomerRefundRecord[] = [];
+    for (const stored of await this.#uow.records(REPOSITORY_NAMES.refunds).list()) {
+      const record = decodeTenantScoped<CustomerRefundRecord>(stored, tenantId);
+      if (record !== undefined) out.push(record);
+    }
+    return Object.freeze(out);
+  }
+}
+
 class CommerceEventSessionView implements CommerceEventRepository {
   readonly #uow: UnitOfWork;
 
@@ -511,6 +666,90 @@ class CommittedSubscriptionReader implements SubscriptionReader {
   }
 }
 
+class CommittedCustomerPaymentReader implements CustomerPaymentReader {
+  readonly #repo: RecordReadRepository;
+
+  constructor(repo: RecordReadRepository) {
+    this.#repo = repo;
+  }
+
+  async findById(tenantId: CustomerPaymentRecord["tenantId"], paymentId: string) {
+    const stored = await this.#repo.get(recordKey(tenantId, paymentId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerPaymentRecord>(stored, tenantId);
+  }
+
+  async listForOrder(tenantId: CustomerPaymentRecord["tenantId"], orderId: string) {
+    const all = await listTenantScoped<CustomerPaymentRecord>(this.#repo, tenantId);
+    return Object.freeze(
+      all.filter((payment) => payment.orderId === orderId).sort((a, b) => (a.paymentId < b.paymentId ? -1 : 1)),
+    );
+  }
+
+  listByTenant(tenantId: CustomerPaymentRecord["tenantId"]) {
+    return listTenantScoped<CustomerPaymentRecord>(this.#repo, tenantId);
+  }
+}
+
+class CommittedCustomerInvoiceReader implements CustomerInvoiceReader {
+  readonly #repo: RecordReadRepository;
+
+  constructor(repo: RecordReadRepository) {
+    this.#repo = repo;
+  }
+
+  async findById(tenantId: CustomerInvoiceRecord["tenantId"], invoiceId: string) {
+    const stored = await this.#repo.get(recordKey(tenantId, invoiceId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerInvoiceRecord>(stored, tenantId);
+  }
+
+  async findByNumber(tenantId: CustomerInvoiceRecord["tenantId"], invoiceNumber: string) {
+    const all = await listTenantScoped<CustomerInvoiceRecord>(this.#repo, tenantId);
+    return all.find((invoice) => invoice.invoiceNumber === invoiceNumber);
+  }
+
+  async listForOrder(tenantId: CustomerInvoiceRecord["tenantId"], orderId: string) {
+    const all = await listTenantScoped<CustomerInvoiceRecord>(this.#repo, tenantId);
+    return Object.freeze(
+      all.filter((invoice) => invoice.orderId === orderId).sort((a, b) => (a.invoiceId < b.invoiceId ? -1 : 1)),
+    );
+  }
+
+  listByTenant(tenantId: CustomerInvoiceRecord["tenantId"]) {
+    return listTenantScoped<CustomerInvoiceRecord>(this.#repo, tenantId);
+  }
+}
+
+class CommittedCustomerRefundReader implements CustomerRefundReader {
+  readonly #repo: RecordReadRepository;
+
+  constructor(repo: RecordReadRepository) {
+    this.#repo = repo;
+  }
+
+  async findById(tenantId: CustomerRefundRecord["tenantId"], refundId: string) {
+    const stored = await this.#repo.get(recordKey(tenantId, refundId));
+    return stored === null ? undefined : decodeTenantScoped<CustomerRefundRecord>(stored, tenantId);
+  }
+
+  async listForPayment(tenantId: CustomerRefundRecord["tenantId"], paymentId: string) {
+    const all = await listTenantScoped<CustomerRefundRecord>(this.#repo, tenantId);
+    return Object.freeze(
+      all.filter((refund) => refund.paymentId === paymentId).sort((a, b) => (a.refundId < b.refundId ? -1 : 1)),
+    );
+  }
+
+  async listForOrder(tenantId: CustomerRefundRecord["tenantId"], orderId: string) {
+    const all = await listTenantScoped<CustomerRefundRecord>(this.#repo, tenantId);
+    return Object.freeze(
+      all.filter((refund) => refund.orderId === orderId).sort((a, b) => (a.refundId < b.refundId ? -1 : 1)),
+    );
+  }
+
+  listByTenant(tenantId: CustomerRefundRecord["tenantId"]) {
+    return listTenantScoped<CustomerRefundRecord>(this.#repo, tenantId);
+  }
+}
+
 class CommittedEventReader implements CommerceEventReader {
   readonly #repo: RecordReadRepository;
 
@@ -553,6 +792,9 @@ class InMemoryCommerceSession implements CommerceSession {
   readonly orders: OrderRepository;
   readonly orderLines: OrderLineRepository;
   readonly subscriptions: SubscriptionRepository;
+  readonly payments: CustomerPaymentRepository;
+  readonly invoices: CustomerInvoiceRepository;
+  readonly refunds: CustomerRefundRepository;
   readonly events: CommerceEventRepository;
   readonly #uow: UnitOfWork;
 
@@ -563,6 +805,9 @@ class InMemoryCommerceSession implements CommerceSession {
     this.orders = new OrderSessionView(uow);
     this.orderLines = new OrderLineSessionView(uow);
     this.subscriptions = new SubscriptionSessionView(uow);
+    this.payments = new CustomerPaymentSessionView(uow);
+    this.invoices = new CustomerInvoiceSessionView(uow);
+    this.refunds = new CustomerRefundSessionView(uow);
     this.events = new CommerceEventSessionView(uow);
   }
 
@@ -590,6 +835,15 @@ export function createInMemoryCommerceStore(): CommerceStore {
     orderLines: new CommittedOrderLineReader(persistence.records(REPOSITORY_NAMES.orderLines)),
     subscriptions: new CommittedSubscriptionReader(
       persistence.records(REPOSITORY_NAMES.subscriptions),
+    ),
+    payments: new CommittedCustomerPaymentReader(
+      persistence.records(REPOSITORY_NAMES.payments),
+    ),
+    invoices: new CommittedCustomerInvoiceReader(
+      persistence.records(REPOSITORY_NAMES.invoices),
+    ),
+    refunds: new CommittedCustomerRefundReader(
+      persistence.records(REPOSITORY_NAMES.refunds),
     ),
     events: new CommittedEventReader(persistence.records(REPOSITORY_NAMES.events)),
   };

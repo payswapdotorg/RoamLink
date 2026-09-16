@@ -53,6 +53,9 @@ export const COMMERCE_AGGREGATE_TYPES = [
   "product_variant",
   "order",
   "subscription",
+  "customer_payment",
+  "customer_invoice",
+  "customer_refund",
 ] as const;
 
 export type CommerceAggregateType = (typeof COMMERCE_AGGREGATE_TYPES)[number];
@@ -88,6 +91,17 @@ export const COMMERCE_TRANSITIONS = [
   "subscription.cancelled",
   "subscription.expired",
   "subscription.superseded",
+  "customer_payment.recorded",
+  "customer_payment.succeeded",
+  "customer_payment.failed",
+  "customer_payment.cancelled",
+  "customer_invoice.issued",
+  "customer_invoice.reconciled",
+  "customer_invoice.voided",
+  "customer_refund.requested",
+  "customer_refund.succeeded",
+  "customer_refund.failed",
+  "customer_refund.cancelled",
 ] as const;
 
 export type CommerceTransition = (typeof COMMERCE_TRANSITIONS)[number];
@@ -103,7 +117,10 @@ export function aggregateTypeOfTransition(transition: CommerceTransition): Comme
   if (transition.startsWith("product_variant.")) return "product_variant";
   if (transition.startsWith("product.")) return "product";
   if (transition.startsWith("order.")) return "order";
-  return "subscription";
+  if (transition.startsWith("subscription.")) return "subscription";
+  if (transition.startsWith("customer_payment.")) return "customer_payment";
+  if (transition.startsWith("customer_invoice.")) return "customer_invoice";
+  return "customer_refund";
 }
 
 /** Serialized (plain) form of a commerce event. */
@@ -203,7 +220,7 @@ export class CommerceEvent {
     this.eventId = input.eventId;
     this.tenantId = parseTenantIdOrField(input.tenantId);
     if (!isCommerceAggregateType(input.aggregateType)) {
-      field("aggregateType", "must be product, product_variant, order or subscription");
+      field("aggregateType", "must be product, product_variant, order, subscription, customer_payment, customer_invoice or customer_refund");
     }
     this.aggregateType = input.aggregateType;
     if (typeof input.aggregateId !== "string" || input.aggregateId.length === 0 || input.aggregateId.length > 255) {

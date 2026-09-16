@@ -98,3 +98,40 @@ export function multiplyMoney(amount: MoneyValue, quantity: number): MoneyValue 
   }
   return Object.freeze({ amountMinorUnits: product, currency: amount.currency });
 }
+
+/**
+ * Subtracts `subtrahend` from `minuend` (SAME currency only). The result is
+ * clamped at zero (RL-022 refundable-remainder arithmetic): refunds can never
+ * exceed what was paid, so the remainder never goes negative. There is NO
+ * rounding anywhere - integer minor units only, no floats, ever.
+ */
+export function subtractMoneyFloorZero(minuend: MoneyValue, subtrahend: MoneyValue): MoneyValue {
+  if (minuend.currency !== subtrahend.currency) {
+    throw new ValidationError(
+      "Money rejected: currency - amounts in different currencies cannot be subtracted (present the components, never a silent conversion)",
+      {
+        reason: "MONEY_CURRENCY_MISMATCH",
+        details: [{ path: "currency", issue: "the operands use different currencies" }],
+      },
+    );
+  }
+  const difference = minuend.amountMinorUnits - subtrahend.amountMinorUnits;
+  return Object.freeze({
+    amountMinorUnits: difference < 0 ? 0 : difference,
+    currency: minuend.currency,
+  });
+}
+
+/** True when `a` is strictly greater than `b` (same currency required). */
+export function moneyGreaterThan(a: MoneyValue, b: MoneyValue): boolean {
+  if (a.currency !== b.currency) {
+    throw new ValidationError(
+      "Money rejected: currency - amounts in different currencies cannot be compared (present the components, never a silent conversion)",
+      {
+        reason: "MONEY_CURRENCY_MISMATCH",
+        details: [{ path: "currency", issue: "the operands use different currencies" }],
+      },
+    );
+  }
+  return a.amountMinorUnits > b.amountMinorUnits;
+}

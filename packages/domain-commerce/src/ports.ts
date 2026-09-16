@@ -21,6 +21,9 @@
  */
 import type {
   ActorId,
+  CustomerInvoiceId,
+  CustomerPaymentId,
+  CustomerRefundId,
   OrderId,
   SubscriptionId,
   TenantId,
@@ -29,9 +32,12 @@ import type {
 } from "@roamlink/contracts";
 
 import type { CommerceEventRecord } from "./events.js";
+import type { CustomerInvoiceRecord } from "./invoice.js";
 import type { OrderLineRecord, OrderRecord } from "./order.js";
+import type { CustomerPaymentRecord } from "./payment.js";
 import type { ProductRecord } from "./product.js";
 import type { ProductVariantRecord } from "./product-variant.js";
+import type { CustomerRefundRecord } from "./refund.js";
 import type { SubscriptionRecord } from "./subscription.js";
 
 /** Marker: every persisted commerce record is tenant-scoped. */
@@ -51,6 +57,12 @@ export const COMMERCE_ACTIONS = [
   "order:write",
   "subscription:read",
   "subscription:write",
+  "payment:read",
+  "payment:write",
+  "invoice:read",
+  "invoice:write",
+  "refund:read",
+  "refund:write",
 ] as const;
 
 export type CommerceAction = (typeof COMMERCE_ACTIONS)[number];
@@ -111,6 +123,29 @@ export interface SubscriptionReader {
   listByTenant(tenantId: TenantId): Promise<readonly SubscriptionRecord[]>;
 }
 
+/** Tenant-scoped customer-payment reads (RL-022). */
+export interface CustomerPaymentReader {
+  findById(tenantId: TenantId, paymentId: CustomerPaymentId): Promise<CustomerPaymentRecord | undefined>;
+  listForOrder(tenantId: TenantId, orderId: OrderId): Promise<readonly CustomerPaymentRecord[]>;
+  listByTenant(tenantId: TenantId): Promise<readonly CustomerPaymentRecord[]>;
+}
+
+/** Tenant-scoped customer-invoice reads (RL-022). */
+export interface CustomerInvoiceReader {
+  findById(tenantId: TenantId, invoiceId: CustomerInvoiceId): Promise<CustomerInvoiceRecord | undefined>;
+  findByNumber(tenantId: TenantId, invoiceNumber: string): Promise<CustomerInvoiceRecord | undefined>;
+  listForOrder(tenantId: TenantId, orderId: OrderId): Promise<readonly CustomerInvoiceRecord[]>;
+  listByTenant(tenantId: TenantId): Promise<readonly CustomerInvoiceRecord[]>;
+}
+
+/** Tenant-scoped customer-refund reads (RL-022). */
+export interface CustomerRefundReader {
+  findById(tenantId: TenantId, refundId: CustomerRefundId): Promise<CustomerRefundRecord | undefined>;
+  listForPayment(tenantId: TenantId, paymentId: CustomerPaymentId): Promise<readonly CustomerRefundRecord[]>;
+  listForOrder(tenantId: TenantId, orderId: OrderId): Promise<readonly CustomerRefundRecord[]>;
+  listByTenant(tenantId: TenantId): Promise<readonly CustomerRefundRecord[]>;
+}
+
 /** Tenant-scoped commerce-event reads. */
 export interface CommerceEventReader {
   findById(tenantId: TenantId, eventId: string): Promise<CommerceEventRecord | undefined>;
@@ -160,6 +195,21 @@ export interface SubscriptionRepository extends SubscriptionReader {
   save(record: SubscriptionRecord): Promise<void>;
 }
 
+/** Tenant-scoped customer-payment repository (same CAS discipline, RL-022). */
+export interface CustomerPaymentRepository extends CustomerPaymentReader {
+  save(record: CustomerPaymentRecord): Promise<void>;
+}
+
+/** Tenant-scoped customer-invoice repository (same CAS discipline, RL-022). */
+export interface CustomerInvoiceRepository extends CustomerInvoiceReader {
+  save(record: CustomerInvoiceRecord): Promise<void>;
+}
+
+/** Tenant-scoped customer-refund repository (same CAS discipline, RL-022). */
+export interface CustomerRefundRepository extends CustomerRefundReader {
+  save(record: CustomerRefundRecord): Promise<void>;
+}
+
 /**
  * Tenant-scoped commerce-event repository. Events are APPEND-ONLY and
  * CHAINED per aggregate: `append` accepts an event only when its sequence is
@@ -187,6 +237,9 @@ export interface CommerceSession {
   readonly orders: OrderRepository;
   readonly orderLines: OrderLineRepository;
   readonly subscriptions: SubscriptionRepository;
+  readonly payments: CustomerPaymentRepository;
+  readonly invoices: CustomerInvoiceRepository;
+  readonly refunds: CustomerRefundRepository;
   readonly events: CommerceEventRepository;
   commit(): Promise<void>;
   rollback(): Promise<void>;
@@ -199,6 +252,9 @@ export interface CommerceReadViews {
   readonly orders: OrderReader;
   readonly orderLines: OrderLineReader;
   readonly subscriptions: SubscriptionReader;
+  readonly payments: CustomerPaymentReader;
+  readonly invoices: CustomerInvoiceReader;
+  readonly refunds: CustomerRefundReader;
   readonly events: CommerceEventReader;
 }
 

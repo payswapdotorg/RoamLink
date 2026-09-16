@@ -19,6 +19,7 @@ import {
   CatalogService,
   InMemoryCommerceIdempotencyLedger,
   OrderService,
+  PaymentService,
   SubscriptionService,
   createInMemoryCommerceStore,
   type CommerceAccessPolicy,
@@ -80,6 +81,7 @@ function makeWorld() {
   const catalog = new CatalogService(deps);
   const orders = new OrderService(deps);
   const subscriptions = new SubscriptionService(deps);
+  const payments = new PaymentService(deps);
 
   const envelope = (overrides?: {
     readonly key?: string;
@@ -105,6 +107,7 @@ function makeWorld() {
     catalog,
     orders,
     subscriptions,
+    payments,
     envelope,
     tenant: TENANT,
     otherTenant: OTHER_TENANT,
