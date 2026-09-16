@@ -1373,6 +1373,16 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
         if (description === undefined || description.length === 0) {
           fail(badRequest("CASE_DESCRIPTION_REQUIRED", "the support case description is required"));
         }
+        const priority =
+          body["priority"] === "low" ||
+          body["priority"] === "normal" ||
+          body["priority"] === "high" ||
+          body["priority"] === "urgent"
+            ? body["priority"]
+            : undefined;
+        if (priority === undefined) {
+          fail(badRequest("CASE_PRIORITY_INVALID", "the support case priority must be low, normal, high or urgent"));
+        }
         return runCommand({
           kind: "support_case.create",
           actorId: actorHeader,
@@ -1387,7 +1397,7 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
               subject,
               description,
               status: "open",
-              priority: "normal",
+              priority,
               createdByUserId: actor.userId,
               relatedRefs: [],
               messages: [],

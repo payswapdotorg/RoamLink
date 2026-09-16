@@ -21,6 +21,28 @@ importers:
         specifier: ^8.18.0
         version: 8.70.0(eslint@9.39.5)(typescript@5.9.3)
 
+  apps/web:
+    dependencies:
+      '@roamlink/app-kit':
+        specifier: workspace:*
+        version: link:../../packages/app-kit
+    devDependencies:
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
   packages/adcos:
     dependencies:
       '@roamlink/contracts':
