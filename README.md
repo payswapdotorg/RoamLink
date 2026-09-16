@@ -158,8 +158,39 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   evidence-kind→class map (AUTHENTICATED unreachable locally, RL-LOCK-011);
   and the encrypted offline outbox/sync engine — ciphertext-only payloads at
   rest, batched sync with an explicit conflict policy, replay-safe
-  redelivery and honest boundary states (RL-LOCK-015/016). Platform
-  adapters (RL-043) come later.
+  redelivery and honest boundary states (RL-LOCK-015/016).
+- `packages/edge-actions` — the device action adapter (RL-043, Wave 3):
+  the action-execution half of the edge capability contract behind the
+  stable `PlatformActionExecutor` seam — pure capability-gated admission
+  over the DeviceCapabilitySnapshot closed vocabulary (unsupported and
+  absent-evidence paths degrade to typed, diagnosable states, never
+  best-effort guesses), execution with platform-evidence discipline
+  (physical success only ever declared with evidence), the desired-state
+  loop driver (privacy-aware local policy evaluation, encrypted-outbox
+  queueing with dedupe/replay safety, sync-boundary projection updates,
+  authoritative-result intake) and the local device-action projection with
+  honest `queued ≠ executed` boundary states (RL-LOCK-011/013/014/015).
+- `packages/edge-connector` — the enterprise edge connector contract
+  (RL-044, Wave 3): the typed contract for MDM-managed configuration,
+  system extensions, VPN/network extensions or an enterprise connector
+  when supported — closed-vocabulary capability negotiation whose
+  guaranteed degradation floor is observation + user-guided actions
+  (the architecture still works when only those are available), versioned
+  secret-free configuration delivery, and credential isolation
+  (short-lived, device-bound, narrowly scoped, revocable grants carrying
+  a secret REFERENCE only) with fail-closed runtime evaluation; plus a
+  deterministic in-memory fake (no real MDM/VPN platform code).
+- `packages/retention` — data retention/privacy enforcement (RL-054,
+  Wave 3): purpose/retention classifications as first-class closed
+  vocabularies with a structurally stricter policy for location and
+  network identifiers (shorter windows, explicit consent, purpose
+  limitation), the RL-LOCK-016 `assertNoSecretMaterial` enforcement
+  point other packages' persisted payloads are tested against,
+  classified records with minimization bounds and policy-computed
+  expiry, and the enforcement engine over the RL-003 persistence
+  primitives — admission, bounded expiry sweeps, tombstone/hard-delete
+  erasure semantics, explicit erasure and audited access control with an
+  append-only audit trail of every retention decision.
 - `packages/secrets` — the secrets/credentials boundary (RL-050): typed
   log-safe secret references, the `SecretsResolver` port with a closed
   failure taxonomy, rotation-aware versioning, `SecretMaterial` redacted
