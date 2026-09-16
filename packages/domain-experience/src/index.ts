@@ -9,8 +9,11 @@
  * ExperienceIntent with immutable versions linked by a supersession chain
  * and a validated state machine, the preference sub-model (access classes
  * are PREFERENCES ONLY), tenant-scoped repository ports + in-memory
- * adapters (fail-closed cross-tenant, CAS, chain continuity), and the
- * envelope-gated registry + intent services.
+ * adapters (fail-closed cross-tenant, CAS, chain continuity), the
+ * envelope-gated registry + intent services, and (RL-013, Wave 2) the
+ * explainable ExperienceDecision read model - immutable, freshness/evidence
+ * weighted, derived-status-only (references authoritative state, never
+ * replaces it).
  *
  * No ADCOS type is imported or modeled (RL-LOCK-007); intent compilation to
  * ADCOS ConnectivityIntent is RL-012 (Wave 2) and lives outside this
@@ -32,3 +35,7 @@ export * from "./ports.js";
 export * from "./in-memory.js";
 export * from "./device-registry-service.js";
 export * from "./experience-intent-service.js";
+// RL-013 (Wave 2): the explainable decision read model - additive module.
+export * from "./decision/derived-status.js";
+export * from "./decision/evidence-weight.js";
+export * from "./decision/experience-decision.js";
