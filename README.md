@@ -61,6 +61,51 @@ pnpm install              # installs workspace deps, wires the lockfile, install
 cp .env.example .env      # optional for pure unit work; services validate keys at boot
 ```
 
+## Quickstart — reproduce the local dogfood run from a clean clone
+
+The fastest way to verify this repository on a fresh machine is to run the
+RL-072 end-to-end dogfood scenarios: full-lifecycle journeys that compose the
+REAL public packages through their public surfaces (the only external
+stand-in is the deterministic §10 ADCOS fake — no network, no sleeps, no
+ambient time). Copy-paste:
+
+```bash
+git clone https://github.com/payswapdotorg/RoamLink.git
+cd RoamLink
+corepack enable            # or: npm install -g pnpm@10.0.0
+pnpm install               # frozen-lockfile installs are used by CI and the gates
+pnpm -C tests/dogfood test # the five dogfood scenarios (onboarding -> first
+                           # usable connectivity, degradation -> failover ->
+                           # recovery, offline edge round-trip, refund +
+                           # incident correlation, enterprise onboarding)
+```
+
+Expected result: `Test Files  5 passed (5)` / `Tests  9 passed (9)`, exit 0.
+
+To go one level deeper, reproduce the other verification waves the same way
+(all deterministic, no infrastructure):
+
+```bash
+pnpm -C tests/conformance test   # RL-070: one negative-proof suite per architecture lock
+pnpm -C tests/simulation test    # RL-071: failure/reordering/duplicate simulations
+pnpm -C tests/load test          # RL-073: load/reliability complexity invariants
+pnpm -C tests/security test      # RL-074: security/threat-model attack fixtures
+pnpm -C tests/deployment test    # RL-075: deployment/recovery verification
+```
+
+And the release gates themselves (RL-080/RL-081) run the FULL verification
+stack in dependency order and emit machine-readable verdict artifacts under
+`docs/reports/`:
+
+```bash
+node scripts/release/mvp-gate.mjs         # or: pnpm mvp-gate
+node scripts/release/production-gate.mjs  # or: pnpm production-gate (runs the MVP gate first)
+```
+
+Current gate status and per-criterion evidence:
+`docs/reports/mvp-release-gate.md` and
+`docs/reports/production-readiness-gate.md`.
+
 ### Everyday commands
 
 | Command | What it does |
