@@ -908,6 +908,9 @@ importers:
       '@roamlink/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
@@ -960,6 +963,9 @@ importers:
       '@roamlink/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence

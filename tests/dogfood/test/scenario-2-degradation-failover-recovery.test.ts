@@ -32,6 +32,14 @@ import {
   buildExperienceDecision,
 } from "@roamlink/domain-experience";
 import {
+  MINUTES_WITHOUT_USABLE_CONNECTIVITY_METRIC,
+  MANUAL_INTERVENTIONS_PER_SESSION_DAY_METRIC,
+  SUCCESSFUL_AUTOMATIC_RECOVERY_RATE_METRIC,
+  STALE_UNKNOWN_STATE_DURATION_MS_METRIC,
+  PROVIDER_ACCESS_FAILOVER_SUCCESS_METRIC,
+  evaluateProductSlo,
+} from "@roamlink/observability";
+import {
   EdgeObservationEngine,
   parseEdgeObservation,
 } from "@roamlink/edge";
@@ -39,7 +47,7 @@ import type { IntentCommandInput } from "@roamlink/integration";
 import { compileExperienceIntent } from "@roamlink/intent-compiler";
 import { parseExperienceDecisionId } from "@roamlink/contracts";
 
-import { instantPlusMs, journeyIntentPayload, must } from "../src/world.js";
+import { instantPlusMs, journeyIntentPayload, must, msBetween } from "../src/world.js";
 import {
   seedActiveConnectivity,
   makeJourneyWorld,
@@ -132,6 +140,14 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
     expect(view.evidence?.freshness.recordedFreshnessState).toBe("FRESH");
     expect(view.evidence?.freshness.freshnessState).not.toBe("FRESH");
     expect(view.evidence?.freshness.freshnessState).not.toBe("UNKNOWN");
+    // §11 "minutes without usable connectivity" window start: usable truth
+    // was physically lost when the OLD contract's freshness guarantee
+    // expired (freshUntil, 60s after the seeded projection) - the read model
+    // honestly showed STALE from that instant on the aged evidence.
+    const notUsableSince = must(
+      view.evidence?.freshness.freshUntil,
+      "guarantee-expiry instant of the degraded evidence",
+    );
 
     // The decision read model degrades with the evidence: STALE evidence
     // weighs zero, the derived status is experience_degraded.
@@ -144,6 +160,11 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
     //    command, and a failover contract is selected + activated +
     //    reserved through the boundary.
     // ------------------------------------------------------------------
+    // §11 "manual interventions per session/day" (harness measurement
+    // point): the revision below is a CUSTOMER-initiated intervention -
+    // the automatic paths did not keep the experience usable, so the
+    // customer stepped in and re-planned the desired state.
+    world.slo.recorder.recordManualIntervention({ tenantId: customer.tenantId });
     await world.experience.intents.reviseIntent(
       world.envelope({ ...actor, intentVersion: 2 }),
       {
@@ -205,6 +226,18 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
     );
     const failoverLeaseId = (failoverLease.document as Record<string, unknown>)["id"] as string;
     expect((failoverLease.document as Record<string, unknown>)["status"]).toBe("granted");
+    // §11 "provider/access failover success" (harness measurement point):
+    // the failover attempt's outcome is the granted failover reservation on
+    // the re-planned access path (the relink below confirms usable truth).
+    world.slo.recorder.recordProviderAccessFailover({
+      tenantId: customer.tenantId,
+      succeeded: true,
+    });
+    const failoverSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === PROVIDER_ACCESS_FAILOVER_SUCCESS_METRIC);
+    expect(failoverSamples).toHaveLength(1);
+    expect((failoverSamples[0]?.labels as Record<string, unknown>)["outcome"]).toBe("good");
 
     // The failover's own events arrive and project (the new truth is FRESH).
     await world.admitAndProject();
@@ -244,6 +277,68 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
     // The repair ADVANCED the projection version (monotone, no rewrite).
     expect(repaired?.projection_version).toBeGreaterThan(2);
 
+    // §11 "successful automatic recovery rate" + "stale/unknown-state
+    // duration" (PRODUCT measurement point, RL-035 -> RL-052 wiring): the
+    // boundary was constructed with the world's product-SLO recorder as its
+    // SLO observer, so the completed job's DURABLE actions were emitted
+    // automatically - one good recovery per REPAIRED canonical refresh, plus
+    // the CLOSED stale window duration (repair instant - fresh_until of the
+    // pre-repair record) per stale-window-closing repair, plus ONE manual
+    // intervention for the human-triggered repair loop (reason "manual").
+    const repairedActions = job.actions.filter(
+      (action) => action.action_type === "CANONICAL_REFRESH" && action.outcome === "REPAIRED",
+    );
+    expect(repairedActions.length).toBeGreaterThanOrEqual(1);
+    const recoverySamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === SUCCESSFUL_AUTOMATIC_RECOVERY_RATE_METRIC);
+    expect(recoverySamples).toHaveLength(repairedActions.length);
+    expect(
+      recoverySamples.every(
+        (sample) => (sample.labels as Record<string, unknown>)["outcome"] === "good",
+      ),
+    ).toBe(true);
+    const recoverySlo = evaluateProductSlo(
+      world.slo.recorder,
+      "successful-automatic-recovery-rate",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(recoverySlo.good).toBe(repairedActions.length);
+    expect(recoverySlo.bad).toBe(0);
+    expect(recoverySlo.state).toBe("within-budget");
+
+    // The stale-window durations the engine measured from the projections'
+    // own freshness fields: every repair that closed a stale window emitted
+    // its full duration (aging past the 60s event TTL), stamped into the
+    // DURABLE action metrics and recorded verbatim - never guessed.
+    const staleDurationSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === STALE_UNKNOWN_STATE_DURATION_MS_METRIC);
+    const closedWindowActions = repairedActions.filter(
+      (action) => (action.metrics as Record<string, unknown> | undefined)?.["staleForMs"] !== undefined,
+    );
+    expect(staleDurationSamples).toHaveLength(closedWindowActions.length);
+    expect(closedWindowActions.length).toBeGreaterThanOrEqual(1);
+    for (const action of closedWindowActions) {
+      expect((action.metrics as Record<string, number>)["staleForMs"]).toBe(
+        AGING_ADVANCE_MS - 60_000,
+      );
+    }
+    expect(
+      staleDurationSamples.every(
+        (sample) =>
+          (sample as { value: number }).value === AGING_ADVANCE_MS - 60_000 &&
+          (sample.labels as Record<string, unknown>)["freshness_state"] === "stale",
+      ),
+    ).toBe(true);
+    const staleDurationSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "stale-unknown-state-duration",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(staleDurationSlo.total).toBe(closedWindowActions.length);
+    expect(staleDurationSlo.state).toBe("exhausted"); // honestly over budget: the window exceeded the harness's 120s threshold
+
     // ------------------------------------------------------------------
     // 6. The customer SEES the truth: the reference relinks to the
     //    failover contract. The old contract's DEGRADED truth stays in its
@@ -265,6 +360,48 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
     );
     expect(relinked.deliveryEvidenceState).toBe("EVIDENCED");
     expect(relinked.freshnessState).toBe("FRESH");
+
+    // §11 "minutes without usable connectivity" (harness measurement): the
+    // outage window closes HERE - the relink restored FRESH, EVIDENCED,
+    // AUTHENTICATED usable truth. The recorded minutes span the customer's
+    // non-usable period (guarantee expiry -> failover relink).
+    const usableAgainAt = world.clock.now();
+    const minutesWithoutUsable = msBetween(notUsableSince, usableAgainAt) / 60_000;
+    expect(minutesWithoutUsable).toBeCloseTo((AGING_ADVANCE_MS - 60_000) / 60_000, 9);
+    world.slo.recorder.recordMinutesWithoutUsableConnectivity({
+      tenantId: customer.tenantId,
+      minutes: minutesWithoutUsable,
+    });
+    const minutesSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === MINUTES_WITHOUT_USABLE_CONNECTIVITY_METRIC);
+    expect(minutesSamples).toHaveLength(1);
+    expect((minutesSamples[0] as { value: number }).value).toBeCloseTo(
+      (AGING_ADVANCE_MS - 60_000) / 60_000,
+      9,
+    );
+
+    // §11 "manual interventions per session/day" (total for the session):
+    // the CUSTOMER's intent re-planning + the OPERATOR's manual
+    // reconciliation trigger (the engine emitted that one automatically
+    // from the job's durable trigger_reason) - two recorded interventions,
+    // each honestly classified against the harness budget (max 2/day).
+    const manualSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === MANUAL_INTERVENTIONS_PER_SESSION_DAY_METRIC);
+    expect(manualSamples).toHaveLength(2);
+    expect(
+      manualSamples.every(
+        (sample) => (sample as { delta: number }).delta === 1,
+      ),
+    ).toBe(true);
+    const manualSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "manual-interventions-per-session-day",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(manualSlo.good).toBe(2);
+    expect(manualSlo.state).toBe("within-budget");
 
     view = await world.references.describeSubject(
       customer.tenantId,
@@ -382,6 +519,15 @@ describe("RL-072 scenario 2: connectivity degradation -> failover -> recovery", 
       seeded.orderId as never,
     );
     expect(view.evidence?.freshness.freshnessState).toBe("STALE");
+
+    // §11 honesty: unreachable truth produced NO fabricated recovery - the
+    // product wiring recorded ZERO automatic-recovery events for a job whose
+    // canonical refresh attempts all deferred (the system degraded
+    // honestly instead of claiming a repair).
+    const unreachableRecoverySamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === SUCCESSFUL_AUTOMATIC_RECOVERY_RATE_METRIC);
+    expect(unreachableRecoverySamples).toHaveLength(0);
   });
 });
 

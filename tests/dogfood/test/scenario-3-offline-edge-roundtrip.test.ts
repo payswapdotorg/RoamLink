@@ -22,6 +22,10 @@
 import { describe, expect, it } from "vitest";
 import { canonicalizeJson } from "@roamlink/contracts";
 import {
+  MANUAL_INTERVENTIONS_PER_SESSION_DAY_METRIC,
+  evaluateProductSlo,
+} from "@roamlink/observability";
+import {
   createAesGcmEdgePayloadCipher,
   DeviceActionRequest,
   EdgeObservationEngine,
@@ -337,8 +341,27 @@ describe("RL-072 scenario 3: offline edge round-trip (encrypted outbox -> batche
 
     // The operator resolves it as accept-server: the obligation discharges
     // (the server's desired state stands - never silently overwritten).
+    // §11 "manual interventions per session/day" (edge-side measurement
+    // point): the require-manual conflict policy PARKED this record until a
+    // human resolved it - the resolution below IS the manual intervention
+    // the §11 SLO counts.
+    world.slo.recorder.recordManualIntervention({ tenantId: customer.tenantId });
     await outbox.resolveConflict(parked.outboxRecordId, "accept-server", world.clock.now());
     expect((await outboxStore.get(parked.outboxRecordId))?.state).toBe("synced");
+
+    // The recorded intervention is real: one counter sample, classified
+    // against the harness budget (max 2/day).
+    const manualSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === MANUAL_INTERVENTIONS_PER_SESSION_DAY_METRIC);
+    expect(manualSamples).toHaveLength(1);
+    const manualSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "manual-interventions-per-session-day",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(manualSlo.good).toBe(1);
+    expect(manualSlo.state).toBe("within-budget");
 
     // ------------------------------------------------------------------
     // 6. Authoritative results update the local projection with evidence.

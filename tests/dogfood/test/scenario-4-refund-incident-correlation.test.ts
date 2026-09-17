@@ -25,6 +25,10 @@
 import { describe, expect, it } from "vitest";
 import { ConflictError } from "@roamlink/contracts";
 import { computeRefundableAmount } from "@roamlink/domain-commerce";
+import {
+  SUPPORT_INCIDENTS_ATTRIBUTABLE_TO_CONNECTIVITY_ORCHESTRATION_METRIC,
+  evaluateProductSlo,
+} from "@roamlink/observability";
 
 import {
   makeDogfoodWorld,
@@ -397,6 +401,45 @@ describe("RL-072 scenario 4: refund + partial refund with incident correlation",
       kind: "refund",
       id: REFUND_FULL,
     });
+
+    // §11 "support incidents attributable to connectivity orchestration"
+    // (harness measurement point): THIS support case is attributable - it
+    // correlated a connectivity incident (the service_not_delivered refund
+    // whose note names the connectivity incident during the travel window)
+    // with the customer's money facts. One attributable incident, recorded
+    // through the REAL product-SLO recorder and classified against the
+    // harness budget (max 1/day).
+    const incidentRefund = must(
+      await world.commerce.store.read.refunds.findById(
+        customer.tenantId,
+        REFUND_FULL as never,
+      ),
+      "incident-attributable refund",
+    );
+    expect(incidentRefund.reasonCode).toBe("service_not_delivered");
+    expect(incidentRefund.note).toContain("Connectivity incident");
+    world.slo.recorder.recordSupportIncidentAttributable({
+      tenantId: customer.tenantId,
+    });
+    const incidentSamples = world.slo.metrics
+      .samples()
+      .filter(
+        (sample) =>
+          sample.name === SUPPORT_INCIDENTS_ATTRIBUTABLE_TO_CONNECTIVITY_ORCHESTRATION_METRIC,
+      );
+    expect(incidentSamples).toHaveLength(1);
+    expect((incidentSamples[0] as { delta: number }).delta).toBe(1);
+    const incidentsSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "support-incidents-attributable-to-connectivity-orchestration",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    // One incident is within the harness budget (max 1/day): good event,
+    // within budget - and a SECOND attributable incident on the same day
+    // would honestly exhaust it (the threshold classifies, never hides).
+    expect(incidentsSlo.good).toBe(1);
+    expect(incidentsSlo.bad).toBe(0);
+    expect(incidentsSlo.state).toBe("within-budget");
     await world.notifications.transitionCase(env(), {
       supportCaseId: CASE_ID,
       expectedRevision: 2,

@@ -28,6 +28,7 @@
     "@roamlink/integration": "workspace:*",
     "@roamlink/intent-compiler": "workspace:*",
     "@roamlink/notifications": "workspace:*",
+    "@roamlink/observability": "workspace:*",
     "@roamlink/persistence": "workspace:*",
     "@roamlink/projections": "workspace:*",
     "@roamlink/reconciliation": "workspace:*",

@@ -44,6 +44,11 @@ import { describe, expect, it } from "vitest";
 import type { AdcosClient } from "@roamlink/adcos";
 import { AdcosTransportError } from "@roamlink/integration";
 import { createAdcosReconciliationBoundary } from "@roamlink/reconciliation";
+import {
+  SUCCESSFUL_AUTOMATIC_RECOVERY_RATE_METRIC,
+  STALE_UNKNOWN_STATE_DURATION_MS_METRIC,
+  evaluateProductSlo,
+} from "@roamlink/observability";
 import { createInMemoryPersistence } from "@roamlink/persistence";
 import { InMemoryProjectionStore } from "@roamlink/projections";
 import {
@@ -157,6 +162,10 @@ describe("RL-073 load: reconciliation bounded work (full vs incremental canonica
       clock: world.clock,
       platformTenantId: "org:00000000-0000-4000-8000-000000000001",
       jobIdGenerator,
+      // §11 SLO emission wiring (additive): the durable-action measurements
+      // flow into the load world's REAL product-SLO recorder so the emission
+      // volume itself can be asserted per unit of admitted work below.
+      sloObserver: world.slo.recorder,
     });
 
     // Project N distinct resources FRESH through the inbox (the incremental
@@ -241,6 +250,48 @@ describe("RL-073 load: reconciliation bounded work (full vs incremental canonica
     const steady = await countingBoundary.reconciler.runJob({ reason: "scheduled" });
     expect(steady.status).toBe("COMPLETED");
     expect(counting.gets).toBe(0);
+
+    // SLO-E (§11 emission volume invariants, MVP-3 wiring): the load world's
+    // product-SLO recorder received EXACTLY N good automatic-recovery events
+    // and N closed stale-window durations (each 5_000 ms: TTL expiry + 5s
+    // aging) — one per REPAIRED target of the full refresh, and NOTHING for
+    // the incremental job, the idempotent replay or the steady-state no-op
+    // before/after it. Emission is exactly proportional to durable repair
+    // work: never O(N²) chatter, never duplicated on replay.
+    const recoverySamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === SUCCESSFUL_AUTOMATIC_RECOVERY_RATE_METRIC);
+    expect(recoverySamples).toHaveLength(N);
+    expect(
+      recoverySamples.every(
+        (sample) => (sample.labels as Record<string, unknown>)["outcome"] === "good",
+      ),
+    ).toBe(true);
+    const staleDurationSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === STALE_UNKNOWN_STATE_DURATION_MS_METRIC);
+    expect(staleDurationSamples).toHaveLength(N);
+    expect(
+      staleDurationSamples.every(
+        (sample) =>
+          (sample as { value: number }).value === 5_000 &&
+          (sample.labels as Record<string, unknown>)["freshness_state"] === "stale",
+      ),
+    ).toBe(true);
+    const recoverySlo = evaluateProductSlo(
+      world.slo.recorder,
+      "successful-automatic-recovery-rate",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(recoverySlo.good).toBe(N);
+    expect(recoverySlo.bad).toBe(0);
+    expect(recoverySlo.state).toBe("within-budget");
+    const staleSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "stale-unknown-state-duration",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(staleSlo.total).toBe(N);
   }, 240_000);
 
   it("REC-2 under sustained canonical failure: fetches are bounded per target and projections degrade honestly", async () => {

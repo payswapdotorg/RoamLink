@@ -26,6 +26,7 @@ import { createAdcosReconciliationBoundary } from "../src/index.js";
 import type { ReconciliationBoundary } from "../src/boundary.js";
 import type { ReconciliationCompatibilityGate } from "../src/engine.js";
 import type { CanonicalResourceDiscovery } from "../src/resource-discovery.js";
+import type { ReconciliationSloObserver } from "../src/slo-emission.js";
 import {
   DEFAULT_RECONCILIATION_POLICY,
   type ReconciliationPolicy,
@@ -42,6 +43,8 @@ export interface HarnessOptions {
   readonly startAt?: string;
   /** Overrides the ADCOS client handed to the boundary (counting proxies etc.). */
   readonly client?: AdcosClient;
+  /** Optional §11 SLO emission observer wired into the boundary (additive). */
+  readonly sloObserver?: ReconciliationSloObserver;
 }
 
 export interface Harness {
@@ -82,6 +85,7 @@ export function makeHarness(options: HarnessOptions = {}): Harness {
     jobIdGenerator: jobIds,
     ...(options.compatibility !== undefined ? { compatibility: options.compatibility } : {}),
     ...(options.discovery !== undefined ? { discovery: options.discovery } : {}),
+    ...(options.sloObserver !== undefined ? { sloObserver: options.sloObserver } : {}),
   });
 
   const admit = async (deliveries: readonly FakeAdcosDelivery[]): Promise<readonly string[]> => {

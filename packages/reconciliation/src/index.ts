@@ -27,3 +27,4 @@ export * from "./projector.js";
 export * from "./engine.js";
 export * from "./boundary.js";
 export * from "./scheduler.js";
+export * from "./slo-emission.js";
