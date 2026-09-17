@@ -75,15 +75,18 @@ Architecture conformance is additionally enforced by real tests in
 env-schema/.env.example parity) which run as part of `pnpm test` and fail the
 build on violation (RL-LOCK-018).
 
-### The RL-070/RL-071 test matrix
+### The RL-070 through RL-073 test matrix
 
-Beyond `tests/architecture`, two dedicated suites prove the architecture
-locks end-to-end (they also run as part of `pnpm test`):
+Beyond `tests/architecture`, four dedicated suites prove the architecture
+locks and the product promise end-to-end (they also run as part of
+`pnpm test`):
 
 | Suite | What it proves |
 |---|---|
 | `tests/conformance` (RL-070) | NEGATIVE-PROOF suites per authority/dependency lock (RL-LOCK-001 through RL-LOCK-019, minus the meta-locks 018/020 covered elsewhere): each suite carries a green proof on the current tree AND a violating fixture that MUST turn it red. Behavioral suites assert typed rejection of violating inputs (delivery state on payments, ADCOS identity fields on Users, provider authority in evidence, path/session resource kinds, forged webhook origins, unversioned records, AI-SDK imports, ...). Structural suites scan manifests + sources and merge a VIRTUAL violating overlay when toggled. Toggle any lock's fixture with `ROAMLINK_CONFORMANCE_VIOLATION=<LOCK-ID> pnpm -C tests/conformance test` (e.g. `ROAMLINK_CONFORMANCE_VIOLATION=RL-LOCK-008`) - exactly that lock's negative proofs go red on a conforming tree, proving the suite fails when the implementation violates the lock (RL-LOCK-018). |
 | `tests/simulation` (RL-071) | end-to-end failure-mode simulations over the composed public packages + the §10 ADCOS fake: duplicate command delivery at EVERY boundary (intent adapter timeouts, webhook redelivery, commerce commands, reconciliation re-runs, edge outbox re-enqueue), reordering (reversed webhook events vs projection ordering defense + convergence), loss (dropped events + silent canonical changes -> reconciler repair with digest-verified payloads), delay (freshness decay to STALE, delayed truth re-establishing freshness, commerce read model re-evaluating at the query instant), partition (offline edge convergence on reconnect, exactly-once server effects via idempotency-key dedupe), partial failure (UnitOfWork atomicity + transactional outbox retry convergence) and byzantine inputs (forged/malformed webhooks rejected at admission; schema drift -> §9 gate fails CLOSED for mutations). Deterministic throughout: testkit clock/ids/recorder, no sleeps, no network, no ADCOS internals. |
+| `tests/dogfood` (RL-072) | full-lifecycle DOGFOOD scenarios composing the REAL public packages through their public surfaces (the §10 ADCOS fake is the only external stand-in), each deterministic (testkit clock/ids, one correlation-ID family) and asserted on OBSERVABLE public state - read models, notifications, audit, projections - never package internals: (1) new-customer onboarding -> first usable connectivity (auth -> device -> commerce -> intent -> compile -> submit -> offer/activation/reservation -> webhooks -> projections -> evidence -> decision -> notification) + a full idempotency leg; (2) degradation -> failover -> recovery (silent canonical change, honest device observations, stale-while-degraded, intent re-planning, digest-verified reconciliation repair, unreachable-truth degradation); (3) offline edge round-trip (encrypted outbox, partition backoff, batched sync with lost acks, conflict policy, dead-letter budget); (4) refund + partial refund with incident correlation (typed money facts, proven refund bounds, correlated case/notifications/audit, tamper-evident chains, durable mutes); (5) enterprise tenant onboarding through the enterprise surface with the admin console observing the SAME truth through the same public API (fail-closed privilege boundary). |
+| `tests/load` (RL-073) | deterministic LOAD/RELIABILITY suites (no wall-clock timing - testkit clock, exact operation counting through counting proxies over the PUBLIC ports): high-volume webhook ingestion (thousands of events, duplicates + full reversal) with complexity invariants (N distinct events = exactly N reads + N writes; duplicates = zero projection work; reordering = one read per event, zero late writes, convergence); sustained edge outbox churn (400-record flood -> exactly-once convergence, bounded retry work, bounded batches); notification fan-out under mute storms (K emissions = exactly K per-user preference reads, never O(all-customers)); reconciliation full-vs-incremental canonical refresh (CONSISTENT targets = zero canonical GETs, bounded attempts per target, honest STALE degradation under sustained outage, job-id replay = zero work); resilience under sustained failure (open breaker rejects without invoking, half-open probe saturation fail-closed, retry/deadline budgets cap total attempts, sliding-window admits exactly maxCost per key). Records DEFECT-1 with a minimal reproducer (inbox drain cannot progress past the first batch-limit records of a larger backlog). |
 
 ### Commit hooks
 
@@ -407,3 +410,23 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   schema-drift fail-closed) asserting the ARCHITECTURAL invariants (no
   duplicate effects, no fabricated truth, no lost work) over the public
   packages and the §10 ADCOS fake only.
+- `tests/dogfood` — the RL-072 end-to-end dogfood scenario suite: five
+  full-lifecycle journeys (onboarding -> first usable connectivity,
+  degradation -> failover -> recovery, offline edge round-trip,
+  refund + partial refund with incident correlation, enterprise onboarding
+  -> admin observation) composing the REAL packages through their public
+  surfaces with deterministic clock/ids and one correlation-ID family per
+  scenario, asserting architectural truth properties (authority, evidence,
+  freshness, idempotency, no fabricated truth) on observable public state
+  only.
+- `tests/load` — the RL-073 load/reliability suite: deterministic
+  load-shaped suites (no wall-clock timing) proving complexity invariants
+  through counting proxies over the public ports — high-volume webhook
+  ingestion (O(1) per event, zero duplicate work, reordering convergence),
+  sustained edge outbox churn (exactly-once convergence, bounded retry
+  work), notification fan-out under mute storms (per-user reads only),
+  reconciliation full-vs-incremental canonical refresh (bounded per-target
+  fetches, honest degradation), and resilience under sustained failure
+  (circuit-breaker probe saturation, retry/deadline budgets, limiter
+  windows). Records DEFECT-1 (inbox drain backlog progression) with a
+  minimal reproducer.
