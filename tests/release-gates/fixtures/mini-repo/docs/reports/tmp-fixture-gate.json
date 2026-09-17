@@ -1,0 +1,24 @@
+{
+  "schema": "roamlink/release-gate@1",
+  "gate": "FIXTURE-GATE",
+  "title": "fixture gate",
+  "generatedAt": "2026-01-15T08:30:00.000Z",
+  "verdict": {
+    "status": "pass",
+    "exitCode": 0,
+    "failedSteps": [],
+    "skippedSteps": [],
+    "failedCriteria": [],
+    "failedCriterionRows": [],
+    "acceptedRisks": []
+  },
+  "steps": [
+    {
+      "id": "one",
+      "label": "one",
+      "status": "pass",
+      "summary": "fixture pass"
+    }
+  ],
+  "criteria": []
+}

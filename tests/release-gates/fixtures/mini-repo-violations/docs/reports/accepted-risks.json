@@ -1,0 +1,26 @@
+{
+  "schema": "roamlink/accepted-risks@1",
+  "risks": [
+    {
+      "id": "AR-V01",
+      "title": "missing justification field",
+      "criterion": "PRD-3",
+      "rowId": "OBS:logs-correlation",
+      "severity": "extreme",
+      "remediation": "n/a",
+      "owner": "n/a",
+      "reviewBy": "n/a"
+    },
+    {
+      "id": "AR-V02",
+      "title": "self-coverage attempt",
+      "criterion": "PRD-5",
+      "rowId": "RISK:registry",
+      "severity": "low",
+      "justification": "tries to cover the registry with itself",
+      "remediation": "n/a",
+      "owner": "n/a",
+      "reviewBy": "n/a"
+    }
+  ]
+}

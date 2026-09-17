@@ -1,0 +1,5 @@
+{
+  "name": "@fixture/tests-dogfood",
+  "private": true,
+  "scripts": { "test": "vitest run" }
+}

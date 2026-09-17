@@ -992,6 +992,37 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.2)
 
+  tests/release-gates:
+    dependencies:
+      '@roamlink/app-kit':
+        specifier: workspace:*
+        version: link:../../packages/app-kit
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@roamlink/enterprise':
+        specifier: workspace:*
+        version: link:../../packages/enterprise
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)
+
   tests/security:
     dependencies:
       '@roamlink/adcos':

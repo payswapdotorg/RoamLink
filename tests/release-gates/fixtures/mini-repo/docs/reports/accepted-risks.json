@@ -1,0 +1,42 @@
+{
+  "schema": "roamlink/accepted-risks@1",
+  "risks": [
+    {
+      "id": "AR-F01",
+      "title": "Fixture: dogfood structured logging not wired",
+      "criterion": "PRD-3",
+      "rowId": "OBS:logs-correlation",
+      "severity": "medium",
+      "justification": "fixture justification: the dogfood harness does not import the observability logger; closing it is outside the gate worker's scope",
+      "remediation": "wire the correlated logger into the fixture dogfood world",
+      "owner": "Fixture Tech Lead",
+      "reviewBy": "fixture milestone",
+      "references": ["GAP:fixture-logging"]
+    },
+    {
+      "id": "AR-F02",
+      "title": "Fixture: SLO wiring incomplete",
+      "criterion": "PRD-3",
+      "rowId": "OBS:slo-wiring",
+      "severity": "high",
+      "exposure": "fixture exposure bound: no live SLO evidence in dogfood/load",
+      "justification": "fixture justification: intent satisfaction rate is neither instrumented nor referenced",
+      "remediation": "instrument and reference the fixture SLO",
+      "owner": "Fixture Tech Lead",
+      "reviewBy": "fixture milestone",
+      "references": ["GAP:fixture-slo"]
+    },
+    {
+      "id": "AR-F03",
+      "title": "Fixture: inherent infrastructure limits",
+      "criterion": "PRD-1",
+      "rowId": "SEC:honest-gaps",
+      "severity": "medium",
+      "justification": "fixture justification: the documented honest gaps cannot be closed without real infrastructure",
+      "remediation": "revisit when real infrastructure exists",
+      "owner": "Fixture Tech Lead",
+      "reviewBy": "fixture milestone",
+      "references": ["RL-074-F1", "RL-075-F1", "RL-073-DEFECT-1"]
+    }
+  ]
+}

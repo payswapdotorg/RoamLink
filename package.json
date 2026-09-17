@@ -11,6 +11,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "architecture:check": "node scripts/check-architecture.mjs",
+    "mvp-gate": "node scripts/release/mvp-gate.mjs",
+    "production-gate": "node scripts/release/production-gate.mjs",
     "dev": "pnpm -r --parallel --if-present dev",
     "prepare": "node scripts/hooks/install.mjs"
   },
