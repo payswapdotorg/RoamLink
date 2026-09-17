@@ -39,3 +39,6 @@ export * from "./experience-intent-service.js";
 export * from "./decision/derived-status.js";
 export * from "./decision/evidence-weight.js";
 export * from "./decision/experience-decision.js";
+// §11 intent-satisfaction measurement point (additive RL-052 wiring): the
+// pure derived-status → satisfaction-outcome mapping for the SLO recorder.
+export * from "./decision/intent-satisfaction.js";
