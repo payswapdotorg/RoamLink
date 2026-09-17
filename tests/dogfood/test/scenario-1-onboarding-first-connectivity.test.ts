@@ -38,6 +38,8 @@ import {
   INTENT_SATISFACTION_RATE_METRIC,
   CONNECTIVITY_COST_PER_USEFUL_HOUR_GB_METRIC,
   evaluateProductSlo,
+  logSloEvaluation,
+  makeCorrelationContext,
 } from "@roamlink/observability";
 import { buildExperienceDecision, intentSatisfactionOf } from "@roamlink/domain-experience";
 import { computeRefundableAmount } from "@roamlink/domain-commerce";
@@ -468,6 +470,27 @@ describe("RL-072 scenario 1: new customer onboarding -> first usable connectivit
     expect(satisfactionSlo.good).toBe(1);
     expect(satisfactionSlo.observedGoodRatio).toBe(1);
     expect(satisfactionSlo.state).toBe("within-budget");
+
+    // Structured-log evidence (RL-052 logging composition): the evaluation
+    // is emitted through the world's CORRELATED logger under the journey's
+    // correlation-id family, and the record carries the correlation id and
+    // the SLO's own numbers (redaction-safe fields, RL-LOCK-016).
+    const evaluationCorrelationId = world.correlation.next();
+    world.slo.correlationCarrier.run(
+      makeCorrelationContext({
+        correlationId: evaluationCorrelationId,
+        tenantId: customer.tenantId,
+      }),
+      () => logSloEvaluation(world.slo.logger, satisfactionSlo),
+    );
+    const logRecord = world.slo.logSink.records().at(-1);
+    expect(logRecord?.correlationId).toBe(evaluationCorrelationId);
+    expect((logRecord?.fields as Record<string, unknown>)["slo"]).toBe(
+      "slo.intent-satisfaction-rate",
+    );
+    expect((logRecord?.fields as Record<string, unknown>)["slo_state"]).toBe(
+      "within-budget",
+    );
 
     // --- 12. notification delivered (RL-014) -------------------------------
     // Notifications are emitted ONLY from RoamLink's own durable state

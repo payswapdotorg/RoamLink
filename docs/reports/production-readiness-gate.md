@@ -2,15 +2,16 @@
 
 - **Gate:** RL-081 — production readiness gate (`scripts/release/production-gate.mjs`)
 - **Run commands:** `pnpm production-gate` (equivalently
-  `node scripts/release/production-gate.mjs`); this report's evidence was produced with
-  `node scripts/release/production-gate.mjs --full-report`, which evaluates the
-  production criteria for evidence even when the MVP prerequisite has already failed —
-  it never converts a failure into a pass.
+  `node scripts/release/production-gate.mjs`); this report's evidence was produced by
+  the gate itself, which first re-runs the MVP prerequisite (RL-080) and then
+  evaluates the production criteria — it never converts a failure into a pass.
 - **Machine artifact:** `docs/reports/mvp-gate.json` (from the prerequisite run, embedded
   in the production artifact) and `docs/reports/production-gate.json`
   (schema `roamlink/release-gate@1`; every number below is a pointer into these).
-- **VERDICT: FAIL — exit code 1.** The hard prerequisite (RL-080 MVP release gate)
-  fails on this tree, so the production gate fails. No standard was weakened to pass.
+- **VERDICT: PASS — exit code 0.** The hard prerequisite (RL-080 MVP release gate)
+  passes on this tree (MVP-3's §11 SLO wiring remediation landed on
+  `work/rl-slo-wiring-remediation`), and every production criterion passes with at
+  most explicitly accepted, registry-covered gaps. No standard was weakened to pass.
 
 ---
 
@@ -18,16 +19,17 @@
 
 | Requirement class | Verdict | Why |
 | --- | --- | --- |
-| MVP prerequisite (RL-080) | **FAIL** | MVP-3 (§11 SLO instrumentation + dogfood/load references) — see `docs/reports/mvp-release-gate.md` |
+| MVP prerequisite (RL-080) | **PASS** | MVP-1..MVP-4 all pass — see `docs/reports/mvp-release-gate.md` |
 | PRD-1 Security/threat verification | PASS (1 disclosed gap ← AR-009) | `@roamlink/tests-security` 57/57 green; threat matrix 10 rows / 19 VERIFIED verdicts; 5 recorded findings all dispositioned |
 | PRD-2 Deployment/recovery runbook | PASS (0 gaps) | cold start, crash recovery, backup/restore, dependency-failure all suite-proven + documented; `@roamlink/tests-deployment` 26/26 green |
-| PRD-3 Observability | PASS (2 disclosed gaps ← AR-001, AR-002) | health/readiness composition honest; structured logging + §11 SLO wiring gaps disclosed |
+| PRD-3 Observability | PASS (0 gaps) | health/readiness composition honest; structured logging with correlation IDs wired in the dogfood scenarios; every §11 SLO instrumented and referenced |
 | PRD-4 Docs completeness | PASS (1 disclosed gap ← AR-003) | README quickstart verified script-by-script; CHANGELOG drafted; spec/current-state.md claims stale |
 | PRD-5 Accepted-risk registry | PASS (0 gaps) | registry valid, complete coverage, no orphans, no self-coverage, high risks fully dispositioned |
 
-**Zero uncovered failures** among the production criteria: every unmet row carries an
-explicit, validated accepted-risk record. The gate still fails overall — honestly —
-because the MVP prerequisite is a hard precondition that no accepted risk can waive.
+**Zero uncovered failures** among the production criteria: the only unmet rows carry
+explicit, validated accepted-risk records (AR-003, AR-009), and both prior
+observability gaps (AR-001, AR-002) were closed by the MVP-3 remediation worker's
+real wiring — their registry records are updated to document the landed remediation.
 
 ## 2. Per-criterion evidence (artifact `criteria[PRD-*].rows`)
 
@@ -53,16 +55,19 @@ because the MVP prerequisite is a hard precondition that no accepted risk can wa
   (D-1).
 - `DEPLOY:suite` PASS — `@roamlink/tests-deployment` green (26/26 tests).
 
-### PRD-3 — Observability
+### PRD-3 — Observability (0 gaps — both rows remediated)
 
-- `OBS:logs-correlation` **GAP ← AR-001** — the dogfood scenarios do not wire the
-  observability structured logger (no `@roamlink/observability` import in
-  `tests/dogfood` executable text). Correlation IDs ARE proven end-to-end through audit
-  events; structured-log records are not part of the dogfood evidence.
+- `OBS:logs-correlation` PASS — structured logging with correlation IDs wired in the
+  dogfood scenarios (`tests/dogfood/src/world.ts` + scenario 1): the world composes
+  `createCorrelatedLogger` over the in-memory sink with the manual correlation
+  carrier, and the scenario emits an §11 SLO evaluation through `logSloEvaluation`
+  under the journey's correlation-id family, asserting the record carries the
+  correlation id and the SLO's own redaction-safe fields (formerly AR-001).
 - `OBS:health-readiness` PASS — health/readiness composition verified honest
   (degraded ≠ ready, unknown ≠ healthy, no-data SLOs never healthy; H-1..H-4).
-- `OBS:slo-wiring` **GAP ← AR-002 (high)** — all 9 §11 SLOs lack operational wiring
-  (the current MVP-gate blocker; see the MVP report §3).
+- `OBS:slo-wiring` PASS — every §11 SLO is instrumented through the observability
+  primitives and referenced by dogfood/load assertions (MVP-3 remediation; formerly
+  AR-002 — see the MVP report §3 for the full wiring evidence).
 
 ### PRD-4 — Docs completeness
 
@@ -70,8 +75,11 @@ because the MVP prerequisite is a hard precondition that no accepted risk can wa
   clean clone with copy-paste commands; every referenced pnpm script exists.
 - `DOCS:current-state` **GAP ← AR-003** — `spec/current-state.md` still claims
   "no production feature implementation started" / "Repository state: greenfield",
-  contradicting the 25 implemented packages. `spec/*` is outside the release-gate
-  worker's editable scope by dispatch — recorded as an explicit gap for the Tech Lead.
+  contradicting the implemented packages. `spec/*` is frozen (the remediation worker's
+  dispatch forbids touching it; the architecture change process owns it) — recorded
+  as an explicit gap for the Tech Lead. (Note: the same file's completion rule —
+  "the project is not complete until RL-080 and RL-081 pass" — is now SATISFIED by
+  this run.)
 - `DOCS:changelog` PASS — CHANGELOG drafted for the MVP release (scope, surfaces,
   verification stack, known gaps).
 
@@ -83,14 +91,15 @@ because the MVP prerequisite is a hard precondition that no accepted risk can wa
 - `RISK:findings-coverage` PASS — every recorded finding (RL-073-DEFECT-1, RL-074-F1,
   RL-074-F2, RL-074-F3, RL-075-F1) is referenced by an accepted-risk record.
 - `RISK:high-disposition` PASS — the one high-severity risk (AR-002) carries exposure
-  bounds, owner, review milestone and remediation path.
+  bounds, owner, review milestone and remediation path; its remediation is now LANDED
+  (record updated accordingly).
 
 ## 3. Accepted-risk registry (explicit, visible, never hidden)
 
 | ID | Severity | Criterion / row | Subject | Remediation owner |
 | --- | --- | --- | --- | --- |
-| AR-001 | medium | PRD-3 / OBS:logs-correlation | Dogfood scenarios don't wire the structured logger (correlation IDs proven via audit events only) | Tech Lead |
-| AR-002 | **high** | PRD-3 / OBS:slo-wiring | No §11 SLO instrumented or referenced in dogfood/load — the current MVP-gate blocker | Tech Lead |
+| AR-001 | medium | PRD-3 / OBS:logs-correlation | Dogfood did not wire the structured logger — **REMEDIATED** (world composes the correlated logger; scenario asserts log records) | Tech Lead (ratify) |
+| AR-002 | **high** | PRD-3 / OBS:slo-wiring | No §11 SLO instrumented or referenced in dogfood/load — **REMEDIATED** (the former MVP-gate blocker; full §11 wiring landed) | Tech Lead (ratify) |
 | AR-003 | medium | PRD-4 / DOCS:current-state | spec/current-state.md stale claims ("greenfield", "no implementation") | Tech Lead |
 | AR-004 | medium | PRD-1 (finding RL-074-F1) | Secret-shaped provider references accepted into commerce payment records | Tech Lead |
 | AR-005 | low | PRD-1 (finding RL-074-F2) | AuthSessionRecord.tokenDigest field name scanner-flagged (value is a SHA-256 digest) | Tech Lead |
@@ -105,28 +114,23 @@ infrastructure (AR-009's items — anchored audit checkpoints, PostgreSQL driver
 network-level load, multi-process concurrency) are recorded here as explicit
 accepted-risk lines, per the RL-081 contract: visible, not hidden.
 
-## 4. Path to green (for the Tech Lead)
+## 4. Remaining follow-ups for the Tech Lead (non-blocking)
 
-1. Wire §11-named SLOs through `@roamlink/observability` in `tests/dogfood` and/or
-   `tests/load` with assertions referencing each SLO (AR-002 remediation) →
-   RL-080's MVP-3 turns green → the MVP gate passes → this gate's prerequisite passes.
-2. Wire the correlated logger into the dogfood world and assert log records carry the
-   correlation id (AR-001 remediation).
-3. Refresh `spec/current-state.md`'s status block to match the implemented tree
-   (AR-003 remediation — minutes of work; the DOCS:current-state row then turns green
-   with no gate change).
-4. Disposition or fix AR-004..AR-008 (each has a pinned minimal reproducer) as
+1. Refresh `spec/current-state.md`'s status block to match the implemented tree and
+   the passing gates (AR-003 remediation — minutes of work; the DOCS:current-state
+   row then turns green with no gate change). `spec/*` stays frozen for feature
+   workers by dispatch.
+2. Disposition or fix AR-004..AR-008 (each has a pinned minimal reproducer) as
    prioritized by the Tech Lead; AR-009's items close as real infrastructure lands.
-
-With 1–3 done, both gates pass with zero uncovered failures and only the explicitly
-accepted risks remaining.
+3. Ratify the two remediated registry records (AR-001, AR-002) at merge: their
+   remediations are landed and verified by this run.
 
 ## 5. How to reproduce
 
 ```bash
-pnpm production-gate                          # exit 1 on this tree (prerequisite fail)
+pnpm production-gate                          # exit 0 on this tree
 node scripts/release/production-gate.mjs --full-report   # complete criteria evidence
-echo $?                                        # 1 — the honest verdict
+echo $?                                        # 0 — the honest verdict
 ```
 
 JSON summary on stdout; durable artifacts at `docs/reports/production-gate.json` (which
@@ -134,11 +138,16 @@ embeds the MVP verdict) and `docs/reports/mvp-gate.json`.
 
 ## 6. Bottom line
 
-**The production readiness gate FAILS on this tree (exit 1)** — inherited honestly from
-the RL-080 MVP gate's §11 SLO criterion. The production-specific standards themselves
-show zero uncovered failures: security and deployment verification are green with all
-findings explicitly dispositioned, the runbook modes are suite-proven, health/readiness
-composition is honest, the README quickstart reproduces from a clean clone, the
-CHANGELOG is drafted, and every gap that cannot be closed by this worker is an explicit
-accepted-risk line (AR-001..AR-009) with owner, exposure bounds and remediation. The
+**The production readiness gate PASSES on this tree (exit 0).** The RL-080 MVP
+prerequisite passes with all four criteria green, and the production-specific
+standards show zero uncovered failures: security and deployment verification are
+green with all findings explicitly dispositioned, the runbook modes are
+suite-proven, observability is fully wired (structured correlated logging in the
+dogfood evidence, honest health/readiness composition, and every §11 SLO
+instrumented and referenced — the AR-002 remediation), the README quickstart
+reproduces from a clean clone, and the CHANGELOG is drafted. The two remaining
+disclosed gaps (AR-003's stale spec status block — spec/ is frozen by dispatch —
+and AR-009's inherent-infrastructure limits) are explicit accepted-risk lines with
+owner and remediation. Per `spec/current-state.md`'s completion definition, both
+RL-080 and RL-081 passing means the project's release-gate condition is met. The
 verdict is reported as-is: visible, not hidden.

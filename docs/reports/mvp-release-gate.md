@@ -6,8 +6,10 @@
   number quoted below is a pointer into that artifact)
 - **Run at:** `generatedAt` in the artifact (UTC; the gate reruns the full verification
   stack, so every verdict here is backed by a fresh end-to-end run)
-- **VERDICT: FAIL — exit code 1.** The gate is exit-faithful: any failure → non-zero.
-  No criterion was weakened, skipped or reinterpreted to obtain a pass.
+- **VERDICT: PASS — exit code 0.** The gate is exit-faithful: no criterion was weakened,
+  skipped or reinterpreted to obtain this pass. The previously gate-blocking criterion
+  (MVP-3 — §11 SLO operational wiring) was closed by REAL remediation on
+  `work/rl-slo-wiring-remediation` (see §3), not by touching the gate.
 
 ---
 
@@ -17,13 +19,14 @@
 | --- | --- | --- | --- |
 | MVP-1 | Every work item RL-001..RL-075 represented on `main` with tests green | **PASS** | 0/40 |
 | MVP-2 | Every architecture lock RL-LOCK-001..020 covered by conformance suites | **PASS** | 0/20 |
-| MVP-3 | Every §11 SLO instrumented + at least one dogfood/load assertion referencing it | **FAIL** | 9/9 |
+| MVP-3 | Every §11 SLO instrumented + at least one dogfood/load assertion referencing it | **PASS** | 0/9 |
 | MVP-4 | spec/api.md public API documentation consistent with actual exported contracts | **PASS** | 0/14 |
 
-The gate as a whole **fails** because MVP-3 fails. All five verification-stack steps
-(install → lint → typecheck → test → architecture:check) ran green; the failure is a
-criterion failure, not an infrastructure failure — which is exactly what a release gate
-is for.
+All five verification-stack steps (install → lint → typecheck → test →
+architecture:check) ran green and all four criteria pass. Per
+`spec/current-state.md`'s completion definition, RL-080 passing is one of the two
+terminal conditions of the project (RL-081 runs on top of this gate and also passes;
+see `docs/reports/production-readiness-gate.md`).
 
 ## 2. Verification-stack steps (dependency order, from the artifact's `steps`)
 
@@ -32,20 +35,23 @@ is for.
 | install | `pnpm install --frozen-lockfile` | PASS (exit 0) | artifact step `install` |
 | lint | `pnpm lint` (every workspace package) | PASS (exit 0) | artifact step `lint` |
 | typecheck | `pnpm typecheck` (every workspace package) | PASS (exit 0) | artifact step `typecheck` |
-| test | `pnpm test` (all 36 suites) | PASS — **36 suites green, 1831/1831 tests** | artifact step `test` → `details.suites` |
+| test | `pnpm test` (all 36 suites) | PASS — **36 suites green, 1861/1861 tests** | artifact step `test` → `details.suites` |
 | architecture | `pnpm architecture:check` | PASS (exit 0) | artifact step `architecture` |
 
 Suite-count pointers (`steps[].details.suites` in the artifact; totals per vitest):
 
 - Verification waves: conformance **107** (RL-070), simulation **29** (RL-071),
   dogfood **9** (RL-072), load **12** (RL-073), security **57** (RL-074),
-  deployment **26** (RL-075), architecture **94**, release-gates **59** (RL-080/081, new).
+  deployment **26** (RL-075), architecture **94**, release-gates **59** (RL-080/081).
 - Package suites (all green, per-package counts in the artifact): adcos 50, admin 13,
   app-kit 54, audit 14, auth 62, commerce-connectivity 22, compat 20, contracts 97,
-  domain-commerce 78, domain-experience 112, edge 124, edge-actions 52, edge-connector 37,
-  enterprise 71, integration 105, intent-compiler 49, mobile 43, notifications 19,
-  observability 60, persistence 49, projections 37, reconciliation 72, resilience 34,
-  retention 52, secrets 25, testkit 36, web 14, webhook-inbox 37.
+  domain-commerce 78, domain-experience **116**, edge 124, edge-actions 52,
+  edge-connector 37, enterprise 71, integration 105, intent-compiler 49, mobile 43,
+  notifications 19, observability **76**, persistence 49, projections 37,
+  reconciliation **82**, resilience 34, retention 52, secrets 25, testkit 36, web 14,
+  webhook-inbox 37. (Bold counts grew with the MVP-3 remediation: +4
+  domain-experience intent-satisfaction tests, +16 observability §11-surface tests,
+  +10 reconciliation SLO-emission tests.)
 
 ## 3. Per-criterion evidence
 
@@ -74,36 +80,77 @@ each row's `evidence` names the exact file and the green suite count):
   (`tests/conformance/README.md` documented the lock as governance-only). The row
   summary in the artifact carries the same disclosure.
 
-### MVP-3 — FAIL (9/9 SLO rows fail) — the gate-blocking criterion
+### MVP-3 — PASS (9/9 SLO rows) — the remediated criterion
 
 Requirement: every SLO in `spec/architecture.md` §11 instrumented by observability
 primitives with at least one dogfood/load assertion referencing it. Evidence
 (artifact `criteria[MVP-3].rows`; comment-stripped scans of tree code,
 `tests/dogfood`, `tests/load`):
 
-| §11 SLO | Instrumentation in tree code | Dogfood/load assertion |
+| §11 SLO | Instrumentation in tree code | Dogfood/load assertions |
 | --- | --- | --- |
-| time-to-usable-connectivity | 1 hit — the app-kit UI **fake** seed (not observability wiring) | NONE |
-| minutes-without-usable-connectivity | NONE | NONE |
-| manual-interventions-per-session-day | NONE | NONE |
-| successful-automatic-recovery-rate | NONE | NONE |
-| intent-satisfaction-rate | NONE | NONE |
-| connectivity-cost-per-useful-hour-gb-where-available | NONE | NONE |
-| stale-unknown-state-duration | NONE | NONE |
-| provider-access-failover-success | NONE | NONE |
-| support-incidents-attributable-to-connectivity-orchestration | NONE | NONE |
+| time-to-usable-connectivity | 4 hit(s) | 1 hit(s) |
+| minutes-without-usable-connectivity | 3 hit(s) | 1 hit(s) |
+| manual-interventions-per-session-day | 4 hit(s) | 2 hit(s) |
+| successful-automatic-recovery-rate | 4 hit(s) | 2 hit(s) |
+| intent-satisfaction-rate | 3 hit(s) | 1 hit(s) |
+| connectivity-cost-per-useful-hour-gb-where-available | 3 hit(s) | 1 hit(s) |
+| stale-unknown-state-duration | 4 hit(s) | 2 hit(s) |
+| provider-access-failover-success | 3 hit(s) | 1 hit(s) |
+| support-incidents-attributable-to-connectivity-orchestration | 3 hit(s) | 1 hit(s) |
 
-Honest reading: the SLO *machinery* is real and green (`@roamlink/observability` 60/60;
-`tests/release-gates/test/contract-deep.test.ts` constructs, evaluates and composes all
-nine §11 SLOs through the real primitives — health/metrics/correlated logging, no-data
-never healthy), but **no end-to-end suite references any §11 SLO and no product surface
-wires §11-named SLOs**. Closing this requires editing `tests/dogfood`/`tests/load`
-and/or `packages/*` — completed work-item packages outside the release-gate worker's
-editable scope (dispatch: only `scripts/release/`, `tests/release-gates/`,
-`docs/reports/` may be created). Per the dispatch contract the failed criterion is a
-**finding for the Tech Lead**, recorded with full remediation path as accepted risk
-**AR-002** (high) in `docs/reports/accepted-risks.json`. The MVP gate deliberately does
-NOT accept risk coverage: definition-of-done criteria are pass/fail, not waivable.
+The remediation is REAL wiring, not name-dropping (the matcher strips comments; dead
+strings cannot pass it, and every named primitive has consumers):
+
+- **`packages/observability/src/slo/slo-metrics.ts`** — the §11 SLO instrumentation
+  surface: the closed `PRODUCT_SLO_IDS` vocabulary (the nine §11 slugs), one named
+  metric per SLO (`roamlink_slo_time_to_usable_connectivity_ms`,
+  `roamlink_slo_minutes_without_usable_connectivity`,
+  `roamlink_slo_manual_interventions_per_session_day`,
+  `roamlink_slo_successful_automatic_recovery_rate_events`,
+  `roamlink_slo_intent_satisfaction_rate_events`,
+  `roamlink_slo_connectivity_cost_per_useful_hour_gb`,
+  `roamlink_slo_stale_unknown_state_duration_ms`,
+  `roamlink_slo_provider_access_failover_success_events`,
+  `roamlink_slo_support_incidents_attributable_to_connectivity_orchestration_total`)
+  registered through the RL-040 metrics contract, objective names +
+  `makeProductSloObjective` composing with the RL-052 burn-rate machinery, and the
+  typed `createProductSloRecorder` whose nine `record*` methods emit through the
+  metrics/SLO-event ports at explicit instants (OPTIONAL budget thresholds — no
+  invented defaults; unthresholded quantities are measured, never silently
+  classified).
+- **Product-side emission** where the product already computes the quantities: the
+  reconciliation engine/boundary accept an optional structural `sloObserver` and emit
+  from the DURABLE completed-job actions (`emitReconciliationSloEvents`): REPAIRED
+  canonical refreshes → good automatic-recovery events + the CLOSED stale/unknown
+  window duration (`metrics.staleForMs`, computed from the pre-repair record's own
+  freshness fields); DEGRADED_STALE/DEGRADED_UNKNOWN → failed attempts + the
+  degradation age; `trigger_reason: "manual"` → one manual intervention. Observer
+  errors can never break the repair loop. `packages/domain-experience` adds the pure
+  `intentSatisfactionOf` mapping (supported → satisfied; degraded/unresolved → not;
+  pending/closed → not measurable).
+- **Journey-level measurement** in the dogfood world/journey/scenarios (the REAL
+  recorder composed into the world, the boundary wired with it): time to usable
+  connectivity (paid order → first FRESH/EVIDENCED link), minutes without usable
+  connectivity (guarantee expiry → failover relink), provider/access failover
+  outcomes, manual interventions (customer re-planning, operator conflict
+  resolution, manual job triggers), intent satisfaction over built decisions,
+  connectivity cost per useful hour where available (per-GB honestly absent while
+  the §10 fake's usage evidence reports zero bytes), and support incidents
+  attributable to connectivity orchestration (the service_not_delivered refund
+  correlated by the support case).
+- **Load-side volume invariants (SLO-E)**: the REC suite asserts EXACTLY N good
+  recovery events + N closed stale-window durations for N repaired targets and
+  NOTHING for incremental no-ops or idempotent replays — emission proportional to
+  durable repair work.
+- Every new module carries package tests (observability 76, reconciliation 82,
+  domain-experience 116 — all green in this run), and the unreachable-truth leg of
+  dogfood scenario 2 asserts ZERO fabricated recovery events (honest degradation,
+  never a fake repair).
+
+The pre-remediation state (9/9 rows failing, only the gate's own suite wiring the
+SLOs) is preserved as accepted risk **AR-002** history in
+`docs/reports/accepted-risks.json`, updated to record the remediation as landed.
 
 ### MVP-4 — PASS (14/14 rows)
 
@@ -146,18 +193,20 @@ dependence (the engine's clock is injectable).
 ## 5. How to reproduce
 
 ```bash
-pnpm mvp-gate          # runs the whole stack + criteria; exit 1 on this tree
-echo $?                # 1 — the honest verdict
+pnpm mvp-gate          # runs the whole stack + criteria; exit 0 on this tree
+echo $?                # 0 — the honest verdict
 ```
 
 JSON summary goes to stdout; the durable artifact is `docs/reports/mvp-gate.json`.
 
 ## 6. Bottom line
 
-**The MVP release gate FAILS on this tree (exit 1).** Forty work-item rows are
-represented with 1831/1831 tests green, all twenty architecture locks are covered, and
-the public API surface matches its spec — but the §11 SLO criterion is not met: no
-dogfood/load assertion references any §11 SLO. That is the single blocker, it is fully
-diagnosed above, and its remediation (wire §11-named SLOs through
-`@roamlink/observability` in `tests/dogfood`/`tests/load`) is documented as AR-002 for
-the Tech Lead. The verdict is reported as-is: visible, not hidden.
+**The MVP release gate PASSES on this tree (exit 0).** Forty work-item rows are
+represented with 1861/1861 tests green across 36 suites, all twenty architecture
+locks are covered, the public API surface matches its spec, and — the criterion this
+remediation closed — every §11 SLO is instrumented through the
+`@roamlink/observability` primitives with real product-side and journey-level
+emission, and referenced by dogfood/load assertions. The gate itself was not
+modified: the pass was earned by wiring, exactly the remediation path AR-002
+documented. With RL-081 also passing (see `docs/reports/production-readiness-gate.md`),
+the release-gate completion rule of `spec/current-state.md` is met.

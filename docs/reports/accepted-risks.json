@@ -4,29 +4,34 @@
   "risks": [
     {
       "id": "AR-001",
-      "title": "Dogfood scenarios do not wire the observability structured logger (correlation-ID logging verified via audit events only)",
+      "title": "Dogfood scenarios did not wire the observability structured logger (REMEDIATED — the world now composes the correlated logger)",
       "criterion": "PRD-3",
       "rowId": "OBS:logs-correlation",
       "severity": "medium",
-      "justification": "spec/architecture.md and definition-of-done 'Operations' require structured logs with correlation IDs where applicable. The @roamlink/observability logging contract (redacting structured records, correlated logger over an injectable carrier) is implemented and unit-verified (packages/observability tests: logger, log-redaction), and the RL-072 dogfood scenarios DO prove one correlation-ID family end-to-end — but through AUDIT events and command envelopes, not through emitted structured-log records: the dogfood world (tests/dogfood/src/world.ts) never imports @roamlink/observability. Closing this requires editing tests/dogfood (RL-072's completed work-item package), which is outside the release-gate worker's dispatched scope (scripts/release, tests/release-gates, docs/reports, README/CHANGELOG only).",
-      "exposure": "No runtime risk. The gap is verification coverage: a future regression that drops correlation IDs from log records would not be caught by the dogfood suite. Correlation-ID propagation itself IS proven end-to-end through the audit chain.",
-      "remediation": "Wire createCorrelatedLogger + createInMemoryLogSink into makeDogfoodWorld, thread the scenario's correlation family through the carrier, and assert emitted records carry the correlation id (one focused addition to tests/dogfood; a small follow-up work item for the Tech Lead).",
+      "justification": "At gate-construction time the dogfood scenarios did not wire the observability structured logger: correlation IDs were proven end-to-end through audit events only, and structured-log records were not part of the dogfood evidence. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): the dogfood world now composes createCorrelatedLogger over createInMemoryLogSink with the manual correlation carrier, and scenario 1 emits an §11 SLO evaluation through logSloEvaluation under the journey's correlation-id family, asserting the log record carries the correlation id and the SLO's own redaction-safe fields. The production gate's OBS:logs-correlation row now passes on real structured-log evidence.",
+      "exposure": "None remaining: structured-log records with correlation IDs are now part of the dogfood evidence (tests/dogfood/src/world.ts + scenario 1's logSloEvaluation assertion).",
+      "remediation": "LANDED: tests/dogfood/src/world.ts (correlated logger + in-memory sink + manual carrier on the §11 SLO plane) and scenario-1's structured-log assertion (correlation id + slo/slo_state fields). Re-run pnpm production-gate on the remediation commit: PRD-3 passes with zero gap rows.",
       "owner": "Tech Lead",
-      "reviewBy": "first post-RL-081 wave",
-      "references": ["GAP:dogfood-structured-logging"]
+      "reviewBy": "ratified at merge (remediation landed; PRD-3 gap-free)",
+      "references": [
+        "GAP:dogfood-structured-logging"
+      ]
     },
     {
       "id": "AR-002",
-      "title": "No §11 SLO is instrumented or referenced in the dogfood/load suites (the current MVP-gate blocker)",
+      "title": "No §11 SLO was instrumented or referenced in the dogfood/load suites (REMEDIATED — the MVP-gate blocker is closed)",
       "criterion": "PRD-3",
       "rowId": "OBS:slo-wiring",
       "severity": "high",
-      "justification": "spec/architecture.md §11 lists nine SLOs the product must measure. The observability primitives (RL-052: makeServiceLevelObjective, SloEventRecorder, burn rates, health/metrics/log composition) can instrument every one of them — proven green by tests/release-gates/test/contract-deep.test.ts, which constructs and evaluates all nine through the real primitives — but NO dogfood or load assertion references any §11 SLO name, and no product surface wires §11-named SLOs (only the app-kit UI fake seeds time_to_usable_connectivity). This is exactly why the MVP release gate (RL-080) currently FAILS its SLO criterion: 'every SLO in spec/architecture.md §11 instrumented by observability primitives with at least one dogfood/load assertion referencing it.' Closing it requires editing tests/dogfood and/or tests/load (RL-072/RL-073's completed work-item packages), outside the release-gate worker's dispatched scope. Recorded here so the production gate's evidence is complete and the blocker is visible, not hidden; the MVP gate itself remains failing until the wiring lands.",
-      "exposure": "Verification-coverage gap, not a runtime defect: the release ships without mechanical SLO evidence from the end-to-end suites. The strongest available proxy IS verified: the observability SLO machinery composes correctly (health/metrics/logging, no-data never healthy) and the deployment suite proves SLO health composition (H-3/H-4).",
-      "remediation": "In tests/dogfood (and/or tests/load): construct §11-named SLOs through @roamlink/observability, record good/bad outcomes at the scenario's deterministic clock instants (e.g. time-to-usable-connectivity measured across the onboarding journey; failover-success across scenario 2's recovery loop; stale-duration across the delay windows), and assert the evaluations. A small follow-up work item for the Tech Lead; once landed, the MVP gate's MVP-3 criterion turns green without any gate change (the gate scans for exactly these references).",
+      "justification": "spec/architecture.md §11 lists nine SLOs the product must measure. The observability primitives (RL-052: makeServiceLevelObjective, SloEventRecorder, burn rates, health/metrics/log composition) can instrument every one of them — proven green by tests/release-gates/test/contract-deep.test.ts — but at gate-construction time NO dogfood or load assertion referenced any §11 SLO name and no product surface wired §11-named SLOs, which is why the MVP release gate (RL-080) failed its SLO criterion. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): packages/observability gained the §11 SLO instrumentation surface (PRODUCT_SLO_IDS, the nine roamlink_slo_<slug> metric constants, registerProductSloMetrics, createProductSloRecorder); the reconciliation engine emits its durable-action §11 measurements through an optional structural sloObserver; domain-experience exposes the pure intentSatisfactionOf mapping; and the dogfood/load suites record + assert all nine SLOs through the real recorder. Both gates now exit 0 (MVP-3: 9/9 rows pass). The record is retained for history: the gap was real, visible, and closed by the documented remediation rather than by weakening the gate.",
+      "exposure": "None remaining as a verification gap: the end-to-end suites now provide mechanical SLO evidence (dogfood scenarios assert all nine §11 SLOs; the load REC suite asserts SLO-E emission-volume invariants). At gate-construction time the exposure was a verification-coverage gap only — no runtime defect.",
+      "remediation": "LANDED: packages/observability/src/slo/slo-metrics.ts (the §11 surface), packages/reconciliation/src/slo-emission.ts + engine/boundary sloObserver wiring, packages/domain-experience/src/decision/intent-satisfaction.ts, tests/dogfood scenario/world/journey SLO wiring and assertions for all nine SLOs, tests/load SLO-E emission invariants, package tests for every new module (observability 76, reconciliation 82, domain-experience 116 green). Re-run pnpm mvp-gate and pnpm production-gate on the remediation commit: both exit 0 with MVP-3 9/9 rows passing.",
       "owner": "Tech Lead",
-      "reviewBy": "immediately (blocks RL-080 pass)",
-      "references": ["GAP:slo-instrumentation-dogfood-load", "spec/architecture.md#11-slos"]
+      "reviewBy": "ratified at merge (remediation landed; gates green)",
+      "references": [
+        "GAP:slo-instrumentation-dogfood-load",
+        "spec/architecture.md#11-slos"
+      ]
     },
     {
       "id": "AR-003",
@@ -39,7 +44,9 @@
       "remediation": "The Tech Lead refreshes spec/current-state.md's status block to reflect the implemented tree (minutes of work); the production gate's DOCS:current-state row then turns green without any gate change.",
       "owner": "Tech Lead",
       "reviewBy": "at merge of the release-gates branch",
-      "references": ["GAP:spec-current-state-stale"]
+      "references": [
+        "GAP:spec-current-state-stale"
+      ]
     },
     {
       "id": "AR-004",
@@ -52,7 +59,9 @@
       "remediation": "Run assertNoSecretMaterial over provider-supplied reference fields at commerce admission, or further restrict the charset (e.g. no '.'). Minimal reproducer already pinned in tests/security S-6 so the fix flips an explicit assertion.",
       "owner": "Tech Lead",
       "reviewBy": "first post-RL-081 wave",
-      "references": ["RL-074-F1"]
+      "references": [
+        "RL-074-F1"
+      ]
     },
     {
       "id": "AR-005",
@@ -65,7 +74,9 @@
       "remediation": "Rename (e.g. tokenVerificationDigest) or make an explicit, documented scanner allowance for digest fields — orchestrator call. Minimal reproducer pinned in tests/security S-2.",
       "owner": "Tech Lead",
       "reviewBy": "when the scanner sweep is wired as a CI gate",
-      "references": ["RL-074-F2"]
+      "references": [
+        "RL-074-F2"
+      ]
     },
     {
       "id": "AR-006",
@@ -78,7 +89,9 @@
       "remediation": "Skip the save when the record is already revoked (return the recorded outcome). Minimal reproducer pinned in tests/security A-2.",
       "owner": "Tech Lead",
       "reviewBy": "first post-RL-081 wave",
-      "references": ["RL-074-F3"]
+      "references": [
+        "RL-074-F3"
+      ]
     },
     {
       "id": "AR-007",
@@ -91,7 +104,9 @@
       "remediation": "Add a requeueInFlight(olderThan) sweep on the port (mirroring the edge outbox's recoverInFlight), or claim with a visibility timeout so stranded claims expire back to PENDING. Minimal reproducer pinned in tests/deployment CS-4.",
       "owner": "Tech Lead",
       "reviewBy": "first post-RL-081 wave",
-      "references": ["RL-075-F1"]
+      "references": [
+        "RL-075-F1"
+      ]
     },
     {
       "id": "AR-008",
@@ -104,7 +119,9 @@
       "remediation": "Track a durable processing cursor (or mark processing state on extended records) so repeated drains advance. Minimal reproducer pinned in tests/load (webhook-ingestion-load) and re-pinned by tests/deployment CS-3.",
       "owner": "Tech Lead",
       "reviewBy": "first post-RL-081 wave",
-      "references": ["RL-073-DEFECT-1"]
+      "references": [
+        "RL-073-DEFECT-1"
+      ]
     },
     {
       "id": "AR-009",
@@ -117,7 +134,10 @@
       "remediation": "Revisit each item as the corresponding real infrastructure lands (vault-backed secrets adapter, PostgreSQL persistence driver, anchored audit checkpoints, network-level load testing); the pinned limit tests flip when the stronger implementations arrive.",
       "owner": "Tech Lead",
       "reviewBy": "when real infrastructure replaces the in-memory adapters",
-      "references": ["docs/threat-model-verification.md#3-honest-gaps", "docs/deployment-recovery.md#4-honest-gaps"]
+      "references": [
+        "docs/threat-model-verification.md#3-honest-gaps",
+        "docs/deployment-recovery.md#4-honest-gaps"
+      ]
     }
   ]
 }

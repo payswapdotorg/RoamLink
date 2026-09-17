@@ -42,10 +42,16 @@ import { epochMsOf, parseUserId, parseUtcInstant, tenantIdFromUser } from "@roam
 import {
   MetricRegistry,
   SloEventRecorder,
+  createCorrelatedLogger,
+  createInMemoryLogSink,
+  createManualCorrelationCarrier,
   createMetricsRecorder,
   createProductSloRecorder,
   registerProductSloMetrics,
   type InMemoryMetrics,
+  type InMemoryLogSink,
+  type LeveledLogger,
+  type CorrelationContextCarrier,
   type ProductSloRecorder,
 } from "@roamlink/observability";
 import { createInMemoryPersistence } from "@roamlink/persistence";
@@ -220,6 +226,10 @@ export interface DogfoodWorld {
     readonly metrics: InMemoryMetrics;
     readonly events: SloEventRecorder;
     readonly recorder: ProductSloRecorder;
+    /** Structured-log evidence: the correlated logger + its in-memory sink. */
+    readonly logSink: InMemoryLogSink;
+    readonly logger: LeveledLogger;
+    readonly correlationCarrier: CorrelationContextCarrier;
   };
   readonly fake: FakeAdcos;
   readonly compatibility: AdcosCompatibilityState;
@@ -297,6 +307,16 @@ export function makeDogfoodWorld(
       supportIncidentsPerDay: 1,
     },
   );
+  // The RL-052 logging composition: the correlated structured logger over
+  // the in-memory sink, so scenarios can emit SLO evaluations as log records
+  // carrying the journey's correlation ids (structured-log evidence).
+  const sloLogSink = createInMemoryLogSink();
+  const sloCorrelationCarrier = createManualCorrelationCarrier();
+  const sloLogger = createCorrelatedLogger({
+    sink: sloLogSink.sink,
+    carrier: sloCorrelationCarrier,
+    now: () => clock.now(),
+  });
 
   // --- ADCOS plane: the §10 fake behind the real adapters --------------------
   const fake = new FakeAdcos({
@@ -482,7 +502,14 @@ export function makeDogfoodWorld(
     clock,
     ids,
     correlation,
-    slo: { metrics: sloMetrics, events: sloEvents, recorder: sloRecorder },
+    slo: {
+      metrics: sloMetrics,
+      events: sloEvents,
+      recorder: sloRecorder,
+      logSink: sloLogSink,
+      logger: sloLogger,
+      correlationCarrier: sloCorrelationCarrier,
+    },
     fake,
     compatibility,
     adcos,
