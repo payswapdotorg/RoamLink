@@ -1,0 +1,1568 @@
+{
+  "schema": "roamlink/release-gate@1",
+  "gate": "RL-080",
+  "title": "RoamLink MVP release gate",
+  "generatedAt": "2026-09-17T07:03:51.843Z",
+  "verdict": {
+    "status": "fail",
+    "exitCode": 1,
+    "failedSteps": [],
+    "skippedSteps": [],
+    "failedCriteria": [
+      "MVP-3"
+    ],
+    "failedCriterionRows": [
+      "MVP-3/SLO:time-to-usable-connectivity",
+      "MVP-3/SLO:minutes-without-usable-connectivity",
+      "MVP-3/SLO:manual-interventions-per-session-day",
+      "MVP-3/SLO:successful-automatic-recovery-rate",
+      "MVP-3/SLO:intent-satisfaction-rate",
+      "MVP-3/SLO:connectivity-cost-per-useful-hour-gb-where-available",
+      "MVP-3/SLO:stale-unknown-state-duration",
+      "MVP-3/SLO:provider-access-failover-success",
+      "MVP-3/SLO:support-incidents-attributable-to-connectivity-orchestration"
+    ],
+    "acceptedRisks": []
+  },
+  "steps": [
+    {
+      "id": "install",
+      "label": "pnpm install --frozen-lockfile",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 423,
+      "summary": "exit 0 (423ms)",
+      "outputTail": [
+        "Scope: all 37 workspace projects",
+        "Already up to date",
+        "Done in 393ms"
+      ]
+    },
+    {
+      "id": "lint",
+      "label": "pnpm lint (every workspace package)",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 50856,
+      "summary": "exit 0 (50856ms)",
+      "outputTail": [
+        "tests/load lint: Done",
+        "tests/simulation lint: Done",
+        "tests/dogfood lint$ eslint .",
+        "tests/release-gates lint$ eslint .",
+        "tests/security lint$ eslint .",
+        "tests/dogfood lint: Done",
+        "tests/release-gates lint: Done",
+        "tests/security lint: Done"
+      ]
+    },
+    {
+      "id": "typecheck",
+      "label": "pnpm typecheck (every workspace package)",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 81419,
+      "summary": "exit 0 (81419ms)",
+      "outputTail": [
+        "tests/load typecheck: Done",
+        "tests/simulation typecheck: Done",
+        "tests/dogfood typecheck$ tsc --noEmit",
+        "tests/security typecheck$ tsc --noEmit",
+        "tests/release-gates typecheck$ tsc --noEmit",
+        "tests/release-gates typecheck: Done",
+        "tests/security typecheck: Done",
+        "tests/dogfood typecheck: Done"
+      ]
+    },
+    {
+      "id": "test",
+      "label": "every workspace test suite (36 suites)",
+      "status": "pass",
+      "durationMs": 132167,
+      "summary": "36 suites green — 1831/1831 tests",
+      "details": {
+        "suites": [
+          {
+            "package": "@roamlink/adcos",
+            "dir": "packages/adcos",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2800,
+            "tests": {
+              "passed": 50,
+              "failed": 0,
+              "total": 50
+            },
+            "testFiles": {
+              "passed": 8,
+              "failed": 0,
+              "total": 8
+            }
+          },
+          {
+            "package": "@roamlink/admin",
+            "dir": "apps/admin",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1441,
+            "tests": {
+              "passed": 13,
+              "failed": 0,
+              "total": 13
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/app-kit",
+            "dir": "packages/app-kit",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2105,
+            "tests": {
+              "passed": 54,
+              "failed": 0,
+              "total": 54
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/audit",
+            "dir": "packages/audit",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1269,
+            "tests": {
+              "passed": 14,
+              "failed": 0,
+              "total": 14
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/auth",
+            "dir": "packages/auth",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2333,
+            "tests": {
+              "passed": 62,
+              "failed": 0,
+              "total": 62
+            },
+            "testFiles": {
+              "passed": 5,
+              "failed": 0,
+              "total": 5
+            }
+          },
+          {
+            "package": "@roamlink/commerce-connectivity",
+            "dir": "packages/commerce-connectivity",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1627,
+            "tests": {
+              "passed": 22,
+              "failed": 0,
+              "total": 22
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/compat",
+            "dir": "packages/compat",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1939,
+            "tests": {
+              "passed": 20,
+              "failed": 0,
+              "total": 20
+            },
+            "testFiles": {
+              "passed": 2,
+              "failed": 0,
+              "total": 2
+            }
+          },
+          {
+            "package": "@roamlink/contracts",
+            "dir": "packages/contracts",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3001,
+            "tests": {
+              "passed": 97,
+              "failed": 0,
+              "total": 97
+            },
+            "testFiles": {
+              "passed": 10,
+              "failed": 0,
+              "total": 10
+            }
+          },
+          {
+            "package": "@roamlink/domain-commerce",
+            "dir": "packages/domain-commerce",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2232,
+            "tests": {
+              "passed": 78,
+              "failed": 0,
+              "total": 78
+            },
+            "testFiles": {
+              "passed": 3,
+              "failed": 0,
+              "total": 3
+            }
+          },
+          {
+            "package": "@roamlink/domain-experience",
+            "dir": "packages/domain-experience",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3437,
+            "tests": {
+              "passed": 112,
+              "failed": 0,
+              "total": 112
+            },
+            "testFiles": {
+              "passed": 9,
+              "failed": 0,
+              "total": 9
+            }
+          },
+          {
+            "package": "@roamlink/edge",
+            "dir": "packages/edge",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3269,
+            "tests": {
+              "passed": 124,
+              "failed": 0,
+              "total": 124
+            },
+            "testFiles": {
+              "passed": 9,
+              "failed": 0,
+              "total": 9
+            }
+          },
+          {
+            "package": "@roamlink/edge-actions",
+            "dir": "packages/edge-actions",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2505,
+            "tests": {
+              "passed": 52,
+              "failed": 0,
+              "total": 52
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/edge-connector",
+            "dir": "packages/edge-connector",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1620,
+            "tests": {
+              "passed": 37,
+              "failed": 0,
+              "total": 37
+            },
+            "testFiles": {
+              "passed": 2,
+              "failed": 0,
+              "total": 2
+            }
+          },
+          {
+            "package": "@roamlink/enterprise",
+            "dir": "packages/enterprise",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3045,
+            "tests": {
+              "passed": 71,
+              "failed": 0,
+              "total": 71
+            },
+            "testFiles": {
+              "passed": 7,
+              "failed": 0,
+              "total": 7
+            }
+          },
+          {
+            "package": "@roamlink/integration",
+            "dir": "packages/integration",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2943,
+            "tests": {
+              "passed": 105,
+              "failed": 0,
+              "total": 105
+            },
+            "testFiles": {
+              "passed": 7,
+              "failed": 0,
+              "total": 7
+            }
+          },
+          {
+            "package": "@roamlink/intent-compiler",
+            "dir": "packages/intent-compiler",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1510,
+            "tests": {
+              "passed": 49,
+              "failed": 0,
+              "total": 49
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/mobile",
+            "dir": "apps/mobile",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2613,
+            "tests": {
+              "passed": 43,
+              "failed": 0,
+              "total": 43
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/notifications",
+            "dir": "packages/notifications",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1481,
+            "tests": {
+              "passed": 19,
+              "failed": 0,
+              "total": 19
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/observability",
+            "dir": "packages/observability",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2686,
+            "tests": {
+              "passed": 60,
+              "failed": 0,
+              "total": 60
+            },
+            "testFiles": {
+              "passed": 7,
+              "failed": 0,
+              "total": 7
+            }
+          },
+          {
+            "package": "@roamlink/persistence",
+            "dir": "packages/persistence",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2111,
+            "tests": {
+              "passed": 49,
+              "failed": 0,
+              "total": 49
+            },
+            "testFiles": {
+              "passed": 5,
+              "failed": 0,
+              "total": 5
+            }
+          },
+          {
+            "package": "@roamlink/projections",
+            "dir": "packages/projections",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1985,
+            "tests": {
+              "passed": 37,
+              "failed": 0,
+              "total": 37
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/reconciliation",
+            "dir": "packages/reconciliation",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3575,
+            "tests": {
+              "passed": 72,
+              "failed": 0,
+              "total": 72
+            },
+            "testFiles": {
+              "passed": 8,
+              "failed": 0,
+              "total": 8
+            }
+          },
+          {
+            "package": "@roamlink/resilience",
+            "dir": "packages/resilience",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1599,
+            "tests": {
+              "passed": 34,
+              "failed": 0,
+              "total": 34
+            },
+            "testFiles": {
+              "passed": 3,
+              "failed": 0,
+              "total": 3
+            }
+          },
+          {
+            "package": "@roamlink/retention",
+            "dir": "packages/retention",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2101,
+            "tests": {
+              "passed": 52,
+              "failed": 0,
+              "total": 52
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/secrets",
+            "dir": "packages/secrets",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1497,
+            "tests": {
+              "passed": 25,
+              "failed": 0,
+              "total": 25
+            },
+            "testFiles": {
+              "passed": 2,
+              "failed": 0,
+              "total": 2
+            }
+          },
+          {
+            "package": "@roamlink/testkit",
+            "dir": "packages/testkit",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1769,
+            "tests": {
+              "passed": 36,
+              "failed": 0,
+              "total": 36
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/tests-architecture",
+            "dir": "tests/architecture",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3032,
+            "tests": {
+              "passed": 94,
+              "failed": 0,
+              "total": 94
+            },
+            "testFiles": {
+              "passed": 10,
+              "failed": 0,
+              "total": 10
+            }
+          },
+          {
+            "package": "@roamlink/tests-conformance",
+            "dir": "tests/conformance",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 5966,
+            "tests": {
+              "passed": 107,
+              "failed": 0,
+              "total": 107
+            },
+            "testFiles": {
+              "passed": 16,
+              "failed": 0,
+              "total": 16
+            }
+          },
+          {
+            "package": "@roamlink/tests-deployment",
+            "dir": "tests/deployment",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2849,
+            "tests": {
+              "passed": 26,
+              "failed": 0,
+              "total": 26
+            },
+            "testFiles": {
+              "passed": 5,
+              "failed": 0,
+              "total": 5
+            }
+          },
+          {
+            "package": "@roamlink/tests-dogfood",
+            "dir": "tests/dogfood",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 4343,
+            "tests": {
+              "passed": 9,
+              "failed": 0,
+              "total": 9
+            },
+            "testFiles": {
+              "passed": 5,
+              "failed": 0,
+              "total": 5
+            }
+          },
+          {
+            "package": "@roamlink/tests-load",
+            "dir": "tests/load",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 43499,
+            "tests": {
+              "passed": 12,
+              "failed": 0,
+              "total": 12
+            },
+            "testFiles": {
+              "passed": 3,
+              "failed": 0,
+              "total": 3
+            }
+          },
+          {
+            "package": "@roamlink/tests-release-gates",
+            "dir": "tests/release-gates",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 2482,
+            "tests": {
+              "passed": 59,
+              "failed": 0,
+              "total": 59
+            },
+            "testFiles": {
+              "passed": 4,
+              "failed": 0,
+              "total": 4
+            }
+          },
+          {
+            "package": "@roamlink/tests-security",
+            "dir": "tests/security",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 4468,
+            "tests": {
+              "passed": 57,
+              "failed": 0,
+              "total": 57
+            },
+            "testFiles": {
+              "passed": 6,
+              "failed": 0,
+              "total": 6
+            }
+          },
+          {
+            "package": "@roamlink/tests-simulation",
+            "dir": "tests/simulation",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 3892,
+            "tests": {
+              "passed": 29,
+              "failed": 0,
+              "total": 29
+            },
+            "testFiles": {
+              "passed": 7,
+              "failed": 0,
+              "total": 7
+            }
+          },
+          {
+            "package": "@roamlink/web",
+            "dir": "apps/web",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1517,
+            "tests": {
+              "passed": 14,
+              "failed": 0,
+              "total": 14
+            },
+            "testFiles": {
+              "passed": 1,
+              "failed": 0,
+              "total": 1
+            }
+          },
+          {
+            "package": "@roamlink/webhook-inbox",
+            "dir": "packages/webhook-inbox",
+            "status": "pass",
+            "exitCode": 0,
+            "durationMs": 1626,
+            "tests": {
+              "passed": 37,
+              "failed": 0,
+              "total": 37
+            },
+            "testFiles": {
+              "passed": 2,
+              "failed": 0,
+              "total": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "architecture",
+      "label": "node scripts/check-architecture.mjs (frozen sanity script)",
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 52,
+      "summary": "exit 0 (52ms)",
+      "outputTail": [
+        "RoamLink architecture checks passed."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "MVP-1",
+      "requirement": "Every work item RL-001..RL-075 is represented on main (its packages/suites/docs exist) with tests green (owning suites passed in the gate's test step).",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "RL-001",
+          "status": "pass",
+          "summary": "Repo/CI foundation — represented; owning suite(s) green",
+          "evidence": [
+            "package.json (exists: true)",
+            "eslint.config.mjs (exists: true)",
+            ".github/workflows/ci.yml (exists: true)",
+            "scripts/check-architecture.mjs (exists: true)",
+            ".env.example (exists: true)",
+            "pnpm-workspace.yaml (exists: true)",
+            "@roamlink/tests-architecture: green (94/94 tests)"
+          ]
+        },
+        {
+          "id": "RL-002",
+          "status": "pass",
+          "summary": "Architecture contracts — represented; owning suite(s) green",
+          "evidence": [
+            "packages/contracts/src/index.ts (exists: true)",
+            "packages/contracts/test (exists: true)",
+            "@roamlink/contracts: green (97/97 tests)"
+          ]
+        },
+        {
+          "id": "RL-003",
+          "status": "pass",
+          "summary": "Persistence/queue primitives — represented; owning suite(s) green",
+          "evidence": [
+            "packages/persistence/src (exists: true)",
+            "packages/persistence/test (exists: true)",
+            "@roamlink/persistence: green (49/49 tests)"
+          ]
+        },
+        {
+          "id": "RL-004",
+          "status": "pass",
+          "summary": "Auth/tenant boundary — represented; owning suite(s) green",
+          "evidence": [
+            "packages/auth/src (exists: true)",
+            "packages/auth/test (exists: true)",
+            "@roamlink/auth: green (62/62 tests)"
+          ]
+        },
+        {
+          "id": "RL-010",
+          "status": "pass",
+          "summary": "Device registry — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-experience/src/device (exists: true)",
+            "packages/domain-experience/src/device-registry-service.ts (exists: true)",
+            "@roamlink/domain-experience: green (112/112 tests)"
+          ]
+        },
+        {
+          "id": "RL-011",
+          "status": "pass",
+          "summary": "ExperienceIntent — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-experience/src/intent (exists: true)",
+            "packages/domain-experience/src/experience-intent-service.ts (exists: true)",
+            "@roamlink/domain-experience: green (112/112 tests)"
+          ]
+        },
+        {
+          "id": "RL-012",
+          "status": "pass",
+          "summary": "Intent compiler — represented; owning suite(s) green",
+          "evidence": [
+            "packages/intent-compiler/src (exists: true)",
+            "packages/intent-compiler/test (exists: true)",
+            "@roamlink/intent-compiler: green (49/49 tests)"
+          ]
+        },
+        {
+          "id": "RL-013",
+          "status": "pass",
+          "summary": "Experience decision/read model — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-experience/src/decision (exists: true)",
+            "@roamlink/domain-experience: green (112/112 tests)"
+          ]
+        },
+        {
+          "id": "RL-014",
+          "status": "pass",
+          "summary": "Notifications/support — represented; owning suite(s) green",
+          "evidence": [
+            "packages/notifications/src (exists: true)",
+            "packages/notifications/test (exists: true)",
+            "@roamlink/notifications: green (19/19 tests)"
+          ]
+        },
+        {
+          "id": "RL-020",
+          "status": "pass",
+          "summary": "Product/catalog — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-commerce/src/product.ts (exists: true)",
+            "packages/domain-commerce/src/product-variant.ts (exists: true)",
+            "packages/domain-commerce/src/catalog.ts (exists: true)",
+            "@roamlink/domain-commerce: green (78/78 tests)"
+          ]
+        },
+        {
+          "id": "RL-021",
+          "status": "pass",
+          "summary": "Order/subscription lifecycle — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-commerce/src/order.ts (exists: true)",
+            "packages/domain-commerce/src/subscription.ts (exists: true)",
+            "@roamlink/domain-commerce: green (78/78 tests)"
+          ]
+        },
+        {
+          "id": "RL-022",
+          "status": "pass",
+          "summary": "Customer payments/invoices/refunds — represented; owning suite(s) green",
+          "evidence": [
+            "packages/domain-commerce/src/payment.ts (exists: true)",
+            "packages/domain-commerce/src/invoice.ts (exists: true)",
+            "packages/domain-commerce/src/refund.ts (exists: true)",
+            "@roamlink/domain-commerce: green (78/78 tests)"
+          ]
+        },
+        {
+          "id": "RL-023",
+          "status": "pass",
+          "summary": "Commerce-to-connectivity reference model — represented; owning suite(s) green",
+          "evidence": [
+            "packages/commerce-connectivity/src (exists: true)",
+            "packages/commerce-connectivity/test (exists: true)",
+            "@roamlink/commerce-connectivity: green (22/22 tests)"
+          ]
+        },
+        {
+          "id": "RL-030",
+          "status": "pass",
+          "summary": "ADCOS public-client contract — represented; owning suite(s) green",
+          "evidence": [
+            "packages/adcos/src/client.ts (exists: true)",
+            "packages/adcos/src/routes.ts (exists: true)",
+            "packages/adcos/src/contract-state.ts (exists: true)",
+            "@roamlink/adcos: green (50/50 tests)"
+          ]
+        },
+        {
+          "id": "RL-031",
+          "status": "pass",
+          "summary": "ADCOS intent adapter — represented; owning suite(s) green",
+          "evidence": [
+            "packages/integration/src/intent-adapter.ts (exists: true)",
+            "packages/integration/src/intent-command.ts (exists: true)",
+            "@roamlink/integration: green (105/105 tests)"
+          ]
+        },
+        {
+          "id": "RL-032",
+          "status": "pass",
+          "summary": "Offer/reservation adapter — represented; owning suite(s) green",
+          "evidence": [
+            "packages/integration/src/offer-reservation-adapter.ts (exists: true)",
+            "@roamlink/integration: green (105/105 tests)"
+          ]
+        },
+        {
+          "id": "RL-033",
+          "status": "pass",
+          "summary": "Webhook inbox — represented; owning suite(s) green",
+          "evidence": [
+            "packages/webhook-inbox/src (exists: true)",
+            "packages/webhook-inbox/test (exists: true)",
+            "@roamlink/webhook-inbox: green (37/37 tests)"
+          ]
+        },
+        {
+          "id": "RL-034",
+          "status": "pass",
+          "summary": "Projection engine — represented; owning suite(s) green",
+          "evidence": [
+            "packages/projections/src (exists: true)",
+            "packages/projections/test (exists: true)",
+            "@roamlink/projections: green (37/37 tests)"
+          ]
+        },
+        {
+          "id": "RL-035",
+          "status": "pass",
+          "summary": "Reconciliation engine — represented; owning suite(s) green",
+          "evidence": [
+            "packages/reconciliation/src (exists: true)",
+            "packages/reconciliation/test (exists: true)",
+            "@roamlink/reconciliation: green (72/72 tests)"
+          ]
+        },
+        {
+          "id": "RL-036",
+          "status": "pass",
+          "summary": "ADCOS compatibility suite — represented; owning suite(s) green",
+          "evidence": [
+            "packages/compat/src (exists: true)",
+            "packages/compat/test (exists: true)",
+            "@roamlink/compat: green (20/20 tests)"
+          ]
+        },
+        {
+          "id": "RL-040",
+          "status": "pass",
+          "summary": "Edge capability contract + platform observability contracts — represented; owning suite(s) green",
+          "evidence": [
+            "packages/edge/src/capability (exists: true)",
+            "packages/observability/src/index.ts (exists: true)",
+            "@roamlink/edge: green (124/124 tests)",
+            "@roamlink/observability: green (60/60 tests)"
+          ]
+        },
+        {
+          "id": "RL-041",
+          "status": "pass",
+          "summary": "Edge observation engine — represented; owning suite(s) green",
+          "evidence": [
+            "packages/edge/src/observation (exists: true)",
+            "@roamlink/edge: green (124/124 tests)"
+          ]
+        },
+        {
+          "id": "RL-042",
+          "status": "pass",
+          "summary": "Encrypted offline outbox/sync — represented; owning suite(s) green",
+          "evidence": [
+            "packages/edge/src/sync (exists: true)",
+            "@roamlink/edge: green (124/124 tests)"
+          ]
+        },
+        {
+          "id": "RL-043",
+          "status": "pass",
+          "summary": "Device action adapter — represented; owning suite(s) green",
+          "evidence": [
+            "packages/edge-actions/src (exists: true)",
+            "packages/edge-actions/test (exists: true)",
+            "@roamlink/edge-actions: green (52/52 tests)"
+          ]
+        },
+        {
+          "id": "RL-044",
+          "status": "pass",
+          "summary": "Enterprise edge connector contract — represented; owning suite(s) green",
+          "evidence": [
+            "packages/edge-connector/src (exists: true)",
+            "packages/edge-connector/test (exists: true)",
+            "@roamlink/edge-connector: green (37/37 tests)"
+          ]
+        },
+        {
+          "id": "RL-050",
+          "status": "pass",
+          "summary": "Secrets/credentials boundary — represented; owning suite(s) green",
+          "evidence": [
+            "packages/secrets/src (exists: true)",
+            "packages/secrets/test (exists: true)",
+            "@roamlink/secrets: green (25/25 tests)"
+          ]
+        },
+        {
+          "id": "RL-051",
+          "status": "pass",
+          "summary": "Audit/security events — represented; owning suite(s) green",
+          "evidence": [
+            "packages/audit/src (exists: true)",
+            "packages/audit/test (exists: true)",
+            "@roamlink/audit: green (14/14 tests)"
+          ]
+        },
+        {
+          "id": "RL-052",
+          "status": "pass",
+          "summary": "Observability/SLO instrumentation — represented; owning suite(s) green",
+          "evidence": [
+            "packages/observability/src/slo (exists: true)",
+            "packages/observability/src/health (exists: true)",
+            "@roamlink/observability: green (60/60 tests)"
+          ]
+        },
+        {
+          "id": "RL-053",
+          "status": "pass",
+          "summary": "Rate limits/retries/circuit breakers — represented; owning suite(s) green",
+          "evidence": [
+            "packages/resilience/src (exists: true)",
+            "packages/resilience/test (exists: true)",
+            "@roamlink/resilience: green (34/34 tests)"
+          ]
+        },
+        {
+          "id": "RL-054",
+          "status": "pass",
+          "summary": "Data retention/privacy enforcement — represented; owning suite(s) green",
+          "evidence": [
+            "packages/retention/src (exists: true)",
+            "packages/retention/test (exists: true)",
+            "@roamlink/retention: green (52/52 tests)"
+          ]
+        },
+        {
+          "id": "RL-060",
+          "status": "pass",
+          "summary": "Customer web application — represented; owning suite(s) green",
+          "evidence": [
+            "apps/web/src (exists: true)",
+            "apps/web/test (exists: true)",
+            "@roamlink/web: green (14/14 tests)"
+          ]
+        },
+        {
+          "id": "RL-061",
+          "status": "pass",
+          "summary": "Admin/operations console — represented; owning suite(s) green",
+          "evidence": [
+            "apps/admin/src (exists: true)",
+            "apps/admin/test (exists: true)",
+            "@roamlink/admin: green (13/13 tests)"
+          ]
+        },
+        {
+          "id": "RL-062",
+          "status": "pass",
+          "summary": "Mobile/edge UX shell — represented; owning suite(s) green",
+          "evidence": [
+            "apps/mobile/src (exists: true)",
+            "apps/mobile/test (exists: true)",
+            "@roamlink/mobile: green (43/43 tests)"
+          ]
+        },
+        {
+          "id": "RL-063",
+          "status": "pass",
+          "summary": "Enterprise onboarding/API surface — represented; owning suite(s) green",
+          "evidence": [
+            "packages/enterprise/src/api-surface.ts (exists: true)",
+            "packages/enterprise/src/enrollment.ts (exists: true)",
+            "packages/enterprise/test (exists: true)",
+            "@roamlink/enterprise: green (71/71 tests)"
+          ]
+        },
+        {
+          "id": "RL-070",
+          "status": "pass",
+          "summary": "Authority conformance suite — represented; owning suite(s) green",
+          "evidence": [
+            "tests/conformance/test (exists: true)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-071",
+          "status": "pass",
+          "summary": "Failure/reordering/duplicate simulation — represented; owning suite(s) green",
+          "evidence": [
+            "tests/simulation/test (exists: true)",
+            "@roamlink/tests-simulation: green (29/29 tests)"
+          ]
+        },
+        {
+          "id": "RL-072",
+          "status": "pass",
+          "summary": "End-to-end dogfood scenarios — represented; owning suite(s) green",
+          "evidence": [
+            "tests/dogfood/test (exists: true)",
+            "tests/dogfood/src/world.ts (exists: true)",
+            "@roamlink/tests-dogfood: green (9/9 tests)"
+          ]
+        },
+        {
+          "id": "RL-073",
+          "status": "pass",
+          "summary": "Load/reliability tests — represented; owning suite(s) green",
+          "evidence": [
+            "tests/load/test (exists: true)",
+            "tests/load/src/harness.ts (exists: true)",
+            "@roamlink/tests-load: green (12/12 tests)"
+          ]
+        },
+        {
+          "id": "RL-074",
+          "status": "pass",
+          "summary": "Security/threat-model verification — represented; owning suite(s) green",
+          "evidence": [
+            "tests/security/test (exists: true)",
+            "docs/threat-model-verification.md (exists: true)",
+            "@roamlink/tests-security: green (57/57 tests)"
+          ]
+        },
+        {
+          "id": "RL-075",
+          "status": "pass",
+          "summary": "Deployment/recovery verification — represented; owning suite(s) green",
+          "evidence": [
+            "tests/deployment/test (exists: true)",
+            "docs/deployment-recovery.md (exists: true)",
+            "@roamlink/tests-deployment: green (26/26 tests)"
+          ]
+        }
+      ],
+      "summary": "all 40 work items represented with green owning suites"
+    },
+    {
+      "id": "MVP-2",
+      "requirement": "Every architecture lock RL-LOCK-001..RL-LOCK-020 is covered by conformance suites: the mapped suite files exist, reference the lock id, and their owning package ran green.",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "RL-LOCK-001",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-001-adcos-only-authority.test.ts (exists: yes; references RL-LOCK-001: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-002",
+          "status": "pass",
+          "summary": "covered by 2 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-002-one-integration-boundary.test.ts (exists: yes; references RL-LOCK-002: yes)",
+            "tests/architecture/test/forbidden-adcos-imports.test.ts (exists: yes; references RL-LOCK-002: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-003",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-003-006-authority-duplication.test.ts (exists: yes; references RL-LOCK-003: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-004",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-003-006-authority-duplication.test.ts (exists: yes; references RL-LOCK-004: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-005",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-003-006-authority-duplication.test.ts (exists: yes; references RL-LOCK-005: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-006",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-006-no-provider-authority.test.ts (exists: yes; references RL-LOCK-006: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-007",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-007-intent-separation.test.ts (exists: yes; references RL-LOCK-007: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-008",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-008-payment-not-delivery.test.ts (exists: yes; references RL-LOCK-008: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-009",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-009-webhooks-signals.test.ts (exists: yes; references RL-LOCK-009: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-010",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-010-evidence-freshness.test.ts (exists: yes; references RL-LOCK-010: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-011",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-011-capability-evidence.test.ts (exists: yes; references RL-LOCK-011: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-012",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-012-ai-advisory.test.ts (exists: yes; references RL-LOCK-012: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-013",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-013-no-provider-sdk-leakage.test.ts (exists: yes; references RL-LOCK-013: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-014",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-014-idempotent-commands.test.ts (exists: yes; references RL-LOCK-014: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-015",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-015-offline-convergence.test.ts (exists: yes; references RL-LOCK-015: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-016",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-016-no-secret-leakage.test.ts (exists: yes; references RL-LOCK-016: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-017",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-017-versioned-contracts.test.ts (exists: yes; references RL-LOCK-017: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-018",
+          "status": "pass",
+          "summary": "covered by 2 suite file(s) in @roamlink/tests-architecture",
+          "evidence": [
+            "tests/architecture/src/scan.ts (exists: yes; references RL-LOCK-018: yes)",
+            "tests/architecture/test/forbidden-adcos-imports.test.ts (exists: yes; references RL-LOCK-018: yes)",
+            "@roamlink/tests-architecture: green (94/94 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-019",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-conformance",
+          "evidence": [
+            "tests/conformance/test/lock-019-worker-safe-ownership.test.ts (exists: yes; references RL-LOCK-019: yes)",
+            "@roamlink/tests-conformance: green (107/107 tests)"
+          ]
+        },
+        {
+          "id": "RL-LOCK-020",
+          "status": "pass",
+          "summary": "covered by 1 suite file(s) in @roamlink/tests-release-gates (coverage ADDED by RL-080 — did not exist before)",
+          "evidence": [
+            "tests/release-gates/test/criteria/mvp/lock-coverage.test.ts (exists: yes; references RL-LOCK-020: yes)",
+            "@roamlink/tests-release-gates: green (59/59 tests)",
+            "coverage added by RL-080 itself: no mechanical coverage existed before this gate (tests/conformance/README.md documents the lock as governance); the release-gates suite now checks the ADR-process artifacts"
+          ]
+        }
+      ],
+      "summary": "all 20 locks covered by green conformance suites"
+    },
+    {
+      "id": "MVP-3",
+      "requirement": "Every SLO in spec/architecture.md §11 instrumented by observability primitives with at least one dogfood/load assertion referencing it.",
+      "status": "fail",
+      "rows": [
+        {
+          "id": "SLO:time-to-usable-connectivity",
+          "status": "fail",
+          "summary": "instrumentation: 1 hit(s) in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "packages/app-kit/src/api/fake/seed.ts references the SLO name",
+            "tests/release-gates/test/contract-deep.test.ts instruments this SLO through the @roamlink/observability primitives (RL-052)",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:minutes-without-usable-connectivity",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:manual-interventions-per-session-day",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:successful-automatic-recovery-rate",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:intent-satisfaction-rate",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:connectivity-cost-per-useful-hour-gb-where-available",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:stale-unknown-state-duration",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:provider-access-failover-success",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        },
+        {
+          "id": "SLO:support-incidents-attributable-to-connectivity-orchestration",
+          "status": "fail",
+          "summary": "instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+          "evidence": [
+            "no product/harness code (packages/apps/tests, excluding tests/release-gates) wires this §11 SLO name",
+            "tests/release-gates/test/contract-deep.test.ts does not reference this SLO",
+            "no tests/dogfood/** or tests/load/** executable text references this SLO name"
+          ]
+        }
+      ],
+      "summary": "9/9 §11 SLOs fail the criterion: SLO:time-to-usable-connectivity, SLO:minutes-without-usable-connectivity, SLO:manual-interventions-per-session-day, SLO:successful-automatic-recovery-rate, SLO:intent-satisfaction-rate, SLO:connectivity-cost-per-useful-hour-gb-where-available, SLO:stale-unknown-state-duration, SLO:provider-access-failover-success, SLO:support-incidents-attributable-to-connectivity-orchestration"
+    },
+    {
+      "id": "MVP-4",
+      "requirement": "Every public API surface documented in spec/api.md is consistent with the actual exported contracts (resources, command semantics, envelope, webhooks).",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "API:/v1/connectivity",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/connectivity",
+          "evidence": [
+            "spec/api.md lists /v1/connectivity",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/devices",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/devices",
+          "evidence": [
+            "spec/api.md lists /v1/devices",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/experience-intents",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/experience-intents",
+          "evidence": [
+            "spec/api.md lists /v1/experience-intents",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/notifications",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/notifications",
+          "evidence": [
+            "spec/api.md lists /v1/notifications",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/orders",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/orders",
+          "evidence": [
+            "spec/api.md lists /v1/orders",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/organizations",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/organizations",
+          "evidence": [
+            "spec/api.md lists /v1/organizations",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/payments",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/payments",
+          "evidence": [
+            "spec/api.md lists /v1/payments",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/products",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/products",
+          "evidence": [
+            "spec/api.md lists /v1/products",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/subscriptions",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/subscriptions",
+          "evidence": [
+            "spec/api.md lists /v1/subscriptions",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:/v1/users",
+          "status": "pass",
+          "summary": "documented resource is exported: /v1/users/me",
+          "evidence": [
+            "spec/api.md lists /v1/users",
+            "packages/app-kit/src/api/routes.ts + packages/enterprise/src/api-surface.ts export 1 route template(s) under it"
+          ]
+        },
+        {
+          "id": "API:mutation-stages",
+          "status": "pass",
+          "summary": "the closed mutation-outcome vocabulary is exactly accepted/executed/delivered/billable-final, as spec/api.md requires",
+          "evidence": [
+            "packages/app-kit/src/api/outcomes.ts",
+            "spec/api.md §Command semantics"
+          ]
+        },
+        {
+          "id": "API:command-envelope",
+          "status": "pass",
+          "summary": "every mutation carries request/correlation/idempotency ids, actor/tenant context and the optimistic version field",
+          "evidence": [
+            "packages/app-kit/src/api/context.ts",
+            "spec/api.md §Command semantics"
+          ]
+        },
+        {
+          "id": "API:customer-webhooks",
+          "status": "pass",
+          "summary": "the RoamLink customer webhook contract is exported: HMAC-SHA256-authenticated, replay-protected webhook-endpoint routes; emissions from durable RoamLink state transitions only",
+          "evidence": [
+            "packages/enterprise/src/api-surface.ts (webhook-endpoint routes)",
+            "packages/enterprise/src/webhooks.ts + packages/notifications/src/notification-service.ts (HMAC-SHA256 + replay windows + roamlink_state_transition origin vocabulary)",
+            "spec/api.md §Webhooks"
+          ]
+        },
+        {
+          "id": "API:additive-routes",
+          "status": "pass",
+          "summary": "9 additive route template(s) beyond the spec's representative list (allowed by spec/api.md 'Representative resources' + RL-LOCK-017 additive tolerance)",
+          "evidence": [
+            "/v1/audit-events",
+            "/v1/reconciliation-jobs",
+            "/v1/projection-health",
+            "/v1/support-cases",
+            "/v1/enterprise/enrollments",
+            "/v1/enterprise/federation",
+            "/v1/enterprise/api-keys",
+            "/v1/enterprise/connectors",
+            "/v1/enterprise/webhook-endpoints"
+          ]
+        }
+      ],
+      "summary": "spec/api.md consistent with the exported contracts (10 resources, 4-stage acknowledgements, envelope, webhooks; 9 additive routes)"
+    }
+  ],
+  "stack": [
+    "install --frozen-lockfile",
+    "lint",
+    "typecheck",
+    "test (all suites)",
+    "architecture:check"
+  ],
+  "git": {
+    "commit": "e0e8a3c743e67712c6ab3ab59c8589d8f9bd6e4a",
+    "branch": "work/rl-080-081-release-gates",
+    "dirtyFiles": 3
+  }
+}

@@ -1,0 +1,337 @@
+{
+  "schema": "roamlink/release-gate@1",
+  "gate": "RL-081",
+  "title": "RoamLink production readiness gate",
+  "generatedAt": "2026-09-17T07:03:51.799Z",
+  "verdict": {
+    "status": "fail",
+    "exitCode": 1,
+    "failedSteps": [
+      "mvp-prerequisite"
+    ],
+    "skippedSteps": [],
+    "failedCriteria": [],
+    "failedCriterionRows": [],
+    "acceptedRisks": [
+      "AR-001",
+      "AR-002",
+      "AR-003",
+      "AR-009"
+    ]
+  },
+  "steps": [
+    {
+      "id": "mvp-prerequisite",
+      "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
+      "status": "fail",
+      "exitCode": 1,
+      "durationMs": 265446,
+      "summary": "exit 1",
+      "outputTail": [
+        "        {",
+        "          \"id\": \"SLO:intent-satisfaction-rate\",",
+        "          \"status\": \"fail\",",
+        "          \"summary\": \"instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE\",",
+        "          \"acceptedRiskIds\": []",
+        "        },",
+        "        {",
+        "          \"id\": \"SLO:connectivity-cost-per-useful-hour-gb-where-available\",",
+        "          \"status\": \"fail\",",
+        "          \"summary\": \"instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE\",",
+        "          \"acceptedRiskIds\": []",
+        "        },",
+        "        {",
+        "          \"id\": \"SLO:stale-unknown-state-duration\",",
+        "          \"status\": \"fail\",",
+        "          \"summary\": \"instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE\",",
+        "          \"acceptedRiskIds\": []",
+        "        },",
+        "        {",
+        "          \"id\": \"SLO:provider-access-failover-success\",",
+        "          \"status\": \"fail\",",
+        "          \"summary\": \"instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE\",",
+        "          \"acceptedRiskIds\": []",
+        "        },",
+        "        {",
+        "          \"id\": \"SLO:support-incidents-attributable-to-connectivity-orchestration\",",
+        "          \"status\": \"fail\",",
+        "          \"summary\": \"instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE\",",
+        "          \"acceptedRiskIds\": []",
+        "        }",
+        "      ]",
+        "    },",
+        "    {",
+        "      \"id\": \"MVP-4\",",
+        "      \"status\": \"pass\",",
+        "      \"failedRows\": []",
+        "    }",
+        "  ],",
+        "  \"acceptedRisks\": []",
+        "}"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "PRD-1",
+      "requirement": "Security/threat verification complete with all negative proofs green (RL-074 matrix); every recorded finding dispositioned via the accepted-risk registry — no open HIGH findings without an accepted-risk note (enforced for ALL severities).",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "SEC:suite",
+          "status": "pass",
+          "summary": "@roamlink/tests-security green (57/57 tests)",
+          "evidence": [
+            "tests/security/test/*.test.ts",
+            "docs/threat-model-verification.md"
+          ]
+        },
+        {
+          "id": "SEC:negative-proofs",
+          "status": "pass",
+          "summary": "threat-priority matrix: 10 threat rows, 19 VERIFIED verdict tokens",
+          "evidence": [
+            "docs/threat-model-verification.md"
+          ]
+        },
+        {
+          "id": "SEC:findings-recorded",
+          "status": "pass",
+          "summary": "5 recorded finding(s) across the verification docs (each must be dispositioned by the accepted-risk registry — see PRD-5)",
+          "evidence": [
+            "docs/threat-model-verification.md",
+            "docs/deployment-recovery.md",
+            "tests/load/README.md (DEFECT-1)",
+            "findings: RL-074-F1, RL-074-F2, RL-074-F3, RL-075-F1, RL-073-DEFECT-1"
+          ]
+        },
+        {
+          "id": "SEC:honest-gaps",
+          "status": "gap",
+          "summary": "10 documented inherent-infrastructure limit(s) (5 threat-model, 5 deployment) — these cannot be closed on this tree; they are explicit accepted risks, with the strongest deterministic proxies verified [UNMET — covered by accepted risk AR-009]",
+          "evidence": [
+            "docs/threat-model-verification.md §Honest gaps (5 items)",
+            "docs/deployment-recovery.md §Honest gaps (5 items)"
+          ],
+          "acceptedRiskIds": [
+            "AR-009"
+          ]
+        }
+      ],
+      "summary": "security verification green; findings + inherent limits explicitly dispositioned; 1 unmet row(s) explicitly covered by accepted-risk records: SEC:honest-gaps←AR-009"
+    },
+    {
+      "id": "PRD-2",
+      "requirement": "Deployment/recovery runbook verified (RL-075): cold start, crash recovery, backup/restore and dependency-failure modes all proven by green suites and documented.",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "DEPLOY:cold-start",
+          "status": "pass",
+          "summary": "verified: suite file present and the runbook documents the mode (cold start, CS-)",
+          "evidence": [
+            "tests/deployment/test/cold-start-shutdown.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        },
+        {
+          "id": "DEPLOY:crash-recovery",
+          "status": "pass",
+          "summary": "verified: suite file present and the runbook documents the mode (crash, M-5)",
+          "evidence": [
+            "tests/deployment/test/migration-recovery.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        },
+        {
+          "id": "DEPLOY:backup-restore",
+          "status": "pass",
+          "summary": "verified: suite file present and the runbook documents the mode (Backup, Restore, B-1)",
+          "evidence": [
+            "tests/deployment/test/backup-restore.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        },
+        {
+          "id": "DEPLOY:dependency-failure",
+          "status": "pass",
+          "summary": "verified: suite file present and the runbook documents the mode (ADCOS unreachable, D-1)",
+          "evidence": [
+            "tests/deployment/test/dependency-failure.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        },
+        {
+          "id": "DEPLOY:suite",
+          "status": "pass",
+          "summary": "@roamlink/tests-deployment green (26/26 tests)",
+          "evidence": [
+            "tests/deployment/test/*.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        }
+      ],
+      "summary": "all deployment/recovery legs verified and documented"
+    },
+    {
+      "id": "PRD-3",
+      "requirement": "Observability: structured logs with correlation IDs verified end-to-end in dogfood scenarios; health/readiness composition honest; operational §11 SLO instrumentation wired.",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "OBS:logs-correlation",
+          "status": "gap",
+          "summary": "the dogfood scenarios do NOT wire the observability structured logger (no @roamlink/observability import in tests/dogfood executable text) — correlation IDs are proven end-to-end through audit events, but structured-log records are not part of the dogfood evidence [UNMET — covered by accepted risk AR-001]",
+          "evidence": [
+            "tests/dogfood/src/world.ts (no observability import)",
+            "packages/observability/src/logging/* (the verified logging contract)"
+          ],
+          "acceptedRiskIds": [
+            "AR-001"
+          ]
+        },
+        {
+          "id": "OBS:health-readiness",
+          "status": "pass",
+          "summary": "health/readiness composition verified honest (degraded ≠ ready, unknown ≠ healthy, no-data SLOs never healthy; H-1..H-4)",
+          "evidence": [
+            "tests/deployment/test/health-readiness.test.ts",
+            "docs/deployment-recovery.md"
+          ]
+        },
+        {
+          "id": "OBS:slo-wiring",
+          "status": "gap",
+          "summary": "9 §11 SLO(s) lack operational wiring: SLO:time-to-usable-connectivity, SLO:minutes-without-usable-connectivity, SLO:manual-interventions-per-session-day, SLO:successful-automatic-recovery-rate, SLO:intent-satisfaction-rate, SLO:connectivity-cost-per-useful-hour-gb-where-available, SLO:stale-unknown-state-duration, SLO:provider-access-failover-success, SLO:support-incidents-attributable-to-connectivity-orchestration [UNMET — covered by accepted risk AR-002]",
+          "evidence": [
+            "spec/architecture.md §11 (the SLO list)",
+            "SLO:time-to-usable-connectivity: instrumentation: 1 hit(s) in tree code; dogfood/load assertion referencing it: NONE",
+            "SLO:minutes-without-usable-connectivity: instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+            "SLO:manual-interventions-per-session-day: instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+            "SLO:successful-automatic-recovery-rate: instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE",
+            "SLO:intent-satisfaction-rate: instrumentation: NONE in tree code; dogfood/load assertion referencing it: NONE"
+          ],
+          "acceptedRiskIds": [
+            "AR-002"
+          ]
+        }
+      ],
+      "summary": "2/3 observability rows failed: OBS:logs-correlation, OBS:slo-wiring; 2 unmet row(s) explicitly covered by accepted-risk records: OBS:logs-correlation←AR-001, OBS:slo-wiring←AR-002"
+    },
+    {
+      "id": "PRD-4",
+      "requirement": "Docs complete: README quickstart reproduces a local dogfood run from a clean clone with copy-paste commands; every spec document's current-state claims consistent with reality; CHANGELOG/release notes drafted for an MVP release.",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "DOCS:quickstart",
+          "status": "pass",
+          "summary": "README quickstart reproduces a local dogfood run from a clean clone with copy-paste commands (every referenced pnpm script exists)",
+          "evidence": [
+            "README.md §Quickstart",
+            "git clone https://github.com/payswapdotorg/RoamLink.git && cd RoamLink && corepack enable            # or: npm install -g pnpm@10.0.0 && pnpm install               # frozen-lockfile installs are used by CI and the gates && pnpm -C tests/dogfood test # the five dogfood scenarios (onboarding -> first"
+          ]
+        },
+        {
+          "id": "DOCS:current-state",
+          "status": "gap",
+          "summary": "stale current-state claims: \"no production feature implementation started\" contradicts 25 implemented packages (each with src/index.ts); \"Repository state: greenfield\" contradicts the implemented tree — spec/* is outside the release-gate worker's editable scope by dispatch, so this is recorded as an explicit gap for the Tech Lead [UNMET — covered by accepted risk AR-003]",
+          "evidence": [
+            "spec/current-state.md",
+            "implemented packages: 25"
+          ],
+          "acceptedRiskIds": [
+            "AR-003"
+          ]
+        },
+        {
+          "id": "DOCS:changelog",
+          "status": "pass",
+          "summary": "CHANGELOG drafted for the MVP release (scope, surfaces, verification stack, known gaps)",
+          "evidence": [
+            "CHANGELOG.md"
+          ]
+        }
+      ],
+      "summary": "1/3 docs rows failed: DOCS:current-state; 1 unmet row(s) explicitly covered by accepted-risk records: DOCS:current-state←AR-003"
+    },
+    {
+      "id": "PRD-5",
+      "requirement": "The accepted-risk registry is valid (schema, fields, severities, no self-coverage) and its coverage is complete (every finding and every unmet criterion row is explicitly dispositioned).",
+      "status": "pass",
+      "rows": [
+        {
+          "id": "RISK:registry",
+          "status": "pass",
+          "summary": "registry valid: 9 accepted-risk record(s), schema + required fields + severity vocabulary checked",
+          "evidence": [
+            "docs/reports/accepted-risks.json"
+          ]
+        },
+        {
+          "id": "RISK:no-orphans",
+          "status": "pass",
+          "summary": "every registry entry maps to an evaluated criterion row (no orphan bookkeeping)",
+          "evidence": [
+            "docs/reports/accepted-risks.json"
+          ]
+        },
+        {
+          "id": "RISK:findings-coverage",
+          "status": "pass",
+          "summary": "every recorded finding (RL-073-DEFECT-1, RL-074-F1, RL-074-F2, RL-074-F3, RL-075-F1) is referenced by an accepted-risk record",
+          "evidence": [
+            "docs/reports/accepted-risks.json",
+            "RL-073-DEFECT-1",
+            "RL-074-F1",
+            "RL-074-F2",
+            "RL-074-F3",
+            "RL-075-F1"
+          ]
+        },
+        {
+          "id": "RISK:high-disposition",
+          "status": "pass",
+          "summary": "all 1 high/critical accepted risk(s) carry exposure bounds, owners, review milestones and remediation paths",
+          "evidence": [
+            "docs/reports/accepted-risks.json"
+          ]
+        }
+      ],
+      "summary": "accepted-risk discipline holds"
+    }
+  ],
+  "mvpArtifact": "docs/reports/mvp-gate.json",
+  "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
+  "fullReport": true,
+  "git": {
+    "commit": "e0e8a3c743e67712c6ab3ab59c8589d8f9bd6e4a",
+    "branch": "work/rl-080-081-release-gates",
+    "dirtyFiles": 3
+  },
+  "mvpGate": {
+    "verdict": {
+      "status": "fail",
+      "exitCode": 1,
+      "failedSteps": [],
+      "skippedSteps": [],
+      "failedCriteria": [
+        "MVP-3"
+      ],
+      "failedCriterionRows": [
+        "MVP-3/SLO:time-to-usable-connectivity",
+        "MVP-3/SLO:minutes-without-usable-connectivity",
+        "MVP-3/SLO:manual-interventions-per-session-day",
+        "MVP-3/SLO:successful-automatic-recovery-rate",
+        "MVP-3/SLO:intent-satisfaction-rate",
+        "MVP-3/SLO:connectivity-cost-per-useful-hour-gb-where-available",
+        "MVP-3/SLO:stale-unknown-state-duration",
+        "MVP-3/SLO:provider-access-failover-success",
+        "MVP-3/SLO:support-incidents-attributable-to-connectivity-orchestration"
+      ],
+      "acceptedRisks": []
+    },
+    "generatedAt": "2026-09-17T07:03:51.843Z",
+    "artifact": "docs/reports/mvp-gate.json"
+  }
+}

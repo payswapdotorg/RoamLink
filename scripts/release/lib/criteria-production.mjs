@@ -248,7 +248,11 @@ export function evaluateSecurityVerification(repoRoot, suiteResults) {
   };
 }
 
-/** Counts `- ` list items directly following a heading matching `pattern`. */
+/**
+ * Counts list items directly following a heading matching `pattern` —
+ * both `- ` bullets and `1. ` numbered items (the real RL-074/RL-075 docs
+ * number their honest-gap entries; the mini-repo fixtures use bullets).
+ */
 function countListItemsAfterHeading(markdown, pattern) {
   const lines = markdown.split("\n");
   let index = 0;
@@ -257,7 +261,7 @@ function countListItemsAfterHeading(markdown, pattern) {
       let count = 0;
       let cursor = index + 1;
       while (cursor < lines.length && !/^##\s/.test(lines[cursor])) {
-        if (/^\s*-\s/.test(lines[cursor])) count += 1;
+        if (/^\s*(?:-\s|\d+\.\s)/.test(lines[cursor])) count += 1;
         cursor += 1;
       }
       return count;
