@@ -75,10 +75,11 @@ Architecture conformance is additionally enforced by real tests in
 env-schema/.env.example parity) which run as part of `pnpm test` and fail the
 build on violation (RL-LOCK-018).
 
-### The RL-070 through RL-073 test matrix
+### The RL-070 through RL-075 test matrix
 
-Beyond `tests/architecture`, four dedicated suites prove the architecture
-locks and the product promise end-to-end (they also run as part of
+Beyond `tests/architecture`, six dedicated suites prove the architecture
+locks, the product promise, the security threat model and the
+deployment/recovery story end-to-end (they also run as part of
 `pnpm test`):
 
 | Suite | What it proves |
@@ -87,6 +88,8 @@ locks and the product promise end-to-end (they also run as part of
 | `tests/simulation` (RL-071) | end-to-end failure-mode simulations over the composed public packages + the §10 ADCOS fake: duplicate command delivery at EVERY boundary (intent adapter timeouts, webhook redelivery, commerce commands, reconciliation re-runs, edge outbox re-enqueue), reordering (reversed webhook events vs projection ordering defense + convergence), loss (dropped events + silent canonical changes -> reconciler repair with digest-verified payloads), delay (freshness decay to STALE, delayed truth re-establishing freshness, commerce read model re-evaluating at the query instant), partition (offline edge convergence on reconnect, exactly-once server effects via idempotency-key dedupe), partial failure (UnitOfWork atomicity + transactional outbox retry convergence) and byzantine inputs (forged/malformed webhooks rejected at admission; schema drift -> §9 gate fails CLOSED for mutations). Deterministic throughout: testkit clock/ids/recorder, no sleeps, no network, no ADCOS internals. |
 | `tests/dogfood` (RL-072) | full-lifecycle DOGFOOD scenarios composing the REAL public packages through their public surfaces (the §10 ADCOS fake is the only external stand-in), each deterministic (testkit clock/ids, one correlation-ID family) and asserted on OBSERVABLE public state - read models, notifications, audit, projections - never package internals: (1) new-customer onboarding -> first usable connectivity (auth -> device -> commerce -> intent -> compile -> submit -> offer/activation/reservation -> webhooks -> projections -> evidence -> decision -> notification) + a full idempotency leg; (2) degradation -> failover -> recovery (silent canonical change, honest device observations, stale-while-degraded, intent re-planning, digest-verified reconciliation repair, unreachable-truth degradation); (3) offline edge round-trip (encrypted outbox, partition backoff, batched sync with lost acks, conflict policy, dead-letter budget); (4) refund + partial refund with incident correlation (typed money facts, proven refund bounds, correlated case/notifications/audit, tamper-evident chains, durable mutes); (5) enterprise tenant onboarding through the enterprise surface with the admin console observing the SAME truth through the same public API (fail-closed privilege boundary). |
 | `tests/load` (RL-073) | deterministic LOAD/RELIABILITY suites (no wall-clock timing - testkit clock, exact operation counting through counting proxies over the PUBLIC ports): high-volume webhook ingestion (thousands of events, duplicates + full reversal) with complexity invariants (N distinct events = exactly N reads + N writes; duplicates = zero projection work; reordering = one read per event, zero late writes, convergence); sustained edge outbox churn (400-record flood -> exactly-once convergence, bounded retry work, bounded batches); notification fan-out under mute storms (K emissions = exactly K per-user preference reads, never O(all-customers)); reconciliation full-vs-incremental canonical refresh (CONSISTENT targets = zero canonical GETs, bounded attempts per target, honest STALE degradation under sustained outage, job-id replay = zero work); resilience under sustained failure (open breaker rejects without invoking, half-open probe saturation fail-closed, retry/deadline budgets cap total attempts, sliding-window admits exactly maxCost per key). Records DEFECT-1 with a minimal reproducer (inbox drain cannot progress past the first batch-limit records of a larger backlog). |
+| `tests/security` (RL-074) | SECURITY/THREAT-MODEL verification executing spec/security.md's threat priorities as attack fixtures with expected-rejection assertions (negative proofs + durable-state consequences): webhook source attacks (forged signatures, unknown keys, replays, replay-window both directions, unsupported schema versions, oversized payloads, environment mismatch, malformed envelopes, header/envelope disagreement - all rejected at inbox admission with zero durable side effects; customer webhooks emitted only from verified durable transitions); tenant/actor boundary attacks at EVERY public surface (no existence oracle, audited denials, fail-closed admin privilege escalation); the RL-054 secret-scanner sweep across every persisted surface (zero findings after poisoned-fixture negative proofs) - records FINDINGS RL-074-F1 (JWT-shaped provider references accepted into commerce records) and RL-074-F2 (auth-session tokenDigest field name scanner-flagged; the value is a non-invertible digest); auth/session attacks (exact-boundary expiry, revocation, idempotency attacks, unconstructible lifetime bounds; AUTHENTICATED fabrication structurally unreachable; rank-demotion protection; fail-closed rotation) - records FINDING RL-074-F3 (double revoke = typed CAS conflict); audit-chain tamper detection (mutation/reorder/splice at the exact broken sequence; the full-tail-rewrite limit pinned honestly); privacy/retention enforcement (purge semantics, consent gating, structural policy strictness, audited access). Verdict matrix + honest gaps: docs/threat-model-verification.md. |
+| `tests/deployment` (RL-075) | DEPLOYMENT/RECOVERY verification as deterministic simulations (no real infrastructure) asserting durability invariants - no lost work, no duplicate effects, convergence: migration/recovery (clean application from empty and every prior state, idempotent re-runs, descending forward-compatible rollback, crash-during-migration convergence, fail-closed ledger corruption); cold start/orderly shutdown (empty start, exactly-once resumption, shutdown-mid-batch loses no durable work - batched drains pin the RL-073 DEFECT-1, failing-storage admission acknowledges nothing) - records FINDING RL-075-F1 (outbox records stranded in DELIVERING have no public recovery path; reproducer pinned); backup/restore (public-contract export/import round-trip, digest-identical restored projections, §8 conformance core, surviving dedupe keys, reconciler repairs torn-write AND missed-webhook drift); dependency failure (ADCOS unreachable = honest STALE + bounded attempts + breaker rejects without invoking + retry/deadline budgets; partial degradation = stale-while-degraded; clock skew holds replay windows and query-instant freshness; storage failing = fail-closed with no silent loss; §9 gate fails closed for mutations); health/readiness composition (degraded != ready, unknown != healthy, no-data SLOs never healthy, composed data-plane health degrades honestly and recovers). Verified runbook + failure-mode matrix + honest gaps: docs/deployment-recovery.md. |
 
 ### Commit hooks
 
@@ -430,3 +433,21 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   (circuit-breaker probe saturation, retry/deadline budgets, limiter
   windows). Records DEFECT-1 (inbox drain backlog progression) with a
   minimal reproducer.
+- `tests/security` — the RL-074 security/threat-model verification suite:
+  an executable verification of spec/security.md's threat priorities —
+  webhook source attacks, tenant/actor boundary attacks at every public
+  surface, the RL-054 secret-scanner sweep across every persisted surface,
+  auth/session attacks (AUTHENTICATED fabrication, rank demotion, rotation),
+  audit-chain tamper detection, and privacy/retention enforcement — each
+  with attack fixtures that MUST be rejected (negative proofs with
+  durable-state consequences). Verdict matrix and honest gaps in
+  docs/threat-model-verification.md.
+- `tests/deployment` — the RL-075 deployment/recovery verification suite:
+  deterministic simulations of the deployment and recovery story —
+  migration/recovery, cold start/orderly shutdown with crash injection,
+  backup/restore through the public contracts with reconciler drift repair,
+  dependency-failure modes (ADCOS outage, partial degradation, clock skew,
+  storage failure, compatibility gate) and honest health/readiness
+  composition — asserting durability invariants (no lost work, no duplicate
+  effects, convergence). Verified runbook and failure-mode matrix in
+  docs/deployment-recovery.md.

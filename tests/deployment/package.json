@@ -1,0 +1,36 @@
+{
+  "name": "@roamlink/tests-deployment",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vitest"
+  },
+  "dependencies": {
+    "@roamlink/adcos": "workspace:*",
+    "@roamlink/audit": "workspace:*",
+    "@roamlink/compat": "workspace:*",
+    "@roamlink/contracts": "workspace:*",
+    "@roamlink/integration": "workspace:*",
+    "@roamlink/notifications": "workspace:*",
+    "@roamlink/observability": "workspace:*",
+    "@roamlink/persistence": "workspace:*",
+    "@roamlink/projections": "workspace:*",
+    "@roamlink/reconciliation": "workspace:*",
+    "@roamlink/resilience": "workspace:*",
+    "@roamlink/testkit": "workspace:*",
+    "@roamlink/webhook-inbox": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
