@@ -1,0 +1,5 @@
+ ✓ test/a.test.ts (2 tests) 5ms
+ ✓ test/b.test.ts (3 tests) 4ms
+
+ Test Files  2 passed (2)
+      Tests  5 passed (5)
