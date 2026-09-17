@@ -35,6 +35,7 @@ import { AdcosReconciliationEngine, type ReconciliationCompatibilityGate } from 
 import { ReconciliationJobStore } from "./job-store.js";
 import type { ReconciliationPolicy } from "./policy.js";
 import { AdcosClientResourceDiscovery, type CanonicalResourceDiscovery } from "./resource-discovery.js";
+import type { ReconciliationSloObserver } from "./slo-emission.js";
 
 /** Everything the boundary needs. All inputs are validated/typed seams. */
 export interface ReconciliationBoundaryOptions {
@@ -56,6 +57,12 @@ export interface ReconciliationBoundaryOptions {
   readonly discovery?: CanonicalResourceDiscovery;
   readonly compatibility?: ReconciliationCompatibilityGate;
   readonly jobIdGenerator?: IdGenerator;
+  /**
+   * Optional §11 SLO emission port (additive RL-052 wiring), passed through
+   * to the reconciliation engine — see `slo-emission.ts`. The
+   * `@roamlink/observability` product-SLO recorder satisfies it structurally.
+   */
+  readonly sloObserver?: ReconciliationSloObserver;
 }
 
 /** The composed boundary. Write capabilities stay inside. */
@@ -140,6 +147,7 @@ export function createAdcosReconciliationBoundary(
       : { discovery: new AdcosClientResourceDiscovery(options.client) }),
     ...(options.compatibility !== undefined ? { compatibility: options.compatibility } : {}),
     ...(options.jobIdGenerator !== undefined ? { jobIdGenerator: options.jobIdGenerator } : {}),
+    ...(options.sloObserver !== undefined ? { sloObserver: options.sloObserver } : {}),
   });
 
   return {

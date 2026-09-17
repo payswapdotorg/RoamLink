@@ -86,6 +86,7 @@ import {
 import { parseReconciliationPolicy, type ReconciliationPolicy, DEFAULT_RECONCILIATION_POLICY } from "./policy.js";
 import type { CanonicalResourceDiscovery, DiscoveryResult } from "./resource-discovery.js";
 import type { ReconciliationJobStore, StoredReconciliationJob } from "./job-store.js";
+import { degradedForMsAt, emitReconciliationSloEvents, closedStaleWindowMs, type ReconciliationSloObserver } from "./slo-emission.js";
 
 // --------------------------------------------------------------------------------
 // Ports and inputs
@@ -135,6 +136,14 @@ export interface AdcosReconciliationEngineOptions {
   readonly compatibility?: ReconciliationCompatibilityGate;
   /** Deterministic in tests; defaults to random canonical UUIDs. */
   readonly jobIdGenerator?: IdGenerator;
+  /**
+   * Optional §11 SLO emission port (additive RL-052 wiring): the completed
+   * job's durable actions are emitted as successful-automatic-recovery,
+   * stale/unknown-state-duration and manual-intervention measurements. The
+   * `@roamlink/observability` product-SLO recorder satisfies it structurally.
+   * Absent by default — behavior is IDENTICAL without it.
+   */
+  readonly sloObserver?: ReconciliationSloObserver;
 }
 
 /** The default system actor reconciliation jobs run as. */
@@ -228,6 +237,7 @@ export class AdcosReconciliationEngine {
   readonly #discovery: CanonicalResourceDiscovery | undefined;
   readonly #compatibility: ReconciliationCompatibilityGate | undefined;
   readonly #jobIdGenerator: IdGenerator;
+  readonly #sloObserver: ReconciliationSloObserver | undefined;
 
   constructor(options: AdcosReconciliationEngineOptions) {
     this.#client = options.client;
@@ -243,6 +253,7 @@ export class AdcosReconciliationEngine {
     this.#discovery = options.discovery;
     this.#compatibility = options.compatibility;
     this.#jobIdGenerator = options.jobIdGenerator ?? { next: () => randomUUID() };
+    this.#sloObserver = options.sloObserver;
   }
 
   /** Lists the durable job records (diagnostics; committed state only). */
@@ -360,6 +371,7 @@ export class AdcosReconciliationEngine {
           retry,
         },
       );
+      this.#emitSloEvents(completed.record);
       return completed.record;
     } catch (error) {
       const normalized = normalizeUnknownError(error);
@@ -558,6 +570,17 @@ export class AdcosReconciliationEngine {
         detail: `PARTIAL_APPLICATION_UNREPAIRABLE (${code}; cause=${cause}; attempts=${attempts}; ${outcome.outcome})`,
         attempted_at: now,
         attempts,
+        metrics: {
+          degradedForMs: degradedForMsAt(
+            {
+              freshness_state: record?.freshness_state ?? "UNKNOWN",
+              fresh_until: record?.fresh_until ?? null,
+              observed_at: record?.observed_at ?? null,
+            },
+            now,
+            epochMsOf,
+          ),
+        },
       });
       return;
     }
@@ -575,6 +598,17 @@ export class AdcosReconciliationEngine {
         detail: `TRUTH_UNOBTAINABLE (${code}; cause=${cause}; attempts=${attempts}; ${outcome.outcome})`,
       attempted_at: now,
       attempts,
+      metrics: {
+        degradedForMs: degradedForMsAt(
+          {
+            freshness_state: record?.freshness_state ?? "FRESH",
+            fresh_until: record?.fresh_until ?? null,
+            observed_at: record?.observed_at ?? null,
+          },
+          now,
+          epochMsOf,
+        ),
+      },
     });
   }
 
@@ -591,6 +625,11 @@ export class AdcosReconciliationEngine {
       typeof rawVersion === "number" && Number.isInteger(rawVersion) && rawVersion >= 1
         ? rawVersion
         : undefined;
+    // §11 stale/unknown-state duration: when this repair CLOSES a
+    // stale/unknown window, the closed window's duration is stamped into the
+    // durable action metrics (never guessed — computed from the pre-repair
+    // record's own freshness fields).
+    const closedWindow = closedStaleWindowMs(target.record, fetchedAt, epochMsOf);
 
     if (classification === "PARTIALLY_APPLIED") {
       // AUTHORITATIVE REPLACEMENT: a partially applied record's version
@@ -611,6 +650,14 @@ export class AdcosReconciliationEngine {
         detail: `PARTIAL_APPLICATION_REPAIRED (authoritative replacement; ${outcome.outcome})`,
         attempted_at: fetchedAt,
         attempts: 1,
+        ...(closedWindow !== null
+          ? {
+              metrics: {
+                staleForMs: closedWindow.durationMs,
+                staleState: closedWindow.staleState === "unknown" ? "UNKNOWN" : "STALE",
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -631,6 +678,14 @@ export class AdcosReconciliationEngine {
         detail: `CANONICAL_READ_APPLIED (source_version=${sourceVersion ?? "null"})`,
         attempted_at: fetchedAt,
         attempts: 1,
+        ...(closedWindow !== null
+          ? {
+              metrics: {
+                staleForMs: closedWindow.durationMs,
+                staleState: closedWindow.staleState === "unknown" ? "UNKNOWN" : "STALE",
+              },
+            }
+          : {}),
       });
       return;
     }
@@ -659,6 +714,14 @@ export class AdcosReconciliationEngine {
           detail: `FRESHNESS_RENEWED (same truth re-observed at source_version=${sourceVersion ?? "null"}; guarantee renewed)`,
           attempted_at: fetchedAt,
           attempts: 1,
+          ...(closedWindow !== null
+            ? {
+                metrics: {
+                  staleForMs: closedWindow.durationMs,
+                  staleState: closedWindow.staleState === "unknown" ? "UNKNOWN" : "STALE",
+                },
+              }
+            : {}),
         });
         return;
       }
@@ -703,6 +766,22 @@ export class AdcosReconciliationEngine {
         return await this.#client.getContractAssurance(parseAdcosContractRef(target.resourceId));
       case "webhook_endpoint":
         return await this.#client.getWebhookEndpoint(parseAdcosResourceId(target.resourceId));
+    }
+  }
+
+  /**
+   * Emits the completed job's §11 SLO events through the optional observer.
+   * Emission can never break the repair loop: a throwing observer is
+   * swallowed (the job's durable record is already the truth; the observer
+   * is a projection of it). No-op without an observer.
+   */
+  #emitSloEvents(job: ReconciliationJobRecord): void {
+    if (this.#sloObserver === undefined) return;
+    try {
+      emitReconciliationSloEvents(this.#sloObserver, job);
+    } catch {
+      // Deliberately suppressed: observability emission is downstream of the
+      // durable truth, never a gate in front of it.
     }
   }
 }
