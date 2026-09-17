@@ -25,6 +25,11 @@
  *   NOTIFICATIONS (RL-014) NotificationService (durable notifications emitted
  *                        only from RoamLink durable state transitions)
  *   AUDIT (RL-051)       InMemoryAuditLog (tamper-evident SHA-256 chain)
+ *   SLO PLANE (RL-052)   The §11 product-SLO instrumentation: the REAL
+ *                        observability metric registry + SLO event recorder,
+ *                        with the reconciliation boundary wired to emit its
+ *                        durable-action §11 measurements into the same
+ *                        recorder the scenarios assert on (MVP-3 wiring)
  */
 import { fixtureCommandEnvelope } from "@roamlink/testkit";
 import {
@@ -33,7 +38,16 @@ import {
   type Clock,
 } from "@roamlink/testkit";
 import type { CommandEnvelope, TenantId, UtcInstant, UserId } from "@roamlink/contracts";
-import { parseUserId, tenantIdFromUser } from "@roamlink/contracts";
+import { epochMsOf, parseUserId, parseUtcInstant, tenantIdFromUser } from "@roamlink/contracts";
+import {
+  MetricRegistry,
+  SloEventRecorder,
+  createMetricsRecorder,
+  createProductSloRecorder,
+  registerProductSloMetrics,
+  type InMemoryMetrics,
+  type ProductSloRecorder,
+} from "@roamlink/observability";
 import { createInMemoryPersistence } from "@roamlink/persistence";
 import { InMemoryProjectionStore, type ProjectionReader } from "@roamlink/projections";
 import {
@@ -108,6 +122,11 @@ export const STEP_MS = 1_000;
 /** Deterministic instant arithmetic over ISO strings (no ambient Date.now). */
 export function instantPlusMs(iso: string, milliseconds: number): string {
   return new Date(Date.parse(iso) + milliseconds).toISOString();
+}
+
+/** Milliseconds between two ISO instants (deterministic duration math). */
+export function msBetween(startIso: string, endIso: string): number {
+  return epochMsOf(parseUtcInstant(endIso)) - epochMsOf(parseUtcInstant(startIso));
 }
 
 /**
@@ -196,6 +215,12 @@ export interface DogfoodWorld {
   readonly clock: DeterministicClock;
   readonly ids: DeterministicUuidGenerator;
   readonly correlation: CorrelationFamily;
+  /** The §11 SLO instrumentation plane (RL-052): real recorders over the real ports. */
+  readonly slo: {
+    readonly metrics: InMemoryMetrics;
+    readonly events: SloEventRecorder;
+    readonly recorder: ProductSloRecorder;
+  };
   readonly fake: FakeAdcos;
   readonly compatibility: AdcosCompatibilityState;
   readonly adcos: {
@@ -249,6 +274,30 @@ export function makeDogfoodWorld(
   const ids = new DeterministicUuidGenerator(1);
   const correlation = new CorrelationFamily(scene);
 
+  // --- §11 SLO instrumentation plane (RL-052, MVP-3 wiring) ------------------
+  // The REAL observability primitives: the metric registry/recorded samples
+  // (RL-040) + the SLO event recorder (RL-052). The reconciliation boundary
+  // emits its durable-action §11 measurements into the same recorder below,
+  // so scenarios assert on ONE product-grade instrumentation surface.
+  const sloMetricRegistry = new MetricRegistry();
+  registerProductSloMetrics(sloMetricRegistry);
+  const sloMetrics = createMetricsRecorder(sloMetricRegistry);
+  const sloEvents = new SloEventRecorder();
+  const sloRecorder = createProductSloRecorder(
+    { metrics: sloMetrics, events: sloEvents, now: () => clock.now() },
+    // The harness's operator-configured budgets (targets are composition
+    // choices here, never product-invented defaults): each journey classifies
+    // its measurements against these thresholds.
+    {
+      timeToUsableConnectivityMs: 300_000,
+      minutesWithoutUsableConnectivity: 30,
+      manualInterventionsPerSessionDay: 2,
+      connectivityCostPerUsefulHourMinorUnits: 10,
+      staleUnknownStateDurationMs: 120_000,
+      supportIncidentsPerDay: 1,
+    },
+  );
+
   // --- ADCOS plane: the §10 fake behind the real adapters --------------------
   const fake = new FakeAdcos({
     seedProbe: options.seedProbe ?? false,
@@ -284,6 +333,9 @@ export function makeDogfoodWorld(
     clock,
     platformTenantId: PLATFORM_TENANT,
     jobIdGenerator: new DeterministicUuidGenerator(3),
+    // §11 SLO emission wiring: the reconciler's durable actions feed the
+    // same recorder the scenarios assert on (additive, optional port).
+    sloObserver: sloRecorder,
   });
 
   // --- Auth plane (RL-004) ---------------------------------------------------
@@ -430,6 +482,7 @@ export function makeDogfoodWorld(
     clock,
     ids,
     correlation,
+    slo: { metrics: sloMetrics, events: sloEvents, recorder: sloRecorder },
     fake,
     compatibility,
     adcos,

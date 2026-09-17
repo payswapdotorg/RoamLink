@@ -33,7 +33,13 @@
 import { describe, expect, it } from "vitest";
 import { parseAdcosSignatureRef } from "@roamlink/adcos";
 import { NotFoundError, parseExperienceDecisionId } from "@roamlink/contracts";
-import { buildExperienceDecision } from "@roamlink/domain-experience";
+import {
+  TIME_TO_USABLE_CONNECTIVITY_MS_METRIC,
+  INTENT_SATISFACTION_RATE_METRIC,
+  CONNECTIVITY_COST_PER_USEFUL_HOUR_GB_METRIC,
+  evaluateProductSlo,
+} from "@roamlink/observability";
+import { buildExperienceDecision, intentSatisfactionOf } from "@roamlink/domain-experience";
 import { computeRefundableAmount } from "@roamlink/domain-commerce";
 import type { IntentCommandInput } from "@roamlink/integration";
 import { compileExperienceIntent } from "@roamlink/intent-compiler";
@@ -42,9 +48,11 @@ import {
   instantPlusMs,
   journeyIntentPayload,
   makeDogfoodWorld,
+  msBetween,
   must,
   registerCustomer,
   enrollJourneyDevice,
+  STEP_MS,
   type DogfoodWorld,
   type JourneyCustomer,
 } from "../src/world.js";
@@ -132,6 +140,14 @@ describe("RL-072 scenario 1: new customer onboarding -> first usable connectivit
   
     // --- 4. order + payment (RL-021/022) ------------------------------------
     await placePaidOrder(world, customer);
+    // §11 "time to usable connectivity" start marker: the paid order is the
+    // journey's commitment instant (measured below when first usable
+    // connectivity lands).
+    const paidAt = world.clock.now();
+    // Three deterministic hops between the paid order and the evidence link:
+    // the journey's activation legs (submission, offer selection,
+    // activation, reservation, webhook projection) consume real clock time.
+    world.clock.advanceBy(3 * STEP_MS);
     const placedOrder = await world.commerce.store.read.orders.findById(
       customer.tenantId,
       ORDER_ID as never,
@@ -353,6 +369,53 @@ describe("RL-072 scenario 1: new customer onboarding -> first usable connectivit
     expect(subjectView.evidence?.canonicalResourceId).toBe(contractId);
     expect(subjectView.evidence?.evidenceClass).toBe("AUTHENTICATED");
 
+    // §11 "time to usable connectivity" (journey-level measurement): the
+    // FIRST usable-connectivity instant is exactly this FRESH, EVIDENCED,
+    // AUTHENTICATED link. Recorded through the REAL product-SLO recorder -
+    // histogram sample + good event under the harness budget (300s).
+    const usableAt = world.clock.now();
+    const timeToUsableMs = msBetween(paidAt, usableAt);
+    expect(timeToUsableMs).toBe(3 * STEP_MS);
+    world.slo.recorder.recordTimeToUsableConnectivity({
+      tenantId: customer.tenantId,
+      durationMs: timeToUsableMs,
+    });
+    const timeToUsableSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === TIME_TO_USABLE_CONNECTIVITY_MS_METRIC);
+    expect(timeToUsableSamples).toHaveLength(1);
+    expect((timeToUsableSamples[0] as { value: number }).value).toBe(timeToUsableMs);
+    const timeToUsableSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "time-to-usable-connectivity",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(timeToUsableSlo.good).toBe(1);
+    expect(timeToUsableSlo.bad).toBe(0);
+    expect(timeToUsableSlo.state).toBe("within-budget");
+
+    // §11 "connectivity cost per useful hour/GB where available": the pass
+    // grants a 14-day term (336 useful hours) for 24.99 USD. The ADCOS usage
+    // evidence reports ZERO bytes, so the per-GB unit is NOT available and
+    // is honestly NOT recorded ("where available").
+    const usage = await world.fake.getContractUsage(contractId);
+    const usageBytes = ((usage as Record<string, unknown>)["usage"] as Record<string, unknown>)["bytes"];
+    expect(usageBytes).toBe(0);
+    world.slo.recorder.recordConnectivityCostPerUsefulUnit({
+      tenantId: customer.tenantId,
+      minorUnitsPerUsefulHour: 2499 / (14 * 24),
+    });
+    const costSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === CONNECTIVITY_COST_PER_USEFUL_HOUR_GB_METRIC);
+    expect(costSamples).toHaveLength(1);
+    expect((costSamples[0]?.labels as Record<string, unknown>)["unit"]).toBe("per_useful_hour");
+    expect(
+      costSamples.every(
+        (sample) => (sample.labels as Record<string, unknown>)["unit"] !== "per_useful_gb",
+      ),
+    ).toBe(true);
+
     // --- 11. decision read model (RL-013) -----------------------------------
     const capabilitySnapshot = await world.experience.registry.latestCapabilitySnapshot(
       customer.tenantId,
@@ -381,6 +444,30 @@ describe("RL-072 scenario 1: new customer onboarding -> first usable connectivit
     expect(capabilityInput?.sourceAuthority).toBe("roamlink");
     expect(capabilityInput?.freshness?.freshnessState).toBe("FRESH");
     expect(capabilityInput?.weight).toBeGreaterThan(0);
+
+    // §11 "intent satisfaction rate" (product measurement point, RL-013):
+    // the PURE derived-status mapping decides the outcome — a supported
+    // decision is a SATISFIED intent — and the recorder turns it into the
+    // SLO's good/bad event stream + counter sample.
+    const satisfaction = intentSatisfactionOf(decision);
+    expect(satisfaction).toEqual({ satisfied: true });
+    world.slo.recorder.recordIntentSatisfaction({
+      tenantId: customer.tenantId,
+      satisfied: must(satisfaction, "intent satisfaction measurement").satisfied,
+    });
+    const satisfactionSamples = world.slo.metrics
+      .samples()
+      .filter((sample) => sample.name === INTENT_SATISFACTION_RATE_METRIC);
+    expect(satisfactionSamples).toHaveLength(1);
+    expect((satisfactionSamples[0]?.labels as Record<string, unknown>)["outcome"]).toBe("good");
+    const satisfactionSlo = evaluateProductSlo(
+      world.slo.recorder,
+      "intent-satisfaction-rate",
+      { targetRatio: 0.99, windowMs: 3_600_000 },
+    );
+    expect(satisfactionSlo.good).toBe(1);
+    expect(satisfactionSlo.observedGoodRatio).toBe(1);
+    expect(satisfactionSlo.state).toBe("within-budget");
 
     // --- 12. notification delivered (RL-014) -------------------------------
     // Notifications are emitted ONLY from RoamLink's own durable state

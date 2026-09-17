@@ -82,3 +82,30 @@ through `onJobError`.
 classification), `@roamlink/projections` (the §8 writer — this package is
 the boundary), `@roamlink/webhook-inbox` (the durable inbox),
 `@roamlink/testkit` (deterministic clocks/ids).
+
+## §11 SLO emission (additive RL-052 wiring)
+
+`slo-emission.ts` turns the reconciliation loop into a real measurement point
+for three §11 SLOs of spec/architecture.md §11, without changing any behavior:
+
+- the engine and the boundary factory accept an OPTIONAL
+  `sloObserver: ReconciliationSloObserver` (a structural port — the
+  `@roamlink/observability` product-SLO recorder satisfies it directly, so
+  composed services and harnesses wire the SAME typed recorder they assert
+  on; absent by default, behavior identical);
+- after a job transitions to COMPLETED, its DURABLE actions are emitted
+  through the port (`emitReconciliationSloEvents`, pure): every `REPAIRED`
+  canonical refresh is one SUCCESSFUL AUTOMATIC RECOVERY (good event) — plus
+  the CLOSED stale/unknown window duration when the pre-repair record was
+  STALE/UNKNOWN (`metrics.staleForMs`/`staleState`, computed from the
+  record's own freshness fields, never guessed); every `DEGRADED_STALE`/
+  `DEGRADED_UNKNOWN` is a FAILED attempt (bad event, plus the
+  unguarantee-age at honest degradation, usually 0 — the loop degrades
+  within the renewal margin while the guarantee is still valid); a job with
+  `trigger_reason: "manual"` is ONE MANUAL INTERVENTION;
+- `DEFERRED` / `ALREADY_CONSISTENT` / `CANONICAL_ABSENT` emit nothing (not
+  recovery attempts), and idempotent job replays return the recorded outcome
+  without re-running, so they never double-emit;
+- emission happens strictly AFTER the durable COMPLETED transition and can
+  never break the repair loop (observer errors are swallowed — the job
+  record is the truth, the observer is a projection of it).

@@ -13,6 +13,7 @@
 import { parseAdcosSignatureRef } from "@roamlink/adcos";
 import type { IntentCommandInput } from "@roamlink/integration";
 import { compileExperienceIntent } from "@roamlink/intent-compiler";
+import { epochMsOf, parseUtcInstant } from "@roamlink/contracts";
 
 import {
   journeyIntentPayload,
@@ -45,6 +46,8 @@ export interface ActiveConnectivity {
   readonly leaseId: string;
   /** The reference's revision after the initial evidence link. */
   readonly referenceRevision: number;
+  /** The instant first usable connectivity was established (§11 marker). */
+  readonly usableAt: string;
 }
 
 /**
@@ -99,6 +102,11 @@ export async function seedActiveConnectivity(
     expectedRevision: 1,
     transition: "succeed",
   });
+  // §11 "time to usable connectivity" (harness-side measurement point):
+  // the paid-order instant is the journey's start marker — the first
+  // usable-connectivity instant is captured when the evidence link lands
+  // FRESH below.
+  const paidAt = world.clock.now();
 
   // ExperienceIntent -> compile -> submit through the boundary.
   await world.experience.intents.createIntent(world.envelope(actor), {
@@ -170,6 +178,17 @@ export async function seedActiveConnectivity(
   });
   expectLinkedFresh(linked);
 
+  // FIRST USABLE CONNECTIVITY (§11 "time to usable connectivity"): the
+  // reference is EVIDENCED + FRESH against the AUTHENTICATED activated
+  // contract projection. The measured duration is paidAt -> this instant on
+  // the deterministic clock, recorded through the REAL product-SLO recorder
+  // (histogram sample + threshold-classified good/bad event).
+  const usableAt = world.clock.now();
+  world.slo.recorder.recordTimeToUsableConnectivity({
+    tenantId: customer.tenantId,
+    durationMs: epochMsOf(parseUtcInstant(usableAt)) - epochMsOf(parseUtcInstant(paidAt)),
+  });
+
   return {
     world,
     customer,
@@ -182,6 +201,7 @@ export async function seedActiveConnectivity(
     contractId,
     leaseId,
     referenceRevision: linked.revision,
+    usableAt,
   };
 }
 

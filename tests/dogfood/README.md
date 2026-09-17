@@ -46,3 +46,23 @@ Every scenario is fully deterministic: testkit clock/ids, one correlation
 family, no sleeps, no wall-clock timing, no network. The ADCOS fake is the
 only external stand-in; every RoamLink-side package is the real public
 surface.
+
+## §11 SLO instrumentation (MVP-3 wiring)
+
+The world (`src/world.ts`) composes the REAL `@roamlink/observability`
+product-SLO plane: a `MetricRegistry` with `registerProductSloMetrics`, the
+fail-closed metrics recorder, the `SloEventRecorder`, and the typed
+`createProductSloRecorder` (with the harness's operator-configured budget
+thresholds). The reconciliation boundary is wired with the recorder as its
+`sloObserver`, so the PRODUCT side emits its durable-action §11 measurements
+(successful automatic recovery, closed stale/unknown windows, manual
+interventions) into the same surface the scenarios assert on. The scenarios
+additionally record the journey-level measurements at their honest points:
+time to usable connectivity (paid order -> first FRESH/EVIDENCED link —
+`src/journey.ts`), minutes without usable connectivity (guarantee expiry ->
+failover relink), provider/access failover outcomes, manual interventions
+(customer re-planning, operator conflict resolution), intent satisfaction
+(the pure `intentSatisfactionOf` mapping over built decisions), connectivity
+cost per useful unit where available (per-hour from the term; per-GB
+honestly absent while the usage evidence reports zero bytes), and support
+incidents attributable to connectivity orchestration.

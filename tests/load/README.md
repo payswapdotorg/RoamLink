@@ -61,3 +61,15 @@ No wall-clock timing, no sleeps, no network, no ambient randomness: every
 assertion is an exact operation count or a bounded-behavior proof on the
 testkit clock. The generous vitest `testTimeout` is execution headroom for
 volume only.
+
+## §11 SLO emission-volume invariants (MVP-3 wiring)
+
+The load harness (`src/harness.ts`) composes the same REAL
+`@roamlink/observability` product-SLO plane and wires it into the boundary as
+its `sloObserver`. The reconciliation load suite (REC) asserts the emission
+volume as a complexity invariant (SLO-E): for N repaired targets the
+recorder receives EXACTLY N good automatic-recovery events and N closed
+stale-window durations (each the true TTL-expiry age), and NOTHING for
+incremental no-ops or idempotent job replays — emission is exactly
+proportional to durable repair work, never O(N²) chatter and never
+duplicated.

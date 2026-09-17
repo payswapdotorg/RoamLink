@@ -21,6 +21,15 @@
  */
 import type { UtcInstant } from "@roamlink/contracts";
 import { DeterministicClock } from "@roamlink/testkit";
+import {
+  MetricRegistry,
+  SloEventRecorder,
+  createMetricsRecorder,
+  createProductSloRecorder,
+  registerProductSloMetrics,
+  type InMemoryMetrics,
+  type ProductSloRecorder,
+} from "@roamlink/observability";
 import { createInMemoryPersistence } from "@roamlink/persistence";
 import { InMemoryProjectionStore, type ProjectionReader } from "@roamlink/projections";
 import {
@@ -104,6 +113,12 @@ export interface LoadWorld {
   readonly fake: FakeAdcos;
   readonly store: CountingProjectionStore;
   readonly boundary: ReturnType<typeof createAdcosReconciliationBoundary>;
+  /** The §11 SLO instrumentation plane (RL-052): the reconciliation boundary emits its durable-action measurements here. */
+  readonly slo: {
+    readonly metrics: InMemoryMetrics;
+    readonly events: SloEventRecorder;
+    readonly recorder: ProductSloRecorder;
+  };
   /** Admits the given deliveries (signed, in order). */
   admitAll: (deliveries: readonly FakeAdcosDelivery[]) => Promise<readonly string[]>;
 }
@@ -116,6 +131,24 @@ export interface LoadWorldOptions {
 export function makeLoadWorld(options: LoadWorldOptions = {}): LoadWorld {
   const clock = new DeterministicClock(options.startAt ?? T0);
   const fake = new FakeAdcos({ seedProbe: false, now: () => clock.now() });
+  // §11 SLO instrumentation plane (RL-052): the REAL observability ports,
+  // wired into the reconciliation boundary so the load suites can assert
+  // EXACT emission counts per unit of admitted work (SLO-E invariants).
+  const sloMetricRegistry = new MetricRegistry();
+  registerProductSloMetrics(sloMetricRegistry);
+  const sloMetrics = createMetricsRecorder(sloMetricRegistry);
+  const sloEvents = new SloEventRecorder();
+  const sloRecorder = createProductSloRecorder(
+    {
+      metrics: sloMetrics,
+      events: sloEvents,
+      now: () => clock.now(),
+    },
+    // The load harness's operator-configured budget for the duration SLOs
+    // the boundary emits (composition choice, never a product default): the
+    // closed stale windows under load (TTL + 5s aging) classify as good.
+    { staleUnknownStateDurationMs: 120_000 },
+  );
   const persistence = createInMemoryPersistence();
   const store = new CountingProjectionStore(new InMemoryProjectionStore());
   const verifier = new HmacWebhookVerifier({
@@ -132,6 +165,7 @@ export function makeLoadWorld(options: LoadWorldOptions = {}): LoadWorld {
     verifier,
     clock,
     platformTenantId: PLATFORM_TENANT,
+    sloObserver: sloRecorder,
     jobIdGenerator: (() => {
       let counter = 0;
       return {
@@ -173,7 +207,7 @@ export function makeLoadWorld(options: LoadWorldOptions = {}): LoadWorld {
     return outcomes;
   };
 
-  return { clock, fake, store, boundary, admitAll };
+  return { clock, fake, store, boundary, slo: { metrics: sloMetrics, events: sloEvents, recorder: sloRecorder }, admitAll };
 }
 
 /**
