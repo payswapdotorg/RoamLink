@@ -55,9 +55,12 @@ import {
   intentsPage,
   morePage,
   notificationsPage,
+  onboardingPage,
   overviewPage,
   settingsPage,
   supportPage,
+  findGoalChoice,
+  parseOnboardingStep,
 } from "./pages/index.js";
 import { pagePath, type WebPageName } from "./routes.js";
 import { WEB_APP_STYLES } from "./styles.js";
@@ -117,6 +120,7 @@ function activeNavHref(page: WebPageName): string {
     more: pagePath("more"),
     settings: pagePath("settings"),
     overview: pagePath("overview"),
+    onboarding: pagePath("home"),
   };
   return candidates[page];
 }
@@ -287,7 +291,36 @@ export class CustomerWebApp {
         return this.#withReads("your settings", async () =>
           settingsPage({ session: await this.#client.getActorSession() }),
         );
+      case "onboarding":
+        return await this.#renderOnboarding(request);
     }
+  }
+
+  /**
+   * The onboarding wizard (RL-082). Steps 1 and 2 need no reads. Step 3 and
+   * 4 need the device list; a failed read fails closed like every page.
+   */
+  async #renderOnboarding(request: PageRequest): Promise<HtmlFragment> {
+    const step = parseOnboardingStep(request.params?.step);
+    const goalId = request.params?.goal;
+    if (step === "welcome") {
+      return onboardingPage({ step });
+    }
+    if (step === "goal") {
+      return onboardingPage({ step, ...(goalId !== undefined ? { goalId } : {}) });
+    }
+    return this.#withReads("your devices", async () => {
+      const devices = await this.#client.listDevices();
+      const deviceId = request.params?.deviceId;
+      const notice = request.params?.notice;
+      return onboardingPage({
+        step,
+        ...(goalId !== undefined ? { goalId } : {}),
+        devices,
+        ...(deviceId !== undefined ? { deviceId } : {}),
+        ...(notice !== undefined ? { notice } : {}),
+      });
+    });
   }
 
   /**
@@ -392,6 +425,66 @@ export class CustomerWebApp {
         ...options,
         expectedVersion: intent.revision,
       });
+    });
+  }
+
+  /**
+   * The onboarding finish flow (RL-082): creates the customer's goal from
+   * the chosen human goal statement and activates it — both through the
+   * full command envelope. Returns the activate acknowledgement on success
+   * or the typed failure of whichever command failed; the app never
+   * decides outcomes.
+   */
+  async completeOnboardingFlow(
+    input: {
+      readonly deviceId: string;
+      readonly goalChoiceId: string;
+    },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    const goal = findGoalChoice(input.goalChoiceId);
+    if (goal === undefined) {
+      return {
+        status: "error",
+        error: new ApiClientError({
+          kind: "validation",
+          reason: "REQUEST_PAYLOAD_INVALID",
+          message: "the onboarding goal choice does not exist",
+          retryable: false,
+          status: 0,
+        }),
+      };
+    }
+    return this.#runMutation(async () => {
+      const created = await this.#client.createExperienceIntent(
+        {
+          deviceId: input.deviceId,
+          rationale: goal.statement,
+          accessClasses: goal.accessClasses,
+        },
+        options,
+      );
+      const intentId = created.resource?.id;
+      if (intentId === undefined) {
+        throw new ApiClientError({
+          kind: "unknown-state",
+          reason: "ONBOARDING_GOAL_NOT_CREATED",
+          message: "the created goal id was not returned; the goal cannot be activated safely",
+          retryable: true,
+          status: 0,
+        });
+      }
+      // Versioned activation commands against the current revision (same
+      // discipline as activateIntentFlow): read, then activate.
+      const intent = await this.#client.getExperienceIntent(intentId);
+      return this.#client.activateExperienceIntent(
+        { intentId },
+        {
+          ...options,
+          idempotencyKey: `${options?.idempotencyKey ?? "onboarding"}-activate`,
+          expectedVersion: intent.revision,
+        },
+      );
     });
   }
 

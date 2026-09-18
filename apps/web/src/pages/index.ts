@@ -6,6 +6,7 @@ export * from "./commerce-page.js";
 export * from "./notifications-page.js";
 export * from "./support-page.js";
 export * from "./home-page.js";
+export * from "./onboarding-page.js";
 export * from "./activity-page.js";
 export * from "./more-page.js";
 export * from "./settings-page.js";

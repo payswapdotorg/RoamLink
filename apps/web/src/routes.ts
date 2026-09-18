@@ -18,6 +18,7 @@
  */
 export const WEB_PAGE_ROUTES = Object.freeze({
   home: "/",
+  onboarding: "/onboarding",
   overview: "/overview",
   connectivity: "/connectivity",
   devices: "/devices",
