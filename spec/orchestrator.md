@@ -114,3 +114,43 @@ At minimum test:
 ## Final release rule
 
 Do not declare completion because all tickets are green. Completion requires all release gates plus an architecture audit showing that RoamLink remains a Connectivity Experience OS above ADCOS rather than a second connectivity OS.
+
+
+## Post-gate worker dispatch
+
+Wave 6:
+- Worker A: RL-082..RL-088.
+- Worker B: RL-089..RL-094.
+- Worker C: RL-095..RL-100.
+
+Wave 7:
+- Worker A: RL-101..RL-104.
+- Worker B: RL-105..RL-108.
+- Worker C: RL-109..RL-112.
+
+Wave 8:
+- Workers parallelize validation; RL-118 remains orchestrator-owned.
+
+### UX review rule
+
+A feature is incomplete when the user cannot reasonably discover what it does, where it is, why it changed, what RoamLink knows, what it does not know, what the user can do next, and how to get help. Use spec/ux-architecture.md and spec/user-journey-audit.md as the source of truth.
+
+### Deployment review rule
+
+Use spec/deployment.md as the source of truth. Free-tier providers are replaceable infrastructure, never domain authorities.
+
+At minimum:
+- Neon/Postgres owns durable relational state.
+- Redis is ephemeral.
+- QStash is asynchronous delivery.
+- R2 is object storage.
+- Vercel is the hosted runtime, not a domain authority.
+
+A provider limit that can threaten correctness is a blocker, not an optimization.
+
+### Additional dogfood journeys
+
+- first-run onboarding -> goal -> device -> connectivity -> activity -> support;
+- purchase -> delivery evidence -> billable-final;
+- enterprise visual onboarding -> live organization overview;
+- hosted ADCOS compatibility failure -> read-only/degraded experience.
