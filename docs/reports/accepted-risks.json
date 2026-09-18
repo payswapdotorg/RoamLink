@@ -35,15 +35,15 @@
     },
     {
       "id": "AR-003",
-      "title": "spec/current-state.md still claims 'no production feature implementation started' / 'Repository state: greenfield'",
+      "title": "spec/current-state.md stale status block (REMEDIATED)",
       "criterion": "PRD-4",
       "rowId": "DOCS:current-state",
       "severity": "medium",
-      "justification": "The implemented tree contradicts spec/current-state.md's header claims: 25 packages + 3 apps + 7 verification suites with green tests exist on main. The dispatch for the release-gate worker explicitly forbids editing spec/* ('the gates MEASURE the spec, they don't change it'), so this documented inconsistency is recorded as an explicit gap for the Tech Lead instead of being silently patched.",
-      "exposure": "Documentation only: a reader of spec/current-state.md is misled about implementation status. No code, test or gate behavior depends on the stale claims (the gates verify the tree, not the doc's prose).",
-      "remediation": "The Tech Lead refreshes spec/current-state.md's status block to reflect the implemented tree (minutes of work); the production gate's DOCS:current-state row then turns green without any gate change.",
+      "justification": "At original gate-construction time, spec/current-state.md incorrectly claimed the repository was greenfield. The Tech Lead handoff refresh has now corrected the status block to describe the implemented RL-081 baseline and post-gate roadmap.",
+      "exposure": "Resolved at the repository-documentation level; the current-state file no longer claims the tree is greenfield.",
+      "remediation": "LANDED: spec/current-state.md refreshed. Re-run pnpm production-gate to regenerate the historical gate artifacts against the updated documentation state.",
       "owner": "Tech Lead",
-      "reviewBy": "at merge of the release-gates branch",
+      "reviewBy": "next production-gate rerun",
       "references": [
         "GAP:spec-current-state-stale"
       ]
