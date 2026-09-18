@@ -60,6 +60,19 @@ the domain modules, and the conformance suite guards the boundary.
   construction, there is NO raw-HTML escape hatch) and the shared components
   (`components.ts`: freshness badges, the four-stage mutation pipeline,
   connectivity subject cards, error panels, page shell).
+- `src/ui/shell.ts` (RL-083, additive) - the customer application-shell
+  primitives per ADR-0002: `applicationShell` (skip link, header with the
+  persistent connectivity status, desktop sidebar nav, mobile bottom nav,
+  footer), `sidebarNav`/`bottomNav` (aria-current aware), the derived
+  connectivity indicator (`deriveShellConnectivityState` +
+  `shellConnectivityIndicator`: a closed vocabulary computed ONLY from the
+  read-model subjects, rendered WITH its facts, "usefully connected" only
+  from fresh delivery evidence, honest `unverifiable` state on read
+  failure), the warm-light stylesheet (`WARM_SHELL_STYLES`: focus-visible,
+  prefers-reduced-motion, >=44px touch targets, safe-area inset), and the
+  additive `htmlDocument(..., { styles })` parameter. The shell is a
+  presentation boundary: it holds no domain authority and no local
+  connectivity state machine.
 
 ## Admin surface permission mapping (RL-061)
 
