@@ -105,12 +105,26 @@ export function joinFragments(
   };
 }
 
-/** Renders the full HTML document wrapper. */
-export function htmlDocument(title: string, body: HtmlFragment): HtmlFragment {
+/**
+ * Renders the full HTML document wrapper. `options.styles` (RL-083, additive)
+ * appends extra stylesheet content (e.g. the application-shell styles) after
+ * the base styles; existing callers are unaffected.
+ */
+export interface HtmlDocumentOptions {
+  /** Extra CSS appended after the built-in base styles (raw, trusted input). */
+  readonly styles?: readonly string[];
+}
+
+export function htmlDocument(title: string, body: HtmlFragment, options?: HtmlDocumentOptions): HtmlFragment {
+  const extraStyles =
+    options?.styles === undefined || options.styles.length === 0
+      ? ""
+      : options.styles.join("\n") + "\n";
   return {
     html:
       `<!DOCTYPE html>\n` +
       `<html lang="en">\n<head>\n<meta charset="utf-8">\n` +
+      `<meta name="viewport" content="width=device-width, initial-scale=1">\n` +
       `<title>${escapeHtml(title)}</title>\n` +
       `<style>\n` +
       `:root { color-scheme: light dark; }\n` +
@@ -148,6 +162,7 @@ export function htmlDocument(title: string, body: HtmlFragment): HtmlFragment {
       `.stages li { padding: 0.15rem 0; font-size: 0.9rem; }\n` +
       `.stages li[data-reached="false"] { color: #999; }\n` +
       `code { background: #f0f0f0; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }\n` +
+      `${extraStyles}` +
       `</style>\n</head>\n<body>\n${body.html}\n</body>\n</html>\n`,
   };
 }

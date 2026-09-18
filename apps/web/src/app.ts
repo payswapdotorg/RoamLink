@@ -1,5 +1,5 @@
 /**
- * The customer web application (RL-060).
+ * The customer web application (RL-060 + RL-082/083).
  *
  * A PURE VIEW + COMMAND surface over the public application API
  * (spec/repository-layout.md "apps consume public application APIs/read
@@ -17,31 +17,53 @@
  *  - flows that target an existing versioned resource read the current
  *    revision first and command against it; a lost race surfaces as the
  *    typed conflict panel (optimistic-version aware by construction).
+ *
+ * RL-083: the app renders inside the @roamlink/app-kit application shell
+ * (warm-light, desktop sidebar + mobile bottom navigation, persistent
+ * connectivity status derived from the authoritative read model with its
+ * facts shown). The shell is a presentation boundary (ADR-0002): no
+ * authority, no local connectivity state machine — the indicator is derived
+ * ONLY from the parsed ConnectivityOverviewResource and renders honestly
+ * when the read itself fails.
+ *
+ * RL-082: the four-step first-run onboarding lives in pages/onboarding-page;
+ * its finish flow is the ONLY onboarding mutation path and goes through the
+ * same envelope as every other command.
  */
 import {
   ApiClientError,
+  applicationShell,
   errorPanel,
   isApiClientError,
   loadingPanel,
   mutationResultPanel,
-  pageShell,
+  shellConnectivityIndicator,
+  WARM_SHELL_STYLES,
   type MutationAcknowledgement,
   type MutationFlowResult,
   type RoamLinkApiClient,
 } from "@roamlink/app-kit";
 
 import type { HtmlFragment } from "@roamlink/app-kit";
-import { htmlDocument, fragment, el, text } from "@roamlink/app-kit";
+import { el, fragment, htmlDocument, text } from "@roamlink/app-kit";
 import {
+  activityPage,
   commercePage,
   devicesPage,
+  homePage,
   intentDetailPage,
   intentsPage,
+  morePage,
   notificationsPage,
+  onboardingPage,
   overviewPage,
+  settingsPage,
   supportPage,
+  findGoalChoice,
+  parseOnboardingStep,
 } from "./pages/index.js";
 import { pagePath, type WebPageName } from "./routes.js";
+import { WEB_APP_STYLES } from "./styles.js";
 
 export interface CustomerWebAppDeps {
   readonly client: RoamLinkApiClient;
@@ -55,15 +77,53 @@ export interface PageRequest {
   readonly lastResult?: MutationFlowResult;
 }
 
-const NAV = [
-  { label: "Overview", href: pagePath("overview") },
+/**
+ * The exact customer navigation (spec/ux-architecture.md §3). Desktop:
+ * Home | Connectivity | Activity | Devices | Goals | Plans & Billing |
+ * Support. Mobile: Home | Connect | Activity | Devices | More.
+ * Routes stay stable; labels are human (Goals renders the ExperienceIntent
+ * surface, Plans & Billing renders commerce).
+ */
+export const DESKTOP_NAV = [
+  { label: "Home", href: pagePath("home") },
   { label: "Connectivity", href: pagePath("connectivity") },
+  { label: "Activity", href: pagePath("activity") },
   { label: "Devices", href: pagePath("devices") },
-  { label: "Experience intents", href: pagePath("intents") },
-  { label: "Products & orders", href: pagePath("commerce") },
-  { label: "Notifications", href: pagePath("notifications") },
+  { label: "Goals", href: pagePath("intents") },
+  { label: "Plans & Billing", href: pagePath("commerce") },
   { label: "Support", href: pagePath("support") },
 ] as const;
+
+export const MOBILE_NAV = [
+  { label: "Home", href: pagePath("home") },
+  { label: "Connect", href: pagePath("connectivity") },
+  { label: "Activity", href: pagePath("activity") },
+  { label: "Devices", href: pagePath("devices") },
+  { label: "More", href: pagePath("more") },
+] as const;
+
+/** Nav href for a page (drives aria-current in the shell). */
+function activeNavHref(page: WebPageName): string {
+  const candidates: Record<WebPageName, string> = {
+    home: pagePath("home"),
+    connectivity: pagePath("connectivity"),
+    activity: pagePath("activity"),
+    notifications: pagePath("activity"),
+    devices: pagePath("devices"),
+    device: pagePath("devices"),
+    intents: pagePath("intents"),
+    intent: pagePath("intents"),
+    commerce: pagePath("commerce"),
+    order: pagePath("commerce"),
+    support: pagePath("support"),
+    case: pagePath("support"),
+    more: pagePath("more"),
+    settings: pagePath("settings"),
+    overview: pagePath("overview"),
+    onboarding: pagePath("home"),
+  };
+  return candidates[page];
+}
 
 export class CustomerWebApp {
   readonly #client: RoamLinkApiClient;
@@ -85,12 +145,18 @@ export class CustomerWebApp {
     const body = await this.renderPage(request);
     return htmlDocument(
       `RoamLink - ${request.page}`,
-      pageShell({
+      applicationShell({
         appTitle: "RoamLink",
-        navLinks: [...NAV],
+        homeHref: pagePath("home"),
+        sidebarLinks: [...DESKTOP_NAV],
+        bottomNavItems: [...MOBILE_NAV],
+        activeHref: activeNavHref(request.page),
+        connectivityIndicator: await this.#shellIndicator(),
         main: body,
-        footerNote: "RoamLink customer web app (RL-060): a view + command surface over the public application API.",
+        footerNote:
+          "RoamLink is your Connectivity Experience OS. The shell is a presentation boundary: your connectivity state comes from authoritative reads, with evidence and freshness.",
       }),
+      { styles: [WARM_SHELL_STYLES, WEB_APP_STYLES] },
     ).html;
   }
 
@@ -104,8 +170,39 @@ export class CustomerWebApp {
     );
   }
 
+  /**
+   * The persistent shell indicator: derived ONLY from the authoritative
+   * connectivity read. If the read fails, renders the honest "cannot
+   * confirm" state — never a guessed status (the page body itself fails
+   * closed independently).
+   */
+  async #shellIndicator() {
+    try {
+      const overview = await this.#client.getConnectivityOverview();
+      return shellConnectivityIndicator({
+        subjects: overview.subjects,
+        detailsHref: pagePath("connectivity"),
+      });
+    } catch {
+      return shellConnectivityIndicator({
+        subjects: null,
+        detailsHref: pagePath("connectivity"),
+      });
+    }
+  }
+
   async #renderBody(request: PageRequest): Promise<HtmlFragment> {
     switch (request.page) {
+      case "home":
+        return this.#withReads("your connectivity", async () => {
+          const [connectivity, intents, devices, notifications] = await Promise.all([
+            this.#client.getConnectivityOverview(),
+            this.#client.listExperienceIntents(),
+            this.#client.listDevices(),
+            this.#client.listNotifications(),
+          ]);
+          return homePage({ connectivity, intents, devices, notifications });
+        });
       case "overview":
         return this.#withReads("your overview", async () => {
           const [connectivity, notifications] = await Promise.all([
@@ -121,6 +218,15 @@ export class CustomerWebApp {
             notifications: [],
           }),
         );
+      case "activity":
+        return this.#withReads("your activity", async () => {
+          const [notifications, intents, devices] = await Promise.all([
+            this.#client.listNotifications(),
+            this.#client.listExperienceIntents(),
+            this.#client.listDevices(),
+          ]);
+          return activityPage({ notifications, intents, devices });
+        });
       case "devices":
         return this.#withReads("your devices", async () =>
           devicesPage({ devices: await this.#client.listDevices() }),
@@ -130,15 +236,15 @@ export class CustomerWebApp {
           devicesPage({ devices: [await this.#client.getDevice(request.params?.deviceId ?? "")] }),
         );
       case "intents":
-        return this.#withReads("your experience intents", async () =>
+        return this.#withReads("your goals", async () =>
           intentsPage({ intents: await this.#client.listExperienceIntents() }),
         );
       case "intent":
-        return this.#withReads("the experience intent", async () =>
+        return this.#withReads("the goal", async () =>
           intentDetailPage({ intent: await this.#client.getExperienceIntent(request.params?.intentId ?? "") }),
         );
       case "commerce":
-        return this.#withReads("products, orders and subscriptions", async () => {
+        return this.#withReads("your plans and billing", async () => {
           const [products, orders, subscriptions] = await Promise.all([
             this.#client.listProducts(),
             this.#client.listOrders(),
@@ -179,7 +285,42 @@ export class CustomerWebApp {
           }
           return supportPage({ cases: [found] });
         });
+      case "more":
+        return morePage();
+      case "settings":
+        return this.#withReads("your settings", async () =>
+          settingsPage({ session: await this.#client.getActorSession() }),
+        );
+      case "onboarding":
+        return await this.#renderOnboarding(request);
     }
+  }
+
+  /**
+   * The onboarding wizard (RL-082). Steps 1 and 2 need no reads. Step 3 and
+   * 4 need the device list; a failed read fails closed like every page.
+   */
+  async #renderOnboarding(request: PageRequest): Promise<HtmlFragment> {
+    const step = parseOnboardingStep(request.params?.step);
+    const goalId = request.params?.goal;
+    if (step === "welcome") {
+      return onboardingPage({ step });
+    }
+    if (step === "goal") {
+      return onboardingPage({ step, ...(goalId !== undefined ? { goalId } : {}) });
+    }
+    return this.#withReads("your devices", async () => {
+      const devices = await this.#client.listDevices();
+      const deviceId = request.params?.deviceId;
+      const notice = request.params?.notice;
+      return onboardingPage({
+        step,
+        ...(goalId !== undefined ? { goalId } : {}),
+        devices,
+        ...(deviceId !== undefined ? { deviceId } : {}),
+        ...(notice !== undefined ? { notice } : {}),
+      });
+    });
   }
 
   /**
@@ -284,6 +425,66 @@ export class CustomerWebApp {
         ...options,
         expectedVersion: intent.revision,
       });
+    });
+  }
+
+  /**
+   * The onboarding finish flow (RL-082): creates the customer's goal from
+   * the chosen human goal statement and activates it — both through the
+   * full command envelope. Returns the activate acknowledgement on success
+   * or the typed failure of whichever command failed; the app never
+   * decides outcomes.
+   */
+  async completeOnboardingFlow(
+    input: {
+      readonly deviceId: string;
+      readonly goalChoiceId: string;
+    },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    const goal = findGoalChoice(input.goalChoiceId);
+    if (goal === undefined) {
+      return {
+        status: "error",
+        error: new ApiClientError({
+          kind: "validation",
+          reason: "REQUEST_PAYLOAD_INVALID",
+          message: "the onboarding goal choice does not exist",
+          retryable: false,
+          status: 0,
+        }),
+      };
+    }
+    return this.#runMutation(async () => {
+      const created = await this.#client.createExperienceIntent(
+        {
+          deviceId: input.deviceId,
+          rationale: goal.statement,
+          accessClasses: goal.accessClasses,
+        },
+        options,
+      );
+      const intentId = created.resource?.id;
+      if (intentId === undefined) {
+        throw new ApiClientError({
+          kind: "unknown-state",
+          reason: "ONBOARDING_GOAL_NOT_CREATED",
+          message: "the created goal id was not returned; the goal cannot be activated safely",
+          retryable: true,
+          status: 0,
+        });
+      }
+      // Versioned activation commands against the current revision (same
+      // discipline as activateIntentFlow): read, then activate.
+      const intent = await this.#client.getExperienceIntent(intentId);
+      return this.#client.activateExperienceIntent(
+        { intentId },
+        {
+          ...options,
+          idempotencyKey: `${options?.idempotencyKey ?? "onboarding"}-activate`,
+          expectedVersion: intent.revision,
+        },
+      );
     });
   }
 

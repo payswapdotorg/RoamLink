@@ -115,8 +115,8 @@ export function intentsPage(input: {
 }): HtmlFragment {
   return fragment(
     pageHeading(
-      "Experience intents",
-      "What you want your connectivity experience to be. Immutable versions, linked by supersession.",
+      "Goals",
+      "What you want your connectivity experience to be. Immutable versions, linked by supersession. (Advanced: experience intents.)",
     ),
     input.intents.length === 0
       ? emptyState("experience intents")
