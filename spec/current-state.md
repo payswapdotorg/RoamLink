@@ -1,48 +1,63 @@
 # Current State
 
-**Baseline:** implementation-ready architecture v1.0.0
-**Implementation status:** MVP scope implemented and verified — every roadmap work item RL-001..RL-081 is delivered and merged; the MVP release gate (RL-080) and the production readiness gate (RL-081) both pass (exit 0) on main
-**Repository state:** post-campaign MVP tree — 25 packages, 3 app surfaces (`apps/web`, `apps/admin`, `apps/mobile`), 7 verification suites (`tests/`), 1,861 tests green across 36 test workspaces
+**Baseline:** RoamLink architecture v1.0.0 plus implemented feature set through RL-081.
+**Architecture status:** FROZEN FOR IMPLEMENTATION.
+**Implementation status:** Current deterministic release-gate implementation is complete; RL-080 MVP and RL-081 production-readiness are recorded as PASS.
+**Hosted deployment status:** NOT DEPLOYED as a complete interactive product. Customer/admin/mobile surfaces are implemented as workspace packages/libraries; real hosted runtime, PostgreSQL driver, SQL migrations and provider deployment remain in RL-082 through RL-118.
+**Next phase:** post-gate productization and hosted deployment.
 
-## How this status was reached
+## Completed implementation
 
-Seventeen merged pull requests delivered the roadmap in dependency order (merge history on main):
-
-- **Wave 0** (PR #1): repo/CI foundation + architecture contracts (RL-001/RL-002).
-- **Wave 1** (PRs #2–#4): persistence/queue primitives, auth/tenant boundary, experience domain, edge platform + observability/testkit scaffolding, ADCOS v2.0 public-client contract.
-- **Wave 2** (PRs #5–#7): ADCOS integration adapters, webhook inbox, projection engine, intent compiler, decision read model, commerce domain, edge observation + offline outbox, platform/security primitives.
-- **Wave 3** (PRs #8–#10): reconciliation engine, ADCOS compatibility suite, device action adapter, enterprise edge connector, payments/invoices/refunds, commerce-to-connectivity reference model.
-- **Wave 4** (PRs #11–#14): customer web app, admin/ops console, mobile/edge UX shell, enterprise onboarding/API surface, authority conformance suite, failure/reordering/duplication suites, end-to-end dogfood + load/reliability suites.
-- **Wave 5** (PRs #15–#16): security/threat-model verification, deployment/recovery verification, and the executable release gates themselves (RL-080/RL-081).
-- **Wave 6** (PR #17): SLO operational wiring (MVP-3 remediation) — nine §11 SLO recorders, emission wiring, dogfood/load journey assertions.
-
-Defects found en route are recorded with in-suite reproducers (RL-073-DEFECT-1, RL-074-F1..F3, RL-075-F1) and dispositioned in the accepted-risk registry; AR-001 and AR-002 were remediated by Wave 6, AR-003 by the post-campaign spec-status refresh, and AR-009-class inherent-infrastructure limits remain open by design until real infrastructure lands (see `docs/reports/accepted-risks.json`).
-
-## Completed planning/setup
-
-- Frozen RoamLink layered architecture.
-- Frozen authority model and anti-duplication locks.
-- ADCOS integration boundary and lifecycle mapping.
+- Frozen layered architecture and authority model.
+- ADCOS public Developer API boundary and lifecycle mapping.
 - Customer/ADCOS state separation.
-- Mobile/edge capability model.
-- Security and threat boundaries.
-- Work-item inventory.
-- Dependency graph for up to three concurrent workers.
-- Definition of Done.
-- Orchestrator/worker operating protocol.
-- Repository/package/CI scaffolding.
-- Architecture sanity-check script.
+- Customer domain, commerce, edge, platform/security and integration packages.
+- Customer web package.
+- Admin/operations package.
+- Mobile/edge UX shell.
+- Enterprise API/onboarding package.
+- Architecture conformance suite.
+- Failure/reordering/duplicate simulations.
+- End-to-end dogfood scenarios.
+- Load/reliability verification.
+- Security/threat-model verification.
+- Deployment/recovery contract verification.
+- RL-080 MVP release gate: PASS.
+- RL-081 production-readiness gate: PASS with explicitly disclosed accepted risks.
 
-## Standing guidance
+## User-facing audit result
 
-### External dependency gate
+The repository contains real customer, admin and mobile UX capabilities, but the customer web package is a library that requires a host. There is not yet one deployed entry point through which a new customer can discover the complete product.
 
-Before production ADCOS integration work, pin and verify the ADCOS Developer API contract/version actually available in the target environment. The RoamLink architecture must not assume ADCOS implementation details that are not exposed by that public contract. The in-tree compatibility suite (`tests/conformance`) encodes this discipline against the fake/real ADCOS switch.
+The user-journey audit is recorded in spec/user-journey-audit.md and the target UX is frozen for implementation in spec/ux-architecture.md.
 
-### Accepted risks
+## Known gaps and accepted risks
 
-The accepted-risk registry (`docs/reports/accepted-risks.json`) is the authoritative disposition record. High/critical entries carry exposure bounds, owners, review milestones, and remediation paths; AR-009-class items flip to closed as the corresponding real infrastructure lands (vault-backed secrets adapter, PostgreSQL persistence driver, anchored audit checkpoints, network-level load testing).
+The deterministic gates explicitly record remaining risks and infrastructure gaps, including:
+
+- real PostgreSQL semantics and real SQL migrations;
+- multi-process deployment races;
+- outbox records stranded in DELIVERING without a public recovery path;
+- inbox drains that require a first-batch workaround;
+- infrastructure-dependent portions of security/deployment verification;
+- real hosted ADCOS compatibility and deployment.
+
+These are not silently promoted to PASS.
+
+## Immediate post-gate work
+
+1. Build the customer shell and onboarding using spec/ux-architecture.md.
+2. Add the real hosted application/API boundary.
+3. Replace the in-memory persistence adapter in hosted environments with PostgreSQL.
+4. Add real SQL migrations.
+5. Wire durable jobs and hosted reconciliation.
+6. Deploy the early validation stack using spec/deployment.md.
+7. Run the user-journey and discoverability validation in RL-113..RL-118.
+
+## External dependency gate
+
+Before production ADCOS integration, pin and verify the actual ADCOS Developer API contract/version available in the target environment. RoamLink must not assume ADCOS implementation details that are not exposed by that public contract.
 
 ## Completion definition
 
-See `spec/definition-of-done.md` and `spec/orchestrator.md`. The project is not complete until RL-080 and RL-081 pass — **both gates pass on main**; the machine-verifiable verdicts are committed at `docs/reports/mvp-gate.json` and `docs/reports/production-gate.json` (re-run them anytime with `pnpm mvp-gate` and `pnpm production-gate`).
+RL-080 and RL-081 remain satisfied as the architecture/release gates. The product is not considered genuinely deployed until RL-118 passes.

@@ -60,3 +60,20 @@ RoamLink/
 Use a typed, testable, reproducible TypeScript monorepo unless an approved ADR changes this choice. Prefer a workspace package manager, strict TypeScript, schema-first API contracts, PostgreSQL-compatible persistence, and a durable queue/outbox mechanism. Infrastructure choices may be swapped behind contracts.
 
 Do not couple domain packages to a specific web framework, database ORM or cloud vendor.
+
+
+## Hosted product additions
+
+The post-gate hosted architecture adds a real application host without moving authority into the UI.
+
+Recommended host composition:
+
+- apps/portal-host — deployable web host for customer and admin surfaces.
+- services/api — authenticated public API/BFF composition layer.
+- services/workers — durable async work orchestration.
+- services/reconciler — canonical ADCOS refresh/reconciliation worker.
+- services/webhook-ingest — webhook admission endpoint/worker.
+- infra/migrations — real PostgreSQL migration set.
+- infra/deployment — provider manifests and environment templates.
+
+Existing apps/web, apps/admin and apps/mobile remain presentation/application packages. They are consumed by the host and do not become authority-bearing services.

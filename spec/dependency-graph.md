@@ -53,3 +53,42 @@ Workers may run concurrently only when their work-item dependencies are satisfie
 ## Merge order
 
 Merge lower-level contracts before consumers. Prefer small, reviewable commits. The orchestrator reviews each merge against the architecture locks before opening the next wave.
+
+
+## Post-gate waves
+
+### Wave 6 — customer shell + hosted runtime
+
+Worker A:
+RL-082 -> RL-083 -> RL-084 -> RL-085 -> RL-086; RL-087 and RL-088 follow RL-083.
+
+Worker B:
+RL-089 -> RL-090; RL-003 -> RL-091 -> RL-092; RL-091 -> RL-093 -> RL-094.
+
+Worker C:
+RL-095 + RL-096 + RL-097 + RL-098 + RL-099 -> RL-100.
+
+Wave 6 integration gate:
+RL-083 + RL-090 + RL-092 + RL-100.
+
+### Wave 7 — journey completion
+
+Worker A: RL-101 -> RL-102; RL-103; RL-104.
+
+Worker B: RL-105; RL-106 after RL-091/092; RL-107 after RL-090/093/094; RL-108 after real endpoint configuration.
+
+Worker C: RL-109 after RL-100; RL-110 after RL-097/099; RL-111 after RL-092/098; RL-112 after RL-089/092/099.
+
+Wave 7 integration gate:
+RL-101..RL-112.
+
+### Wave 8 — validation
+
+RL-113 consumes the complete public journey surface.
+RL-114 validates responsive/accessibility behavior.
+RL-115 verifies every architecture capability has a discoverable UX path.
+RL-116 cross-checks journey states against SLO instrumentation.
+RL-117 validates the public demo deployment.
+RL-118 validates production deployment.
+
+RL-113 + RL-114 + RL-115 + RL-116 + RL-117 -> RL-118.
