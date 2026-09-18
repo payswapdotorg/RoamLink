@@ -403,6 +403,29 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   progression), and the framework-free typed HTML view core both apps render
   with. Depends only on `@roamlink/contracts`; the state vocabularies are
   drift-guarded mirrors of the owning domain packages (never redefinitions).
+- `packages/persistence` — the frozen persistence PORT layer (handoff §16):
+  the storage-agnostic UnitOfWork/record-store/outbox/inbox/migration ports
+  plus the in-memory adapter that is the SEMANTIC reference for every real
+  driver (optimistic concurrency via CAS, idempotent admission, transactional
+  outbox). No SQL, no driver imports — adapters implement these ports.
+- `packages/persistence-postgres` — the real PostgreSQL adapter (RL-091):
+  implements the frozen persistence ports over `pg` (pglite in tests),
+  faithfully mirroring the in-memory adapter's semantics — CAS optimistic
+  concurrency, transactional outbox enqueue/drain with the typed state
+  machine, durable inbox admission, and a forward/rollback migration runner
+  over `infra/migrations` with an applied-migrations ledger. SQLSTATE errors
+  are mapped to the port's typed failures at the driver seam; pooled-connection
+  isolation and multi-connection race hardening are pinned as RL-106
+  verification debt (honest gaps in the package README).
+- `services/api` — the authenticated public API/BFF service (RL-090): the
+  spec/api.md route surface as a pure application service — every mutation
+  requires the full command envelope (request/correlation/idempotency ids,
+  actor/tenant, optimistic version) parsed at the @roamlink/auth boundary,
+  commands are durably accepted through the command ledger + transactional
+  outbox (RL-LOCK-014), and the ADCOS webhook ingress goes through the
+  durable inbox (admission only — routes never process delivery inline).
+  Consumed by `apps/portal-host`; testable in-memory or over real migrations
+  on pglite.
 - `apps/web` — the customer web application (RL-060): a pure view + command
   surface over the public application API (zero authority logic): the
   connectivity aggregate (projections + observations + freshness, never a
@@ -451,6 +474,24 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   capability snapshot through an injectable signer port (key material
   never enters the shell). Host-agnostic by construction — platform
   seams (probe/executor/cipher/signer/transport) are all injected.
+- `apps/portal-host` — the real deployable Next.js host (RL-089): composes
+  `apps/web` (under `/`), `apps/admin` (under `/admin`) and the `services/api`
+  API/BFF (under `/v1`) into one Node 22+ runtime with real health
+  (`/healthz`) and readiness (`/readyz` — the database answers AND the
+  migration ledger is applied) endpoints. Route handlers are three-line
+  forwarders into framework-free handlers; the call-chain discipline is
+  HTTP → application command/query → domain/integration → persistence
+  (routes never touch the database). The boot is fail-closed: a composition
+  that refuses to start serves only the honest 503 — it never degrades to a
+  fake. Per spec/adr/0003 Vercel is the host, not the authority: the same
+  host runs anywhere with a PostgreSQL `DATABASE_URL` (zero provider
+  lock-in, no secrets in code).
+- `infra/migrations` — the first real SQL migrations (RL-092): forward/
+  rollback pairs for the identity/org schema ledger, versioned records,
+  durable outbox, durable inbox, and the command/commerce/notification/
+  projection tables, applied idempotently through the
+  `packages/persistence-postgres` runner (manifest ledger + verified
+  forward/rollback cycle).
 - `tests/architecture` — architecture conformance suite (RL-LOCK-018),
   including dependency-direction proofs for the Wave-2, Wave-3 and Wave-4
   worker packages (apps consume only the application kit; the app contract
@@ -515,7 +556,7 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
 
 ## Current implementation handoff
 
-The architecture and deterministic release-gate baseline are complete through RL-081. The next implementation phase is RL-082 through RL-118: hosted productization, ShareNet-inspired customer UX, real PostgreSQL persistence, durable hosted workers, free-tier deployment adapters, journey validation and production deployment acceptance.
+The architecture and deterministic release-gate baseline are complete through RL-081, and the first hosted-runtime phase has landed: RL-089 (`apps/portal-host`), RL-090 (`services/api`), RL-091 (`packages/persistence-postgres`) and RL-092 (`infra/migrations`). The next implementation phase continues through RL-118: hosted productization, ShareNet-inspired customer UX, durable hosted workers, free-tier deployment adapters, journey validation and production deployment acceptance.
 
 The canonical handoff for the Tech Lead/Orchestrator is:
 
