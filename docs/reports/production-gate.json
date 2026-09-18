@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-081",
   "title": "RoamLink production readiness gate",
-  "generatedAt": "2026-09-17T19:25:57.084Z",
+  "generatedAt": "2026-09-18T04:24:55.135Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -11,7 +11,6 @@
     "failedCriteria": [],
     "failedCriterionRows": [],
     "acceptedRisks": [
-      "AR-003",
       "AR-009"
     ]
   },
@@ -21,23 +20,23 @@
       "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 266174,
-      "summary": "exit 0 (266174ms)",
+      "durationMs": 272728,
+      "summary": "exit 0 (272728ms)",
       "outputTail": [
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 82407",
+        "      \"durationMs\": 89168",
         "    },",
         "    {",
         "      \"id\": \"test\",",
         "      \"status\": \"pass\",",
-        "      \"durationMs\": 132588",
+        "      \"durationMs\": 130344",
         "    },",
         "    {",
         "      \"id\": \"architecture\",",
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 50",
+        "      \"durationMs\": 112",
         "    }",
         "  ],",
         "  \"criteria\": [",
@@ -224,14 +223,11 @@
         },
         {
           "id": "DOCS:current-state",
-          "status": "gap",
-          "summary": "stale current-state claims: \"no production feature implementation started\" contradicts 25 implemented packages (each with src/index.ts); \"Repository state: greenfield\" contradicts the implemented tree — spec/* is outside the release-gate worker's editable scope by dispatch, so this is recorded as an explicit gap for the Tech Lead [UNMET — covered by accepted risk AR-003]",
+          "status": "pass",
+          "summary": "spec current-state claims are consistent with the implemented tree",
           "evidence": [
             "spec/current-state.md",
             "implemented packages: 25"
-          ],
-          "acceptedRiskIds": [
-            "AR-003"
           ]
         },
         {
@@ -243,7 +239,7 @@
           ]
         }
       ],
-      "summary": "1/3 docs rows failed: DOCS:current-state; 1 unmet row(s) explicitly covered by accepted-risk records: DOCS:current-state←AR-003"
+      "summary": "docs criteria green"
     },
     {
       "id": "PRD-5",
@@ -295,9 +291,9 @@
   "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
   "fullReport": false,
   "git": {
-    "commit": "f7ce7aa13cb91395e212bc78829a0e0476dee2d7",
-    "branch": "work/rl-slo-wiring-remediation",
-    "dirtyFiles": 7
+    "commit": "8f3a51c5993d88107aef59268667eee4768bb87e",
+    "branch": "work/rl-spec-status-refresh",
+    "dirtyFiles": 3
   },
   "mvpGate": {
     "verdict": {
@@ -309,7 +305,7 @@
       "failedCriterionRows": [],
       "acceptedRisks": []
     },
-    "generatedAt": "2026-09-17T19:25:57.128Z",
+    "generatedAt": "2026-09-18T04:24:55.174Z",
     "artifact": "docs/reports/mvp-gate.json"
   }
 }
