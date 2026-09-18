@@ -26,5 +26,11 @@
     "onlyBuiltDependencies": [
       "esbuild"
     ]
-  }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*",
+    "tests/*"
+  ]
 }
