@@ -43,7 +43,7 @@
       "exposure": "None remaining: spec/current-state.md is consistent with the implemented tree (25 packages with src/index.ts, 3 apps, 7 verification suites, both release gates exit 0) and states the hosted-deployment gap explicitly.",
       "remediation": "LANDED: operator commit 240bbc4 (canonical status refresh, extended to the post-gate roadmap) reconciled with the Tech Lead's registry update on the spec-status refresh branch; no code or gate changes. Re-run pnpm production-gate on the reconciled tree: PRD-4 DOCS:current-state passes with zero stale claims and AR-003 is no longer attached to any failing row.",
       "owner": "Tech Lead",
-      "reviewBy": "ratified at merge of the spec-status refresh (reconciled with the operator's canonical refresh)",
+      "reviewBy": "ratified at merge of the spec-status refresh; regenerated artifacts committed (operator direction: next production-gate rerun)",
       "references": [
         "GAP:spec-current-state-stale"
       ]
