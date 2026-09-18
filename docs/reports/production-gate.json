@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-081",
   "title": "RoamLink production readiness gate",
-  "generatedAt": "2026-09-18T21:46:28.609Z",
+  "generatedAt": "2026-09-18T23:15:11.381Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -20,23 +20,23 @@
       "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 449411,
-      "summary": "exit 0 (449411ms)",
+      "durationMs": 428664,
+      "summary": "exit 0 (428664ms)",
       "outputTail": [
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 127187",
+        "      \"durationMs\": 122129",
         "    },",
         "    {",
         "      \"id\": \"test\",",
         "      \"status\": \"pass\",",
-        "      \"durationMs\": 250950",
+        "      \"durationMs\": 235068",
         "    },",
         "    {",
         "      \"id\": \"architecture\",",
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 69",
+        "      \"durationMs\": 101",
         "    }",
         "  ],",
         "  \"criteria\": [",
@@ -227,7 +227,7 @@
           "summary": "spec current-state claims are consistent with the implemented tree",
           "evidence": [
             "spec/current-state.md",
-            "implemented packages: 26"
+            "implemented packages: 30"
           ]
         },
         {
@@ -291,8 +291,8 @@
   "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
   "fullReport": false,
   "git": {
-    "commit": "aaebfb33e8094f85568e7348775fceeecd0afb18",
-    "branch": "work/rl-hosted-runtime",
+    "commit": "110545ed543d14bc5d5281e764d3da9dc531c9b2",
+    "branch": "work/rl-deploy-foundation",
     "dirtyFiles": 2
   },
   "mvpGate": {
@@ -305,7 +305,7 @@
       "failedCriterionRows": [],
       "acceptedRisks": []
     },
-    "generatedAt": "2026-09-18T21:46:28.653Z",
+    "generatedAt": "2026-09-18T23:15:11.422Z",
     "artifact": "docs/reports/mvp-gate.json"
   }
 }
