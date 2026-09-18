@@ -511,3 +511,18 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   composition — asserting durability invariants (no lost work, no duplicate
   effects, convergence). Verified runbook and failure-mode matrix in
   docs/deployment-recovery.md.
+
+
+## Current implementation handoff
+
+The architecture and deterministic release-gate baseline are complete through RL-081. The next implementation phase is RL-082 through RL-118: hosted productization, ShareNet-inspired customer UX, real PostgreSQL persistence, durable hosted workers, free-tier deployment adapters, journey validation and production deployment acceptance.
+
+The canonical handoff for the Tech Lead/Orchestrator is:
+
+- `spec/tech-lead-handoff.md`
+- `spec/post-release-roadmap.md`
+- `spec/ux-architecture.md`
+- `spec/deployment.md`
+- `spec/user-journey-audit.md`
+
+The current state is explicitly **not yet a complete hosted product** until RL-118 passes.
