@@ -1,8 +1,7 @@
 # ADR-0003: Early Free-Tier Deployment Stack
 
-## Status
-
-ACCEPTED
+**Status:** Accepted
+**Date:** 2026-09-18
 
 ## Decision
 

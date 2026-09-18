@@ -1,8 +1,7 @@
 # ADR-0002: Customer Experience Shell and Hosted Application
 
-## Status
-
-ACCEPTED
+**Status:** Accepted
+**Date:** 2026-09-18
 
 ## Context
 
