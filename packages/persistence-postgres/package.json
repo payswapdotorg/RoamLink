@@ -1,0 +1,37 @@
+{
+  "name": "@roamlink/persistence-postgres",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vitest",
+    "db:migrate": "tsx ./scripts/migrate.ts up",
+    "db:rollback": "tsx ./scripts/migrate.ts down",
+    "db:manifest": "tsx ./scripts/migrate.ts manifest"
+  },
+  "dependencies": {
+    "@roamlink/contracts": "workspace:*",
+    "@roamlink/persistence": "workspace:*",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@roamlink/testkit": "workspace:*",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "eslint": "^9.17.0",
+    "tsx": "^4.8.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
