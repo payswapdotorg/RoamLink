@@ -4,6 +4,33 @@ All notable changes to the RoamLink repository are documented here. The
 format follows Keep-a-Changelog; the project version is tracked in the
 repository tags.
 
+## [Unreleased] — Post-gate productization, Wave 6 (Worker A)
+
+### Added (RL-082, RL-083)
+
+- **Customer application shell (RL-083):** app-kit `ui/shell.ts` — the
+  application-shell layout with persistent connectivity status (derived
+  only from the authoritative read model, facts shown, honest
+  `unverifiable` on read failure), desktop sidebar + mobile bottom
+  navigation, aria-current/skip-link/focus-visible/reduced-motion/
+  touch-target a11y rules, and the warm-light quiet visual system
+  (ADR-0002; the shell is a presentation boundary with zero authority).
+- **Exact customer navigation:** desktop Home | Connectivity | Activity |
+  Devices | Goals | Plans & Billing | Support; mobile Home | Connect |
+  Activity | Devices | More (More sheet: Goals, Plans & Billing, Support,
+  Settings). Routes stay stable; labels are human.
+- **Home hero (`/`):** answers am I usefully connected / current goal /
+  is RoamLink managing anything / does it need me — within one viewport,
+  state families separate, evidence + freshness visible.
+- **First-run onboarding (RL-082):** four lightweight steps (welcome, goal,
+  device, confirm) with the spec's goal language mapped onto typed
+  ExperienceIntent access classes; stateless-by-construction wizard; the
+  `completeOnboardingFlow` create+activate command pair through the full
+  envelope; vocabulary-ban test enforces the novice-path rule.
+- **Human-language vocabulary + Activity/More/Settings surfaces** for the
+  shell destinations (activity narrative over the durable notifications,
+  which keep their dedicated route).
+
 ## [0.1.0-mvp] — MVP release candidate (RL-080/RL-081 gate wave)
 
 Drafted by the RL-080/RL-081 release-gate worker as the MVP release notes.

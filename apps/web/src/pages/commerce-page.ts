@@ -29,7 +29,7 @@ export function commercePage(input: {
 }): HtmlFragment {
   return fragment(
     pageHeading(
-      "Products",
+      "Plans & Billing",
       "Commercial intent only: buying a product never implies connectivity delivery (that is proven by delivery evidence on the connectivity page).",
     ),
     input.products.length === 0
