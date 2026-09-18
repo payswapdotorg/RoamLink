@@ -8,7 +8,12 @@ import { renderLoginDocument, resolveAdminPage, resolveWebPage } from "../src/in
 
 describe("resolveWebPage (the web app's own route table)", () => {
   it("matches the exact templates", () => {
-    expect(resolveWebPage("/")?.page).toBe("overview");
+    // RL-083 (PR #19): `home` owns `/` (the customer lands on the Home hero);
+    // the legacy aggregate view moved to `/overview`; onboarding owns
+    // `/onboarding`. This test asserts the CURRENT frozen route table.
+    expect(resolveWebPage("/")?.page).toBe("home");
+    expect(resolveWebPage("/overview")?.page).toBe("overview");
+    expect(resolveWebPage("/onboarding")?.page).toBe("onboarding");
     expect(resolveWebPage("/connectivity")?.page).toBe("connectivity");
     expect(resolveWebPage("/devices")?.page).toBe("devices");
     expect(resolveWebPage("/intents")?.page).toBe("intents");
