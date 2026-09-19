@@ -16,13 +16,16 @@
  *        exactly-once effects - no lost work, no duplicate projections;
  *   CS-3 shutdown mid-batch (crash between inbox ADMISSION and the async
  *        projection): the admitted events survive; the restarted process
- *        completes the projection exactly once;
+ *        completes the projection exactly once - and repeated BATCHED
+ *        drains progress through a backlog larger than the batch limit
+ *        (batch progression landed, closing AR-008 / RL-094; the former
+ *        unbounded-drain workaround is obsolete);
  *   CS-4 outbox delivery crash injection: a crash AFTER the claim commit
  *        but BEFORE the outcome commit leaves records stranded in
- *        DELIVERING - FINDING RL-075-F1 (recorded, with reproducer): the
- *        public outbox port exposes no recovery path for DELIVERING
- *        records (claimDue only considers PENDING); the surrounding
- *        atomicity holds everywhere it is expressible;
+ *        DELIVERING - and the restarted worker re-owns them through the
+ *        PUBLIC stuck-claim sweep (recoverInFlight, closing AR-007 /
+ *        RL-075-F1 / RL-093); the surrounding atomicity holds everywhere
+ *        it is expressible;
  *   CS-5 UnitOfWork atomicity under crash injection: a unit of work whose
  *        commit never happens (crash before commit) leaves NOTHING
  *        persisted - the business write and its outbox row appear and
@@ -146,26 +149,31 @@ describe("RL-075 suite 2: cold start and orderly shutdown", () => {
     expect(outcomes).toEqual(["ADMITTED", "ADMITTED", "ADMITTED"]);
     // (No processPending call - the crash.)
 
-    // The restart completes the batch exactly once. (DEFECT-1, already
-    // recorded by the RL-073 load suite with a reproducer, applies here
-    // too: repeated BATCHED drains cannot progress past the first batch
-    // - the second processPending(2) reconsiders the first two records and
-    // never reaches the third. Pinned as the current observable behavior.)
+    // The restart completes the batch exactly once. (AR-008 / RL-094
+    // REMEDIATED on work/rl-durable-recovery: repeated BATCHED drains now
+    // progress past the first batch - terminal records no longer consume
+    // batch slots. The former unbounded-drain workaround pin is replaced by
+    // the honest bounded-drain expectation; the historical DEFECT-1 record
+    // remains in tests/load and the accepted-risk registry.)
     const restarted = makeDataPlane(world.persistence, world.projectionStore, world.fake, world.clock, {
       next: () => "00000000-0000-4000-8000-00000000f002",
     });
     const report = await restarted.boundary.inbox.processPending(2);
     expect(report.applied).toBe(2); // bounded batches make progress
-    const stalled = await restarted.boundary.inbox.processPending(2);
-    expect(stalled.applied).toBe(0); // DEFECT-1: no progress past the batch
-    expect(stalled.alreadyProjected).toBe(2);
-    // NO DURABLE WORK IS LOST: an unbounded drain completes the backlog.
-    const rest = await restarted.boundary.inbox.processPending();
-    expect(rest.applied).toBe(1);
+    const progressed = await restarted.boundary.inbox.processPending(2);
+    // AR-008 closed: the second bounded drain ADVANCES past the processed
+    // prefix and completes the backlog (2 PROJECTED skipped + 1 applied).
+    expect(progressed.applied).toBe(1);
+    expect(progressed.alreadyProjected).toBe(2);
+    expect(progressed.considered).toBe(3);
+    // The drain is now COMPLETE: a further bounded drain is a no-op.
+    const drained = await restarted.boundary.inbox.processPending(2);
+    expect(drained.applied).toBe(0);
+    expect(drained.alreadyProjected).toBe(3);
     expect(await restarted.boundary.projections.count()).toBe(3);
   });
 
-  it("CS-4 outbox crash injection: claim-commit/outline-commit atomicity (records FINDING RL-075-F1)", async () => {
+  it("CS-4 outbox crash injection: the restart re-owns stranded claims through the public sweep (AR-007 / RL-093 closes FINDING RL-075-F1)", async () => {
     const persistence = createInMemoryPersistence();
 
     // The production delivery shape: business write + outbox enqueue in ONE
@@ -197,36 +205,50 @@ describe("RL-075 suite 2: cold start and orderly shutdown", () => {
     const restartedClaim: UnitOfWork = await persistence.begin();
     const reclaimed = await restartedClaim.outbox.claimDue(T0, 10);
     await restartedClaim.commit();
-    // FINDING RL-075-F1 (recorded, not fixed - verification wave): the
-    // stranded DELIVERING records are NOT re-claimable - claimDue only
-    // considers PENDING records, and the public outbox port exposes no
-    // recovery path for DELIVERING (no requeue/stuck-sweep API). The two
-    // records are pinned in their claimed state with no forward path
-    // through the port. The durability invariant "shutdown mid-batch loses
-    // no durable work" therefore HOLDS for admission/enqueue (nothing was
-    // lost - both records and their payload digests are intact) but the
-    // RESTART CANNOT CONTINUE them through the public API.
+    // claimDue is not re-entrant on DELIVERING: the plain claim loop still
+    // finds nothing (exactly-once delivery is never weakened).
     expect(reclaimed).toHaveLength(0);
     expect(await persistence.outbox.count("DELIVERING")).toBe(2);
 
-    // The surrounding atomicity DOES hold everywhere it is expressible:
-    // records that were never claimed are claimable, and the claimed ones
-    // can still be completed by their ORIGINAL owner before the crash
-    // window closes (markDelivered works while the record is DELIVERING).
-    const outcomeUnit: UnitOfWork = await persistence.begin();
-    await outcomeUnit.outbox.markDelivered("idem.outbox.crash.1", T0);
-    await outcomeUnit.outbox.markAttemptFailed("idem.outbox.crash.2", T0);
-    await outcomeUnit.commit();
-    expect((await persistence.outbox.get("idem.outbox.crash.1"))?.deliveryState).toBe("DELIVERED");
-    expect((await persistence.outbox.get("idem.outbox.crash.2"))?.deliveryState).toBe("PENDING");
-    expect((await persistence.outbox.get("idem.outbox.crash.2"))?.retryCount).toBe(1);
+    // AR-007 / RL-093 REMEDIATED on work/rl-durable-recovery (closes
+    // FINDING RL-075-F1): the restarted worker now has a PUBLIC recovery
+    // path - the stuck-claim sweep. It re-owns both stranded records
+    // (DELIVERING -> PENDING due at the recovery instant, retry budget
+    // untouched, payload digests untouched) and the obligations CONTINUE
+    // through the normal public path:
+    const restartedSweep: UnitOfWork = await persistence.begin();
+    const recovered = await restartedSweep.outbox.recoverInFlight(T0);
+    await restartedSweep.commit();
+    expect(recovered.map((record) => record.idempotencyKey)).toEqual([
+      "idem.outbox.crash.1",
+      "idem.outbox.crash.2",
+    ]);
+    expect(recovered.every((record) => record.deliveryState === "PENDING")).toBe(true);
+    expect(await persistence.outbox.count("DELIVERING")).toBe(0);
 
-    // And the retried record (now PENDING again) IS claimable after its
-    // backoff elapses - the recovery path exists for retried records.
-    const retryClaim: UnitOfWork = await persistence.begin();
-    const due = await retryClaim.outbox.claimDue("2026-04-01T06:00:01.000Z", 10);
-    await retryClaim.commit();
-    expect(due.map((record) => record.idempotencyKey)).toEqual(["idem.outbox.crash.2"]);
+    const continueClaim: UnitOfWork = await persistence.begin();
+    const reClaimed = await continueClaim.outbox.claimDue(T0, 10);
+    await continueClaim.commit();
+    expect(reClaimed.map((record) => record.idempotencyKey)).toEqual([
+      "idem.outbox.crash.1",
+      "idem.outbox.crash.2",
+    ]);
+    const continueOutcome: UnitOfWork = await persistence.begin();
+    await continueOutcome.outbox.markDelivered("idem.outbox.crash.1", T0);
+    await continueOutcome.outbox.markDelivered("idem.outbox.crash.2", T0);
+    await continueOutcome.commit();
+    // The obligations COMPLETED after the restart (restart continues
+    // in-flight work - the invariant the finding recorded as broken).
+    expect(await persistence.outbox.count("DELIVERED")).toBe(2);
+
+    // The sweep NEVER double-delivers: with nothing stranded, it re-owns
+    // nothing, and terminal (DELIVERED) records are never resurrected.
+    const idleSweep: UnitOfWork = await persistence.begin();
+    expect(await idleSweep.outbox.recoverInFlight(T0)).toEqual([]);
+    await idleSweep.commit();
+    expect(await persistence.outbox.count("DELIVERED")).toBe(2);
+    expect(await persistence.outbox.count("DELIVERING")).toBe(0);
+    expect(await persistence.outbox.count("PENDING")).toBe(0);
   });
 
   it("CS-5 UnitOfWork atomicity under crash injection: an uncommitted unit leaves NOTHING behind", async () => {

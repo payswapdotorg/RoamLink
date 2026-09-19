@@ -95,32 +95,36 @@
     },
     {
       "id": "AR-007",
-      "title": "RL-075-F1: outbox records stranded in DELIVERING have no public recovery path",
+      "title": "RL-075-F1: outbox records stranded in DELIVERING have no public recovery path (REMEDIATED — the persistence outbox port now exposes the recoverInFlight stuck-claim sweep)",
       "criterion": "PRD-2",
       "rowId": "DEPLOY:crash-recovery",
       "severity": "medium",
-      "justification": "A crash between the outbox claim commit and the outcome commit leaves records in DELIVERING; claimDue only considers PENDING records and the RL-003 persistence outbox port exposes no requeue/stuck-sweep API, so a restarted worker cannot continue those obligations through the public interface (the EDGE outbox does expose recoverInFlight; the persistence outbox does not). No data is LOST \u2014 the records, payloads and digests remain intact \u2014 the invariant broken is 'restart continues in-flight work'. Fixing it means editing packages/persistence \u2014 outside the release-gate worker's scope.",
-      "exposure": "Stranded in-flight outbox obligations after a crash window require manual intervention; durability of the records themselves is intact.",
-      "remediation": "Add a requeueInFlight(olderThan) sweep on the port (mirroring the edge outbox's recoverInFlight), or claim with a visibility timeout so stranded claims expire back to PENDING. Minimal reproducer pinned in tests/deployment CS-4.",
+      "justification": "A crash between the outbox claim commit and the outcome commit leaves records in DELIVERING; claimDue only considers PENDING records and the RL-003 persistence outbox port exposed no requeue/stuck-sweep API, so a restarted worker could not continue those obligations through the public interface (the EDGE outbox does expose recoverInFlight; the persistence outbox did not). No data was LOST — the records, payloads and digests remained intact — the invariant broken was 'restart continues in-flight work'. REMEDIATED on work/rl-durable-recovery (Worker B, post-gate Wave 6, closing RL-093): the port gained the public stuck-claim sweep OutboxWriteRepository.recoverInFlight(at) — the persistence-side port of the edge outbox's recoverInFlight semantic — and the PostgreSQL driver mirrors it through its own locked-row claim surface. Durability laws intact: DELIVERING -> PENDING due exactly at the recovery instant WITHOUT consuming the retry budget (crash recovery is not a failed delivery attempt); payload bytes/digests untouched (idempotent replay verifies the digest; obligations are idempotency-keyed, RL-LOCK-014, so redelivery is at-least-once and safe); terminal states (DELIVERED/FAILED) are never resurrected; the sweep is transactional through the UnitOfWork and a concurrent delivered outcome wins the race as the typed ConflictError. The sweep must be called only when no live worker still holds claims (crash/restart discipline — the record carries no claim timestamp to filter by age, so the honest semantic is the full operator-visible sweep).",
+      "exposure": "None remaining: the restarted worker re-owns stranded DELIVERING records through the public API and the obligations continue and complete (pinned end to end in tests/deployment CS-4, packages/persistence, and packages/persistence-postgres on real PostgreSQL).",
+      "remediation": "LANDED: packages/persistence/src/outbox.ts (recoverStuckOutboxRecord pure transition + recoverInFlight on OutboxWriteRepository), packages/persistence/src/in-memory.ts (op-recorded applier + commit replay), packages/persistence-postgres/src/adapter.ts (locked-row sweep through the shared pure transition). Tests: packages/persistence/test/outbox.test.ts and packages/persistence-postgres/test/outbox.test.ts (crash-window scenario claim commits -> crash -> restart sweep -> obligation continues and completes; terminal-state, retry-budget, empty-sweep and race-conflict fences) and tests/deployment CS-4 (the former workaround pin replaced by the recovery expectation). Closing commits 2bbb0a4 (port), 297aa9c (postgres mirror), c041635 (pins). Re-run pnpm mvp-gate and pnpm production-gate on the closing commit: both exit 0.",
       "owner": "Tech Lead",
-      "reviewBy": "first post-RL-081 wave",
+      "reviewBy": "ratified at merge of work/rl-durable-recovery (remediation landed; CS-4 verifies restart-continues-in-flight-work)",
       "references": [
-        "RL-075-F1"
+        "RL-075-F1",
+        "RL-093",
+        "work/rl-durable-recovery"
       ]
     },
     {
       "id": "AR-008",
-      "title": "RL-073 DEFECT-1: batched inbox drains cannot progress past the first batch of a larger backlog",
+      "title": "RL-073 DEFECT-1: batched inbox drains cannot progress past the first batch of a larger backlog (REMEDIATED — batch progression advances past terminal records)",
       "criterion": "PRD-2",
       "rowId": "DEPLOY:crash-recovery",
       "severity": "medium",
-      "justification": "AdcosWebhookInboxService.processPending(limit) re-slices the ADMITTED list from index 0 on every call; with a backlog larger than limit, the first limit records are re-considered forever and records beyond index limit are never processed. The reliability property 'every admitted record reaches a terminal state in bounded calls' fails at the inbox level; projection-level convergence still occurs via the reconciler's canonical refresh, and the deployment suites pin the workaround (an unbounded drain). Fixing it means editing packages/webhook-inbox \u2014 outside the release-gate worker's scope.",
-      "exposure": "Webhook backlogs greater than the batch limit do not drain through repeated bounded processPending calls; customer-facing read models still recover through reconciliation.",
-      "remediation": "Track a durable processing cursor (or mark processing state on extended records) so repeated drains advance. Minimal reproducer pinned in tests/load (webhook-ingestion-load) and re-pinned by tests/deployment CS-3.",
+      "justification": "AdcosWebhookInboxService.processPending(limit) re-sliced the ADMITTED list from index 0 on every call; with a backlog larger than limit, the first limit records were re-considered forever and records beyond index limit were never processed, so the reliability property 'every admitted record reaches a terminal state in bounded calls' failed at the inbox level (projection-level convergence still occurred via the reconciler's canonical refresh, and the deployment suites pinned the workaround — an unbounded drain). REMEDIATED on work/rl-durable-recovery (Worker B, post-gate Wave 6, closing RL-094): the batch is now the first `limit` records whose processing status is NOT already terminal. PROJECTED records are skipped — counted in alreadyProjected, never re-projected — WITHOUT consuming batch slots, so repeated bounded drains advance and a backlog of N records drains to completion across ceil(N/limit) calls. The admission-order guarantee, the immutability of the admitted content and the CAS conflict discipline are unchanged; FAILED records are still retried (an attempt is an attempt — it consumes one slot, but a retried head record no longer starves later records).",
+      "exposure": "None remaining: repeated bounded processPending calls drain any backlog (pinned by the ceil(N/limit) drain test in packages/webhook-inbox and the flipped DEFECT-1 reproducer in tests/load; tests/deployment CS-3 now pins the bounded-drain expectation).",
+      "remediation": "LANDED: packages/webhook-inbox/src/inbox.ts (terminal-state batch selection in processPending; report semantics preserved). Tests: packages/webhook-inbox/test/inbox.test.ts (backlog of 7 with limit 3 drains 3+3+1 with every record PROJECTED in admission order; terminal records do not consume slots behind a processed prefix; a retried FAILED head record does not starve later records; ordering preserved across batch boundaries), tests/load/test/webhook-ingestion-load.test.ts (the DEFECT-1 reproducer pin flipped to the fixed expectation, historical record retained) and tests/deployment CS-3 (bounded-drain pin, unbounded-drain workaround obsolete). Closing commits 2aa5e43 (fix), c041635 (pins). Re-run pnpm mvp-gate and pnpm production-gate on the closing commit: both exit 0.",
       "owner": "Tech Lead",
-      "reviewBy": "first post-RL-081 wave",
+      "reviewBy": "ratified at merge of work/rl-durable-recovery (remediation landed; CS-3/CS-4 and the load suite verify bounded-drain completion)",
       "references": [
-        "RL-073-DEFECT-1"
+        "RL-073-DEFECT-1",
+        "RL-094",
+        "work/rl-durable-recovery"
       ]
     },
     {

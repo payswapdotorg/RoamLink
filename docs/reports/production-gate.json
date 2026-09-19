@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-081",
   "title": "RoamLink production readiness gate",
-  "generatedAt": "2026-09-19T07:59:45.274Z",
+  "generatedAt": "2026-09-19T16:59:14.265Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -20,23 +20,23 @@
       "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 496549,
-      "summary": "exit 0 (496549ms)",
+      "durationMs": 468532,
+      "summary": "exit 0 (468532ms)",
       "outputTail": [
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 146727",
+        "      \"durationMs\": 133227",
         "    },",
         "    {",
         "      \"id\": \"test\",",
         "      \"status\": \"pass\",",
-        "      \"durationMs\": 250045",
+        "      \"durationMs\": 258133",
         "    },",
         "    {",
         "      \"id\": \"architecture\",",
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 95",
+        "      \"durationMs\": 69",
         "    }",
         "  ],",
         "  \"criteria\": [",
@@ -291,8 +291,8 @@
   "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
   "fullReport": false,
   "git": {
-    "commit": "572b8cf94b38ff976834038a02283139bb3bc094",
-    "branch": "work/rl-experience-surfaces",
+    "commit": "1e69dd93ac58fa3491d60ba6968eefeac9df6d49",
+    "branch": "work/rl-durable-recovery",
     "dirtyFiles": 1
   },
   "mvpGate": {
@@ -305,7 +305,7 @@
       "failedCriterionRows": [],
       "acceptedRisks": []
     },
-    "generatedAt": "2026-09-19T07:59:45.348Z",
+    "generatedAt": "2026-09-19T16:59:14.311Z",
     "artifact": "docs/reports/mvp-gate.json"
   }
 }

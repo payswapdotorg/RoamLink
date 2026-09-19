@@ -418,8 +418,17 @@ export class AdcosWebhookInboxService {
   /**
    * Processes admitted events in ADMISSION ORDER (the inbox sequence): the
    * deterministic processing order. Already-PROJECTED records are no-ops
-   * (idempotent reprocessing); FAILED records are retried. Returns when the
-   * batch is exhausted.
+   * (idempotent reprocessing); FAILED records are retried.
+   *
+   * Batch progression (AR-008 / RL-094): the batch is the first `limit`
+   * records whose processing status is NOT already terminal. Terminal
+   * (PROJECTED) records are skipped - counted in `alreadyProjected`, never
+   * re-projected - and do NOT consume batch slots, so repeated bounded
+   * drains ADVANCE through a backlog larger than the limit: every admitted
+   * record reaches a terminal state within ceil(N / limit) successful
+   * calls. The admission-order guarantee, the immutability of the admitted
+   * content and the CAS conflict discipline are unchanged. Returns when the
+   * batch is exhausted or the admitted list is fully scanned.
    */
   async processPending(limit = 50): Promise<WebhookProcessingReport> {
     if (this.#projector === undefined) {
@@ -442,7 +451,15 @@ export class AdcosWebhookInboxService {
       failed: 0,
       conflicts: 0,
     };
-    for (const inboxRecord of admitted.slice(0, limit)) {
+    // AR-008 batch progression: select the first `limit` non-terminal
+    // records in admission order. Terminal (PROJECTED) records are skipped
+    // WITHOUT consuming a batch slot - this is what lets repeated bounded
+    // drains progress past a processed prefix instead of re-slicing it
+    // forever. Non-terminal records (PENDING and retried FAILED) each
+    // consume one slot: an attempt is an attempt.
+    let batchRemaining = limit;
+    for (const inboxRecord of admitted) {
+      if (batchRemaining === 0) break;
       report.considered += 1;
       const stored = await this.#reader.records(ADCOS_WEBHOOK_INBOX_REPOSITORY).get(inboxRecord.externalEventId);
       if (stored === null) {
@@ -457,8 +474,9 @@ export class AdcosWebhookInboxService {
       const current = parseAdmittedWebhookRecord(stored.value);
       if (current.processing.status === "PROJECTED") {
         report.alreadyProjected += 1;
-        continue;
+        continue; // terminal records never block the batch
       }
+      batchRemaining -= 1;
       const outcome = await this.#projector.project({
         sequence: inboxRecord.sequence,
         event: parseAdcosWebhookEvent(JSON.parse(current.raw_payload)),

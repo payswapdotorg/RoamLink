@@ -21,6 +21,12 @@
  * DELIVERED and FAILED are terminal. DELIVERED/FAILED records carry
  * `nextAttemptAt: null`.
  *
+ * The DELIVERING -> PENDING edge also carries CRASH RECOVERY
+ * (recoverStuckOutboxRecord / the port's recoverInFlight sweep, AR-007 /
+ * RL-093): a record stranded in DELIVERING by a crash between the claim
+ * commit and the outcome commit is re-owned back to PENDING due at the
+ * recovery instant WITHOUT consuming the retry budget.
+ *
  * All instants are explicit caller-supplied UTC instants - never ambient
  * clocks - so every operation is deterministic and reproducible in tests
  * (spec/definition-of-done.md "Deterministic test data").
@@ -249,6 +255,29 @@ export function completeOutboxDelivery(record: OutboxRecord, at: UtcInstant): Ou
 }
 
 /**
+ * Recovers a record stranded in DELIVERING by a crash between the claim
+ * commit and the outcome commit (AR-007 / RL-093): DELIVERING -> PENDING,
+ * due exactly at the recovery instant `at`.
+ *
+ * This is the persistence-side port of the EDGE outbox's crash-recovery
+ * semantic (`packages/edge` recoverInFlight: in-flight -> pending WITHOUT a
+ * new attempt). Deliberate durability properties:
+ *  - the retry budget is NOT consumed (retryCount, lastErrorReason and the
+ *    retry policy are untouched): the crash was ours, not the delivery's;
+ *  - the payload bytes and digest are untouched (idempotent replay verifies
+ *    the same digest; redelivery is at-least-once and safe because every
+ *    obligation is idempotency-keyed, RL-LOCK-014);
+ *  - terminal states stay terminal: DELIVERED/FAILED records are never
+ *    resurrected (typed error), and a PENDING record cannot be "recovered".
+ */
+export function recoverStuckOutboxRecord(record: OutboxRecord, at: UtcInstant): OutboxRecord {
+  if (record.deliveryState !== "DELIVERING") {
+    transitionError(record.deliveryState, "PENDING");
+  }
+  return Object.freeze({ ...record, deliveryState: "PENDING", nextAttemptAt: at });
+}
+
+/**
  * Records a failed delivery attempt on a DELIVERING record:
  *  - attempts remain in budget -> back to PENDING with retryCount + 1 and
  *    nextAttemptAt = at + backoff(retryCount);
@@ -305,6 +334,26 @@ export interface OutboxWriteRepository {
    * work surface as a ConflictError at commit time.
    */
   claimDue(at: string, limit: number): Promise<readonly OutboxRecord[]>;
+  /**
+   * The public stuck-claim sweep (AR-007 / RL-093; the persistence-side
+   * equivalent of the edge outbox's recoverInFlight). Re-owns every record
+   * currently stranded in DELIVERING - the crash window between a claim
+   * commit and its outcome commit - by moving each one back to PENDING, due
+   * exactly at `at`, WITHOUT consuming its retry budget (crash recovery is
+   * not a failed delivery attempt). Returns the recovered records in their
+   * recovered PENDING state; the next `claimDue(at)` re-claims them and the
+   * obligation continues (at-least-once redelivery, safe because payload
+   * digests verify and every obligation is idempotency-keyed, RL-LOCK-014).
+   *
+   * A restarted worker calls this sweep before its claim loop. Records in
+   * PENDING/DELIVERED/FAILED are never touched: the sweep returns exactly
+   * the set it re-owned (possibly empty), terminal states stay terminal.
+   * The sweep must be called only when no live worker still holds claims
+   * (crash/restart discipline - the port carries no claim timestamp to
+   * filter by age, so an operator-visible full sweep is the honest
+   * semantic).
+   */
+  recoverInFlight(at: string): Promise<readonly OutboxRecord[]>;
   /** DELIVERING -> DELIVERED (terminal). */
   markDelivered(idempotencyKey: string, at: string): Promise<OutboxRecord>;
   /** DELIVERING -> PENDING (retry scheduled) or DELIVERING -> FAILED (budget exhausted). */
