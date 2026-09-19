@@ -15,6 +15,13 @@
  *                                        gated, idempotent); the token is
  *                                        handed out exactly once
  *   GET  /v1/users/me                    the authenticated principal view
+ *   GET  /v1/readiness                   the composed readiness surface
+ *                                        (RL-100): the REAL per-dependency
+ *                                        probes aggregated into the honest
+ *                                        vocabulary ready | degraded:<dep> |
+ *                                        not-ready:<reason> - unauthenticated
+ *                                        (load balancers probe it), never a
+ *                                        business-event inference
  *   POST <mutation routes>               durable command ingestion (accepted;
  *                                        execution is the workers' concern)
  *   GET  /v1/commands/{commandId}        the stored-command view
@@ -73,6 +80,22 @@ import {
   type StoredCommand,
 } from "./commands.js";
 import { errorToResponse, jsonResponse, readModelNotComposed } from "./http.js";
+import {
+  composeReadiness,
+  readinessToResponse,
+  type ComposedReadiness,
+  type ReadinessCheckBinding,
+} from "./readiness.js";
+
+export {
+  READINESS_STATUS_PATTERN,
+  composeReadiness,
+  readinessToResponse,
+  type ComposedReadiness,
+  type ComposedReadinessReport,
+  type ReadinessCheckBinding,
+  type ReadinessCriticality,
+} from "./readiness.js";
 
 // --------------------------------------------------------------------------------
 // The spec's read-route surface (spec/api.md, mirrored by app-kit's route
@@ -128,6 +151,15 @@ export interface ApiServiceOptions {
   readonly now: () => UtcInstant;
   /** Supplies canonical lowercase UUIDs (command ids). */
   readonly newId: () => string;
+  /**
+   * The composed readiness bindings (RL-100): one binding per dependency
+   * THIS process actually composed, each check probing through its provider
+   * port with its criticality (required = correctness owner; optional =
+   * accelerator). Absent/empty -> the readiness endpoint answers the honest
+   * `not-ready:composition` (readiness without probed evidence is never
+   * ready - the fail-closed law, never a hard-coded ready).
+   */
+  readonly readinessChecks?: readonly ReadinessCheckBinding[];
 }
 
 export interface ApiService {
@@ -138,6 +170,7 @@ export interface ApiService {
 const WEBHOOK_INGRESS_PATH = "/v1/webhooks/adcos";
 const LOGIN_PATH = "/v1/auth/session";
 const ME_PATH = "/v1/users/me";
+const READINESS_PATH = "/v1/readiness";
 const COMMAND_PATH = /^\/v1\/commands\/([^/]+)$/;
 
 /**
@@ -190,10 +223,24 @@ export function createApiService(options: ApiServiceOptions): ApiService {
       }),
     );
 
+  // The composed readiness surface (RL-100): live aggregation of the real
+  // dependency probes - recomputed on EVERY request, never a boot snapshot.
+  const readiness: ComposedReadiness = composeReadiness(
+    options.readinessChecks !== undefined ? { checks: options.readinessChecks } : {},
+  );
+
   return {
     async handle(request: HttpRequest): Promise<HttpResponse> {
       try {
         const path = stripQuery(request.path);
+
+        // --- Readiness: REAL infrastructure truth, NO session requirement ---
+        // Load balancers and the smoke suite probe it unauthenticated; the
+        // answer is the per-dependency probe aggregate only (never business
+        // events - an order/payment/webhook success is not readiness).
+        if (request.method === "GET" && path === READINESS_PATH) {
+          return readinessToResponse(await readiness.report());
+        }
 
         // --- Webhook ingress: HMAC-authenticated, NOT session-based --------
         if (path === WEBHOOK_INGRESS_PATH && request.method === "POST") {

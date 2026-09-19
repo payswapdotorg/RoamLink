@@ -1,0 +1,14 @@
+{
+  "name": "@roamlink/smoke",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RoamLink synthetic smoke journey (RL-100) - zero-dependency; runs against a DEPLOYED stack via BASE_URL. NOT a pnpm-workspace package by design: the smoke has no build/test surface for the gates, it is the operator's deployment-verification script.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "smoke": "node run.mjs",
+    "selftest": "node selftest.mjs"
+  }
+}

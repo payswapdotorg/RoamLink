@@ -55,6 +55,8 @@ export async function handleReadyz(runtime: HostRuntime): Promise<Response> {
   if (!runtime.ok) {
     return new Response(
       JSON.stringify({
+        // RL-100: the honest vocabulary even for the refusal answer.
+        status: "not-ready:composition",
         ready: false,
         checks: [
           {

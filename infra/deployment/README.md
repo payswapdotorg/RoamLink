@@ -22,6 +22,12 @@ infra/deployment/
   runbooks/
     neon-provisioning.md          RL-095 operator runbook (real Neon account)
     deployment-runbook.md         RL-099 end-to-end deploy + verify runbook
+                                  (§6b = the RL-100 synthetic smoke loop)
+  smoke/                          the RL-100 synthetic smoke journey (zero-dep)
+    run.mjs                       the runner (BASE_URL/API_URL from env; the
+                                  root `pnpm smoke` script)
+    selftest.mjs                  proves the runner (loopback stubs; the root
+                                  `pnpm smoke:selftest` script)
   provider-wiring.md              port -> adapter -> env wiring manifest
   free-tier-constraints.md        deployment.md §5 as operational guidance
 ```

@@ -26,6 +26,7 @@ import {
   type JobEnqueueReceipt,
   type JobEnqueueRequest,
   type DurableJobDeliveryPort,
+  type TransportProbePort,
   DEFAULT_MAX_PAYLOAD_BYTES,
   validateDestination,
   validateJobId,
@@ -65,7 +66,7 @@ interface PublishResponse {
   messageId?: unknown;
 }
 
-export class UpstashQStashClient implements DurableJobDeliveryPort {
+export class UpstashQStashClient implements DurableJobDeliveryPort, TransportProbePort {
   readonly #baseUrl: string;
   readonly #token: string;
   readonly #doFetch: FetchLike;
@@ -187,6 +188,46 @@ export class UpstashQStashClient implements DurableJobDeliveryPort {
       deliverNotBeforeMs: Date.now() + deliverAfterMs,
       duplicate: false,
     };
+  }
+
+  /**
+   * The READ-ONLY transport probe (RL-100): `GET {baseUrl}/v2/messages?count=1`
+   * with the publish credential. Reachability is the ONLY claim: any 2xx
+   * resolves (the body is intentionally not parsed - the probe reads
+   * nothing it acts on); non-2xx and connection/timeout failures reject
+   * with the provider text SUPPRESSED (RL-LOCK-016). No message is
+   * created, no provider state is mutated.
+   *
+   * AR-009 honest wire note: the exact read route must be confirmed
+   * against a real QStash account at the operator phase (RL-118); the
+   * route lives ONLY here so drift is a contained fix.
+   */
+  async probe(): Promise<void> {
+    const url = `${this.#baseUrl}/v2/messages?count=1`;
+    let response: Response;
+    try {
+      response = await this.#doFetch(url, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${this.#token}`,
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      });
+    } catch {
+      throw new QStashProviderError(
+        "request-not-sent",
+        null,
+        "the QStash probe request did not complete (connection/timeout; details suppressed)",
+      );
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new QStashProviderError(
+        "provider-error",
+        response.status,
+        "the QStash probe request was rejected (provider text suppressed)",
+      );
+    }
   }
 
   /** Log-safe identity (token never included - RL-LOCK-016). */

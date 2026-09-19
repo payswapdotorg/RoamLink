@@ -13,6 +13,8 @@
     "architecture:check": "node scripts/check-architecture.mjs",
     "mvp-gate": "node scripts/release/mvp-gate.mjs",
     "production-gate": "node scripts/release/production-gate.mjs",
+    "smoke": "node infra/deployment/smoke/run.mjs",
+    "smoke:selftest": "node infra/deployment/smoke/selftest.mjs",
     "dev": "pnpm -r --parallel --if-present dev",
     "prepare": "node scripts/hooks/install.mjs"
   },

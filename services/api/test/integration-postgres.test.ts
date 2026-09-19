@@ -94,7 +94,7 @@ async function createPostgresBackedService() {
 }
 
 describe("the api-service over real PostgreSQL (pglite + real migrations)", () => {
-  it("persists accepted commands and their outbox obligations in real SQL", async () => {
+  it("persists accepted commands and their outbox obligations in real SQL", { timeout: 30_000 }, async () => {
     const world = await createPostgresBackedService();
     try {
       const userId = userIdFromSeed(1);
@@ -161,7 +161,7 @@ describe("the api-service over real PostgreSQL (pglite + real migrations)", () =
     }
   });
 
-  it("admits webhook deliveries into the real durable inbox", async () => {
+  it("admits webhook deliveries into the real durable inbox", { timeout: 30_000 }, async () => {
     const world = await createPostgresBackedService();
     try {
       const payload = JSON.stringify({

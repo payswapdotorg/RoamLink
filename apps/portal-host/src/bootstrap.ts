@@ -23,12 +23,16 @@ export function portalHostEnvFromProcessEnv(
   databaseUrl: string | undefined;
   webhookSigningKeys: string | undefined;
   webhookEnvironment: string | undefined;
+  apiBaseUrl: string | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
     databaseUrl: env["DATABASE_URL"],
     webhookSigningKeys: env["ROAMLINK_WEBHOOK_SIGNING_KEYS"],
     webhookEnvironment: env["ROAMLINK_WEBHOOK_ENVIRONMENT"],
+    // RL-100: when configured, the host's readiness composition probes the
+    // remote API service's GET /v1/readiness (bounded timeout, REQUIRED).
+    apiBaseUrl: env["ROAMLINK_API_BASE_URL"],
   };
 }
 
