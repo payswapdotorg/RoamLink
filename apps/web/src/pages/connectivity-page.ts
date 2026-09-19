@@ -144,7 +144,7 @@ function journeySection(overview: ConnectivityOverviewResource): HtmlFragment {
       ),
       el(
         "ol",
-        { class: "journey" },
+        { class: "journey", "aria-label": "Your connection journey, stage by stage" },
         ...journey.stages.map((stage) => {
           const language = CONNECTION_STAGE_LANGUAGE[stage.stage];
           return el(
@@ -375,7 +375,7 @@ function observationsSection(overview: ConnectivityOverviewResource): HtmlFragme
           )
         : el(
             "ul",
-            { class: "observation-list" },
+            { class: "observation-list", "aria-label": "Device observations" },
             ...overview.deviceObservations.map((observation) =>
               el(
                 "li",
@@ -426,7 +426,7 @@ function recentEventsSection(notifications: readonly NotificationResource[]): Ht
           )
         : el(
             "ul",
-            { class: "activity-list" },
+            { class: "activity-list", "aria-label": "Recent connectivity events" },
             ...events.map((event) =>
               el(
                 "li",

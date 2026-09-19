@@ -34,7 +34,7 @@ import {
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
-import { pageHeading } from "../app.js";
+import { pageHeading, tableWrap } from "../app.js";
 import { ACCESS_CLASS_LANGUAGE, DERIVED_EXPERIENCE_LANGUAGE } from "./language.js";
 
 const ACCESS_CLASSES: readonly IntentAccessClass[] = [
@@ -207,7 +207,7 @@ export function goalsPage(input: {
         )
       : el(
           "ul",
-          { class: "goal-list", "data-intents": "true" },
+          { class: "goal-list", "data-intents": "true", "aria-label": "Your goals" },
           ...input.intents.map((intent) => goalCard(intent, input.devices)),
         ),
     pageHeading("Add a goal"),
@@ -278,38 +278,41 @@ function versionChain(intent: ExperienceIntentResource): HtmlFragment {
     { "data-goal-history": "true" },
     fragment(
       pageHeading("What changed", "Every change to your goal is kept as its own version, so the history cannot be lost or rewritten."),
-      el(
-        "table",
-        { "data-versions": "true" },
+      tableWrap(
+        "Goal version history",
         el(
-          "thead",
-          {},
+          "table",
+          { "data-versions": "true" },
           el(
-            "tr",
+            "thead",
             {},
-            el("th", {}, text("Version")),
-            el("th", {}, text("Status")),
-            el("th", {}, text("What it asked for")),
-            el("th", {}, text("What matters most")),
-            el("th", {}, text("Created")),
-          ),
-        ),
-        el(
-          "tbody",
-          {},
-          ...[...intent.versions]
-            .sort((a, b) => a.versionNumber - b.versionNumber)
-            .map((version) =>
-              el(
-                "tr",
-                { "data-version-number": version.versionNumber },
-                el("td", {}, text(`v${version.versionNumber}`)),
-                el("td", {}, stateBadge(version.status)),
-                el("td", {}, text(version.rationale)),
-                el("td", {}, text(preferencePhrases(version.accessClasses).join("; "))),
-                el("td", {}, instantView(version.createdAt)),
-              ),
+            el(
+              "tr",
+              {},
+              el("th", { scope: "col" }, text("Version")),
+              el("th", { scope: "col" }, text("Status")),
+              el("th", { scope: "col" }, text("What it asked for")),
+              el("th", { scope: "col" }, text("What matters most")),
+              el("th", { scope: "col" }, text("Created")),
             ),
+          ),
+          el(
+            "tbody",
+            {},
+            ...[...intent.versions]
+              .sort((a, b) => a.versionNumber - b.versionNumber)
+              .map((version) =>
+                el(
+                  "tr",
+                  { "data-version-number": version.versionNumber },
+                  el("td", {}, text(`v${version.versionNumber}`)),
+                  el("td", {}, stateBadge(version.status)),
+                  el("td", {}, text(version.rationale)),
+                  el("td", {}, text(preferencePhrases(version.accessClasses).join("; "))),
+                  el("td", {}, instantView(version.createdAt)),
+                ),
+              ),
+          ),
         ),
       ),
     ),

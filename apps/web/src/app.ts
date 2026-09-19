@@ -578,3 +578,25 @@ export function pageHeading(title: string, hint?: string): HtmlFragment {
     hint === undefined ? fragment() : el("p", { class: "muted" }, text(hint)),
   );
 }
+
+/**
+ * The shared responsive table wrapper (RL-088): on narrow screens wide
+ * tables scroll horizontally inside the wrapper instead of overflowing the
+ * page (or squashing into unreadable columns). The scroll region is a
+ * labelled, keyboard-focusable region, so keyboard users can reach and
+ * scroll it too — an overflowing region that only pointer users can scroll
+ * is an accessibility failure.
+ */
+export function tableWrap(label: string, table: HtmlFragment): HtmlFragment {
+  return el(
+    "div",
+    {
+      class: "table-wrap",
+      "data-table-wrap": "true",
+      role: "region",
+      "aria-label": label,
+      tabindex: 0,
+    },
+    table,
+  );
+}

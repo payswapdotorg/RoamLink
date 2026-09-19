@@ -28,13 +28,14 @@ export function supportPage(input: { readonly cases: readonly SupportCaseResourc
     el(
       "form",
       { method: "post", action: "/flows/create-support-case", "data-flow": "create-support-case" },
-      el("label", {}, text("Subject ")),
-      el("input", { type: "text", name: "subject", required: true }),
-      el("label", {}, text(" Description ")),
-      el("input", { type: "text", name: "description", required: true }),
+      el("label", { for: "case-subject" }, text("Subject")),
+      el("input", { type: "text", name: "subject", id: "case-subject", required: true }),
+      el("label", { for: "case-description" }, text("Description")),
+      el("input", { type: "text", name: "description", id: "case-description", required: true }),
+      el("label", { for: "case-priority" }, text("Priority")),
       el(
         "select",
-        { name: "priority" },
+        { name: "priority", id: "case-priority" },
         ...(["low", "normal", "high", "urgent"] as const).map((priority) =>
           el("option", { value: priority }, text(priority)),
         ),

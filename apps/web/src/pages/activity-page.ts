@@ -163,7 +163,7 @@ export function activityPage(input: ActivityPageInput): HtmlFragment {
           )
         : el(
             "ul",
-            { class: "activity-list" },
+            { class: "activity-list", "aria-label": "Items that need your review" },
             ...items.filter(needsYou).map((n) => activityItem(n)),
           ),
     ),
@@ -187,7 +187,11 @@ export function activityPage(input: ActivityPageInput): HtmlFragment {
           ),
           el(
             "ul",
-            { class: "activity-list", "data-activity-feed": "true" },
+            {
+              class: "activity-list",
+              "data-activity-feed": "true",
+              "aria-label": "Full activity timeline, newest first",
+            },
             ...items.map((n) => activityItem(n)),
           ),
         ),

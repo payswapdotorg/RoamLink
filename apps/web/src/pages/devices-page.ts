@@ -148,7 +148,7 @@ export function devicesPage(input: {
         )
       : el(
           "ul",
-          { class: "goal-list", "data-devices": "true" },
+          { class: "goal-list", "data-devices": "true", "aria-label": "Your devices" },
           ...input.devices.map((device) => deviceCard(device, input.connectivity)),
         ),
     pageHeading("Add a device"),
@@ -302,7 +302,7 @@ function deviceGoalsSection(
           )
         : el(
             "ul",
-            { class: "goal-list" },
+            { class: "goal-list", "aria-label": "Goals for this device" },
             ...deviceIntents.map((intent) =>
               el(
                 "li",
@@ -361,7 +361,7 @@ function deviceActionsSection(
           )
         : el(
             "ul",
-            { class: "activity-list" },
+            { class: "activity-list", "aria-label": "Recent actions on this device" },
             ...deviceNotifications.slice(0, 5).map((notification) =>
               el(
                 "li",

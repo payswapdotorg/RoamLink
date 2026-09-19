@@ -13,7 +13,7 @@ a:hover { color: #2d2a26; }
 table { border-collapse: collapse; width: 100%; margin: 0.5rem 0 1rem; background: #fff; }
 th, td { text-align: left; padding: 0.45rem 0.6rem; border: 1px solid #e8e2da; font-size: 0.9rem; vertical-align: top; }
 th { background: #f4efe7; }
-code { background: #f4efe7; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; }
+code { background: #f4efe7; padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.85em; overflow-wrap: anywhere; }
 .muted { color: #8a8078; font-size: 0.88rem; }
 .panel { background: #fff; border: 1px solid #e8e2da; border-radius: 10px; padding: 1rem 1.1rem; margin: 0.5rem 0 1rem; }
 .panel.error { border-color: #eec7c2; background: #fdf5f3; }
@@ -123,6 +123,20 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 /* RL-087 device capability */
 .fallback-list { padding-left: 1.2rem; line-height: 1.65; }
 .fallback-list li { margin: 0.25rem 0; }
+/* RL-088 responsive + accessibility refinements */
+.table-wrap { overflow-x: auto; margin: 0.5rem 0 1rem; -webkit-overflow-scrolling: touch; }
+.table-wrap table { margin: 0; }
+.table-wrap:focus-visible { outline: 3px solid #b07f3e; outline-offset: 2px; }
+.journey-state, .kind-chip, .badge { max-width: 100%; }
+@media (max-width: 40rem) {
+  .home-hero { padding: 1.1rem 1rem 1rem; }
+  .fact-row { grid-template-columns: 1fr; gap: 0.1rem 0; }
+  .journey-stage, .goal-card, .activity-item, .observation-item { padding: 0.7rem 0.8rem; }
+  .disclosure summary { padding: 0.7rem 0.8rem; }
+  .shell-header-inner { padding: 0.6rem 0.9rem; }
+  td { overflow-wrap: anywhere; }
+  .table-wrap { margin: 0.5rem 0 1rem -0.2rem; padding-left: 0.2rem; }
+}
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
