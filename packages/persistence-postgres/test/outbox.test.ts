@@ -295,4 +295,50 @@ describe("durable outbox (Postgres adapter)", () => {
       await runtime.driver.close();
     }
   });
+
+  it("AR-007 crash window on real PostgreSQL: the restart sweep re-owns stranded DELIVERING rows and the obligation completes", async () => {
+    const runtime = await createMigratedRuntime();
+    try {
+      const unitOfWork = await runtime.persistence.begin();
+      const keys = [nextKey("cmd"), nextKey("cmd")];
+      for (const key of keys) {
+        await unitOfWork.outbox.enqueue({ idempotencyKey: key, payload: { a: 1 }, createdAt: T0 });
+      }
+      await unitOfWork.commit();
+
+      // Claim commits, then the worker crashes before any outcome commit:
+      // both records strand in DELIVERING (claimDue is not re-entrant).
+      const claimUnitOfWork = await runtime.persistence.begin();
+      const claimed = await claimUnitOfWork.outbox.claimDue(T0, 10);
+      expect(claimed).toHaveLength(2);
+      await claimUnitOfWork.commit();
+      expect(await runtime.persistence.outbox.count("DELIVERING")).toBe(2);
+      const stalled = await runtime.persistence.begin();
+      expect(await stalled.outbox.claimDue(T1, 10)).toEqual([]);
+      await stalled.rollback();
+
+      // THE RESTART: the public stuck-claim sweep re-owns both rows
+      // (DELIVERING -> PENDING due at the recovery instant, retry budget
+      // untouched, payload digests untouched).
+      const restarted = await runtime.persistence.begin();
+      const recovered = await restarted.outbox.recoverInFlight(T1);
+      await restarted.commit();
+      expect(recovered.map((record) => record.idempotencyKey).sort()).toEqual([...keys].sort());
+      expect(recovered.every((record) => record.deliveryState === "PENDING")).toBe(true);
+      expect(recovered.every((record) => record.nextAttemptAt === T1)).toBe(true);
+      expect(await runtime.persistence.outbox.count("DELIVERING")).toBe(0);
+
+      // The obligation continues and completes through the normal path.
+      expect(await drainOutboxDelivered(runtime.persistence, T1)).toBe(2);
+      expect(await runtime.persistence.outbox.count("DELIVERED")).toBe(2);
+
+      // Terminal states stay terminal: a later sweep re-owns nothing.
+      const terminalSweep = await runtime.persistence.begin();
+      expect(await terminalSweep.outbox.recoverInFlight(T2)).toEqual([]);
+      await terminalSweep.rollback();
+      expect(await runtime.persistence.outbox.count("DELIVERED")).toBe(2);
+    } finally {
+      await runtime.driver.close();
+    }
+  });
 });

@@ -22,8 +22,9 @@
  *     key (RL-LOCK-009).
  *  4. The outbox delivery state machine is applied through the SHARED pure
  *     transition functions of the port package (`claimOutboxRecord`,
- *     `completeOutboxDelivery`, `failOutboxAttempt`), so the SQL adapter
- *     cannot drift from the closed state machine.
+ *     `completeOutboxDelivery`, `failOutboxAttempt`,
+ *     `recoverStuckOutboxRecord`), so the SQL adapter cannot drift from the
+ *     closed state machine.
  *  5. Determinism: every time-dependent operation takes an explicit
  *     caller-supplied UTC instant; lists have deterministic order.
  *
@@ -60,6 +61,7 @@ import {
   failOutboxAttempt,
   parseRecordId,
   parseRepositoryName,
+  recoverStuckOutboxRecord,
   type InboxAdmitInput,
   type InboxAdmitResult,
   type InboxAdmissionState,
@@ -242,6 +244,36 @@ class PostgresOutboxView implements OutboxRepository {
     const next = failOutboxAttempt(current, atInstant, reason); // shared closed state machine
     await this.#writeTransition(idempotencyKey, current.deliveryState, next);
     return next;
+  }
+
+  /**
+   * AR-007 / RL-093: the public stuck-claim sweep over REAL PostgreSQL.
+   * Locks every DELIVERING row (deterministic order), re-owns each one
+   * through the SHARED pure recovery transition (DELIVERING -> PENDING due
+   * at `at`, retry budget untouched), and writes it with the same
+   * state-guarded UPDATE as every other transition - a concurrent committer
+   * that raced one of these rows surfaces as the typed ConflictError, so no
+   * recovery ever overwrites a delivered outcome.
+   */
+  async recoverInFlight(at: string): Promise<readonly OutboxRecord[]> {
+    this.#assertOpen();
+    const atInstant = parseAt(at);
+    const rows = await this.#tx
+      .query(
+        `SELECT ${OUTBOX_COLUMNS} FROM ${OUTBOX_TABLE}
+         WHERE delivery_state = 'DELIVERING'
+         ORDER BY created_at ASC, idempotency_key ASC
+         FOR UPDATE`,
+      )
+      .catch(mapSqlError);
+    const recovered: OutboxRecord[] = [];
+    for (const row of rows.rows) {
+      const current = outboxFromRow(row);
+      const next = recoverStuckOutboxRecord(current, atInstant); // shared closed state machine
+      await this.#writeTransition(current.idempotencyKey, current.deliveryState, next);
+      recovered.push(next);
+    }
+    return Object.freeze(recovered);
   }
 
   async #lockedRecord(idempotencyKey: string): Promise<OutboxRecord> {
