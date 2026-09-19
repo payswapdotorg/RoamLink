@@ -1383,6 +1383,25 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
         if (priority === undefined) {
           fail(badRequest("CASE_PRIORITY_INVALID", "the support case priority must be low, normal, high or urgent"));
         }
+        // RL-103: the caller's typed related references are honored (the
+        // command layer already validated relatedRefs[] {kind,id}); the
+        // fake stores them verbatim so the admin triage surface receives
+        // the carried context through the same command path.
+        const rawRelatedRefs = body["relatedRefs"];
+        if (rawRelatedRefs !== undefined && !Array.isArray(rawRelatedRefs)) {
+          fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs must be an array of {kind, id}"));
+        }
+        const relatedRefs: { kind: string; id: string }[] = [];
+        for (const entry of (rawRelatedRefs ?? []) as unknown[]) {
+          if (entry === null || typeof entry !== "object") {
+            fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs entries must be objects with kind + id"));
+          }
+          const record = entry as Record<string, unknown>;
+          if (typeof record["kind"] !== "string" || record["kind"].length === 0 || typeof record["id"] !== "string" || record["id"].length === 0) {
+            fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs entries must carry non-empty kind and id strings"));
+          }
+          relatedRefs.push({ kind: record["kind"] as string, id: record["id"] as string });
+        }
         return runCommand({
           kind: "support_case.create",
           actorId: actorHeader,
@@ -1399,7 +1418,7 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
               status: "open",
               priority,
               createdByUserId: actor.userId,
-              relatedRefs: [],
+              relatedRefs,
               messages: [],
               revision: 1,
               createdAt: now(),

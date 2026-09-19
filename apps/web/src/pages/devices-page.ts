@@ -43,6 +43,7 @@ import {
   DEVICE_STATUS_LANGUAGE,
   MANUAL_FALLBACK_GUIDANCE,
 } from "./language.js";
+import { supportEscape } from "./support-context.js";
 
 const PLATFORMS = [
   "ios",
@@ -187,6 +188,10 @@ export function devicesPage(input: {
 function capabilityCard(device: DeviceResource): HtmlFragment {
   const capability = deviceCapabilityStatement(device.capabilityFreshness);
   const automationLevels = ["automatic", "confirmation", "manual", "unavailable", "unknown"] as const;
+  // Unverified or expired capability verification is a degraded state
+  // (RL-103: unsupported/unknown capability carries the support escape with
+  // the device reference).
+  const degradedCapability = capability.state !== "FRESH";
   return el(
     "section",
     {
@@ -275,6 +280,17 @@ function capabilityCard(device: DeviceResource): HtmlFragment {
         { class: "muted" },
         text("Which levels this device supports is established by verification, never assumed — anything unverified is treated as unknown."),
       ),
+      degradedCapability
+        ? supportEscape({
+            context: {
+              subject:
+                capability.state === "STALE"
+                  ? `My device ${device.name} needs its capability verification re-checked.`
+                  : `RoamLink has not verified what my device ${device.name} can do yet.`,
+              refs: [{ kind: "device", id: device.deviceId }],
+            },
+          })
+        : fragment(),
     ),
   );
 }

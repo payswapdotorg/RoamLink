@@ -77,7 +77,16 @@ export function isSupportCasePriority(value: unknown): value is SupportCasePrior
   );
 }
 
-/** The typed related-reference kinds on a support case (event correlation). */
+/**
+ * The typed related-reference kinds on a support case (event correlation).
+ *
+ * CLOSED vocabulary, additive-change tolerant (RL-LOCK-017): the customer
+ * UX spec (spec/ux-architecture.md §11) asks a support case to carry the
+ * DEVICE and the relevant ACTIVITY (notification) records, so `device` and
+ * `notification` were appended after the original commerce/connectivity
+ * kinds. Existing kinds are untouched and keep their positions; consumers
+ * must treat unknown kinds as unsupported, never as errors to crash on.
+ */
 export const SUPPORT_CASE_RELATED_REF_KINDS = [
   "order",
   "subscription",
@@ -86,6 +95,8 @@ export const SUPPORT_CASE_RELATED_REF_KINDS = [
   "refund",
   "connectivity_reference",
   "experience_intent",
+  "device",
+  "notification",
 ] as const;
 
 export type SupportCaseRelatedRefKind = (typeof SUPPORT_CASE_RELATED_REF_KINDS)[number];

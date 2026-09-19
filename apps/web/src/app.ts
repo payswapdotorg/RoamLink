@@ -62,6 +62,7 @@ import {
   overviewPage,
   settingsPage,
   supportPage,
+  readSupportContextParams,
   findGoalChoice,
   parseOnboardingStep,
 } from "./pages/index.js";
@@ -306,8 +307,15 @@ export class CustomerWebApp {
           notificationsPage({ notifications: await this.#client.listNotifications() }),
         );
       case "support":
+        // RL-103: context params from a contextual escape (degraded
+        // connectivity, failed automation, stale/unknown evidence, failed
+        // purchase/delivery, unsupported capability) decode fail-closed
+        // into the carried context the page renders transparently.
         return this.#withReads("your support cases", async () =>
-          supportPage({ cases: await this.#client.listSupportCases() }),
+          supportPage({
+            cases: await this.#client.listSupportCases(),
+            carriedContext: readSupportContextParams(request.params),
+          }),
         );
       case "case":
         return this.#withReads("the support case", async () => {
@@ -566,16 +574,28 @@ export class CustomerWebApp {
     return this.#runMutation(() => this.#client.markNotificationRead(input, options));
   }
 
-  /** Opens a support case. */
+  /**
+   * Opens a support case. Optional typed related references ride with the
+   * command (RL-103): the contextual entry points pre-carry device /
+   * connectivity / commerce / activity references so triage sees what the
+   * customer sees. The customer-visible context summary is always rendered
+   * by the Support page BEFORE the case is opened.
+   */
   async createSupportCaseFlow(
     input: {
       readonly subject: string;
       readonly description: string;
       readonly priority: "low" | "normal" | "high" | "urgent";
+      readonly relatedRefs?: readonly { readonly kind: string; readonly id: string }[];
     },
     options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
   ): Promise<MutationFlowResult> {
-    return this.#runMutation(() => this.#client.createSupportCase(input, options));
+    return this.#runMutation(() =>
+      this.#client.createSupportCase(
+        input,
+        options,
+      ),
+    );
   }
 
   async #runMutation(

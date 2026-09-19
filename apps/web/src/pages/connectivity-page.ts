@@ -52,6 +52,7 @@ import {
   REFERENCE_STATUS_LANGUAGE,
 } from "./language.js";
 import { deriveConnectionJourney, isDegradedShellState } from "./lifecycle.js";
+import { supportEscape } from "./support-context.js";
 
 export interface ConnectivityCenterInput {
   readonly connectivity: ConnectivityOverviewResource;
@@ -65,6 +66,14 @@ export interface ConnectivityCenterInput {
 function subjectSummaryCard(subject: SubjectConnectivityResource): HtmlFragment {
   const reference = REFERENCE_STATUS_LANGUAGE[subject.referenceStatus] ?? subject.referenceStatus;
   const evidence = DELIVERY_EVIDENCE_LANGUAGE[subject.deliveryEvidenceState] ?? subject.deliveryEvidenceState;
+  const freshnessState = subject.evidence === null ? null : subject.evidence.freshness.freshnessState;
+  // Stale/unknown evidence is a degraded state (RL-103): the escape
+  // pre-carries this subject's reference and its freshness fact.
+  const degradedEvidence =
+    subject.deliveryEvidenceState !== "EVIDENCED" ||
+    freshnessState === null ||
+    freshnessState === "STALE" ||
+    freshnessState === "UNKNOWN";
   return el(
     "section",
     {
@@ -127,6 +136,17 @@ function subjectSummaryCard(subject: SubjectConnectivityResource): HtmlFragment 
           ),
         ),
       ),
+      degradedEvidence
+        ? supportEscape({
+            context: {
+              subject:
+                subject.deliveryEvidenceState === "EVIDENCED"
+                  ? `My delivery evidence is ${freshnessState === null ? "of unknown freshness" : freshnessState.toLowerCase()} on ${subject.subjectType} ${subject.subjectId}.`
+                  : `My ${subject.subjectType} has no delivery evidence yet (${subject.subjectId}).`,
+              refs: [{ kind: subject.subjectType, id: subject.subjectId }],
+            },
+          })
+        : fragment(),
     ),
   );
 }
@@ -212,11 +232,21 @@ function waitingAndNextSections(overview: ConnectivityOverviewResource): HtmlFra
         ),
       ),
       isDegradedShellState(state)
-        ? el(
-            "p",
-            { class: "support-escape", "data-support-escape": "true" },
-            el("a", { href: pagePath("support") }, text("Get help with this")),
-          )
+        ? supportEscape({
+            context: {
+              subject:
+                state === "unevidenced"
+                  ? "My connectivity is requested but has no delivery evidence yet."
+                  : state === "evidenced-stale"
+                    ? "My delivery evidence has gone stale and I want to know what is happening."
+                    : "My delivery evidence freshness cannot be confirmed.",
+              detail: narrative.waitingFor,
+              refs: overview.subjects.map((subject) => ({
+                kind: subject.subjectType,
+                id: subject.subjectId,
+              })),
+            },
+          })
         : fragment(),
       state === "no-reference"
         ? el(

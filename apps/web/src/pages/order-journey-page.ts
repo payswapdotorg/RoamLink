@@ -313,6 +313,19 @@ function commerceChainSection(orderDetail: OrderDetailResource): HtmlFragment {
           "Payment, order, delivery and billable finality are separate states; this section shows commerce only.",
         ),
       ),
+      orderDetail.payments.some((payment) => payment.state === "failed")
+        ? supportEscape({
+            context: {
+              subject: "A payment on my order failed and I need help completing the purchase.",
+              refs: [
+                { kind: "order", id: orderDetail.order.orderId },
+                ...orderDetail.payments
+                  .filter((payment) => payment.state === "failed")
+                  .map((payment) => ({ kind: "payment" as const, id: payment.paymentId })),
+              ],
+            },
+          })
+        : fragment(),
     ),
   );
 }

@@ -48,9 +48,11 @@ import {
   InMemoryNotificationsIdempotencyLedger,
   Notification,
   NotificationService,
+  SUPPORT_CASE_RELATED_REF_KINDS,
   SUPPORT_CASE_STATES,
   SupportCase,
   caseMessagesCustomerView,
+  isSupportCaseRelatedRefKind,
   resolveEffectiveChannels,
   toNotificationApiResource,
   type NotificationAction,
@@ -270,6 +272,50 @@ describe("SupportCase aggregate (support_case_state)", () => {
       new SupportCase({ ...base, supportCaseId: CASE, status: "placed" }),
     ).toThrow(ValidationError);
     expect(SUPPORT_CASE_STATES).not.toContain("placed");
+  });
+
+  it("the related-ref kind vocabulary additively carries device + notification kinds (RL-103)", () => {
+    // The UX spec (spec/ux-architecture.md §11) asks a case to carry the
+    // DEVICE and the relevant ACTIVITY records: both kinds are members.
+    expect(SUPPORT_CASE_RELATED_REF_KINDS).toContain("device");
+    expect(SUPPORT_CASE_RELATED_REF_KINDS).toContain("notification");
+    // The original commerce/connectivity kinds are untouched.
+    for (const existing of [
+      "order",
+      "subscription",
+      "payment",
+      "invoice",
+      "refund",
+      "connectivity_reference",
+      "experience_intent",
+    ]) {
+      expect(SUPPORT_CASE_RELATED_REF_KINDS).toContain(existing);
+    }
+    // Still closed: an out-of-vocabulary kind is rejected fail-closed.
+    expect(isSupportCaseRelatedRefKind("device")).toBe(true);
+    expect(isSupportCaseRelatedRefKind("notification")).toBe(true);
+    expect(isSupportCaseRelatedRefKind("workspace")).toBe(false);
+    const deviceRefCase = new SupportCase({
+      ...base,
+      supportCaseId: CASE,
+      status: "open",
+      relatedRefs: [
+        { kind: "device", id: "dddddddd-0000-4000-8000-000000000001" },
+        { kind: "notification", id: "d0d0d0d0-0000-4000-8000-000000000001" },
+      ],
+    });
+    expect(deviceRefCase.relatedRefs.map((ref) => ref.kind)).toEqual([
+      "device",
+      "notification",
+    ]);
+    expect(() =>
+      new SupportCase({
+        ...base,
+        supportCaseId: CASE,
+        status: "open",
+        relatedRefs: [{ kind: "workspace", id: "dddddddd-0000-4000-8000-000000000001" }],
+      }),
+    ).toThrow(ValidationError);
   });
 });
 
