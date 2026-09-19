@@ -69,10 +69,13 @@ crash-free run applies nothing (fixed point). Convergence, not duplication.
 **Process restart** — CS-2/CS-3: rebuild the components over the same
 durable state; admitted-but-unprojected events complete exactly once (a
 re-drain is a no-op); projection versions advance monotonically; inbox dedupe
-keys survive so replays are `DUPLICATE`. NOTE (recorded DEFECT-1 from
-RL-073): repeated BATCHED drains cannot progress past the first batch —
-backlogs > the batch limit require an unbounded drain (or the inbox fix);
-pinned in CS-3.
+keys survive so replays are `DUPLICATE`. NOTE (AR-008 / RL-094, REMEDIATED
+on work/rl-durable-recovery): repeated BATCHED drains formerly could not
+progress past the first batch — backlogs > the batch limit required an
+unbounded drain; batch progression has landed and repeated bounded drains
+now advance (ceil(N/limit) calls), so the former unbounded-drain
+workaround pin is obsolete. (Historical DEFECT-1 record retained in
+tests/load and the accepted-risk registry.)
 
 **Backup** — B-1: export through the PUBLIC reader contracts (named record
 repositories at their recorded versions, the inbox admission log with dedupe
@@ -122,7 +125,7 @@ projections refresh.
 | Migration crash (torn window) | Re-run converges; ledger catches up; fixed point on the crash-free re-run | M-5 |
 | Ledger corruption (unknown/duplicate versions) | Fail closed `MIGRATION_LEDGER_CORRUPT` — never guessed through | M-6 |
 | Process crash between admission and projection | Admitted events survive; restart completes them exactly once | CS-2/CS-3 |
-| Process crash between outbox claim and outcome | **FINDING RL-075-F1** (§3): records strand in `DELIVERING` with no public recovery path; the surrounding atomicity holds everywhere it is expressible | CS-4 |
+| Process crash between outbox claim and outcome | Records strand in `DELIVERING` until the restarted worker runs the PUBLIC stuck-claim sweep (`UnitOfWork.outbox.recoverInFlight`, AR-007 / RL-093): the sweep re-owns them (PENDING due at the recovery instant, retry budget untouched) and the obligations continue and complete; the surrounding atomicity holds everywhere it is expressible. (Former FINDING RL-075-F1, §3 — REMEDIATED.) | CS-4 |
 | Storage full / failing commits | Typed fail-closed errors; nothing persisted, nothing acknowledged; retry lands exactly once after healing | CS-7, D-4 |
 | Uncommitted unit of work (crash before commit) | Nothing behind — no orphan records, outbox rows or inbox admissions | CS-5 |
 | ADCOS unreachable (sustained) | Honest `STALE` everywhere; bounded attempts; `DEFERRED` with diagnosable codes; breaker rejects without invoking; retry/deadline budgets cap work | D-1 |
@@ -137,30 +140,47 @@ projections refresh.
 
 ## 3. Findings (recorded — fix ownership: Tech Lead)
 
-### RL-075-F1 — outbox records stranded in DELIVERING have no public recovery path
+### RL-075-F1 — outbox records stranded in DELIVERING have no public recovery path (REMEDIATED — AR-007 / RL-093)
 
 - **Where:** `packages/persistence` outbox port (`claimDue` /
-  `markDelivered` / `markAttemptFailed`).
-- **What:** the production delivery shape is claim-commit → attempt →
-  outcome-commit. A crash between the claim commit and the outcome commit
-  leaves records in `DELIVERING`; `claimDue` only considers `PENDING`
-  records, and the public outbox port exposes NO requeue/stuck-sweep API.
-  The restarted worker therefore cannot continue those obligations through
-  the public interface. (The EDGE outbox — `@roamlink/edge` RL-042 — DOES
-  expose `recoverInFlight`; the RL-003 persistence outbox does not.)
-- **Exposure bound:** no data is LOST (the records, payloads and digests
-  remain intact; a still-live owner can complete them); the invariant broken
-  is "restart continues in-flight work", not durability of the record itself.
-- **Minimal reproducer** (`tests/deployment/test/cold-start-shutdown.test.ts`,
+  `markDelivered` / `markAttemptFailed` / `recoverInFlight`).
+- **What (historical):** the production delivery shape is claim-commit →
+  attempt → outcome-commit. A crash between the claim commit and the
+  outcome commit left records in `DELIVERING`; `claimDue` only considers
+  `PENDING` records, and the public outbox port exposed NO
+  requeue/stuck-sweep API. The restarted worker therefore could not
+  continue those obligations through the public interface. (The EDGE
+  outbox — `@roamlink/edge` RL-042 — already exposed `recoverInFlight`.)
+- **Exposure bound (historical):** no data was LOST (the records, payloads
+  and digests remained intact; a still-live owner could complete them);
+  the invariant broken was "restart continues in-flight work", not
+  durability of the record itself.
+- **Historical reproducer** (`tests/deployment/test/cold-start-shutdown.test.ts`,
   CS-4): enqueue 2 records; `claimDue` commits; (crash); restart;
   `claimDue` again → returns `[]`; both records remain `DELIVERING`.
-- **Candidate remediation:** a `requeueInFlight(olderThan)` sweep on the
-  port (mirroring the edge outbox's `recoverInFlight`), or claiming with a
-  visibility timeout so stranded claims expire back to `PENDING`.
+- **REMEDIATION (AR-007, RL-093, work/rl-durable-recovery):** the port
+  gained the public stuck-claim sweep `UnitOfWork.outbox.recoverInFlight(at)`
+  — the persistence-side port of the edge outbox's `recoverInFlight`
+  semantic: every DELIVERING record moves back to PENDING due exactly at
+  `at` WITHOUT consuming its retry budget (crash recovery is not a failed
+  delivery attempt); payload bytes/digests are untouched (idempotent
+  replay verifies the digest; obligations are idempotency-keyed,
+  RL-LOCK-014, so redelivery is at-least-once and safe); terminal states
+  (DELIVERED/FAILED) are never resurrected; the sweep is transactional
+  (a concurrent delivered outcome wins the race as the typed
+  ConflictError). The PostgreSQL driver mirrors the same shared pure
+  transition (`recoverStuckOutboxRecord`) over locked DELIVERING rows.
+  The sweep must be called only when no live worker still holds claims
+  (crash/restart discipline — the record carries no claim timestamp to
+  filter by age, so the honest semantic is the full operator-visible
+  sweep). CS-4 now verifies the restart continues and completes the
+  obligations through the sweep.
 
-*(RL-073's DEFECT-1 — batched inbox drains cannot progress past the first
-batch — is re-pinned by CS-3 with its unbounded-drain workaround; ownership
-already recorded with the load suite.)*
+*(RL-073's DEFECT-1 — batched inbox drains could not progress past the first
+batch — was REMEDIATED by the AR-008 / RL-094 batch-progression fix on
+work/rl-durable-recovery; CS-3 now pins the bounded-drain expectation and
+the former unbounded-drain workaround is obsolete. Ownership recorded with
+the load suite and the accepted-risk registry.)*
 
 ## 4. Honest gaps
 
