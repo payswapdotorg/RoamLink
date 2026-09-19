@@ -27,6 +27,9 @@ import {
   SHELL_CONNECTIVITY_LANGUAGE,
   deliveryEvidenceBadge,
   deriveShellConnectivityState,
+  disclosureSection,
+  evidenceDisclosure,
+  technicalDisclosure,
   freshnessBadge,
   instantView,
   stateBadge,
@@ -227,17 +230,17 @@ function waitingAndNextSections(overview: ConnectivityOverviewResource): HtmlFra
 }
 
 // --------------------------------------------------------------------------------
-// Progressive disclosure layers
+// Progressive disclosure layers (RL-102: the shared app-kit builders keep the
+// exact data-disclosure vocabulary across every evidence-bearing surface)
 // --------------------------------------------------------------------------------
 
 function whyDisclosure(overview: ConnectivityOverviewResource): HtmlFragment {
   const state = deriveShellConnectivityState(overview.subjects);
   const narrative = CONNECTIVITY_WHY_LANGUAGE[state];
-  return el(
-    "details",
-    { class: "disclosure", "data-disclosure": "why" },
-    fragment(
-      el("summary", {}, text("Why is RoamLink doing this?")),
+  return disclosureSection({
+    layer: "why",
+    summary: "Why is RoamLink doing this?",
+    body: fragment(
       el("p", {}, text(narrative.why)),
       el(
         "p",
@@ -247,111 +250,7 @@ function whyDisclosure(overview: ConnectivityOverviewResource): HtmlFragment {
         ),
       ),
     ),
-  );
-}
-
-function evidenceDisclosure(overview: ConnectivityOverviewResource): HtmlFragment {
-  const sections = overview.subjects.map((subject) => {
-    if (subject.evidence === null) {
-      return el(
-        "section",
-        { class: "panel", "data-evidence-subject": subject.subjectId },
-        fragment(
-          el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
-          el(
-            "p",
-            { class: "muted", "data-evidence-present": "false" },
-            text("No delivery evidence is linked to this reference yet. When the network confirms delivery, the evidence and its freshness appear here."),
-          ),
-        ),
-      );
-    }
-    const freshness = subject.evidence.freshness;
-    return el(
-      "section",
-      { class: "panel", "data-evidence-subject": subject.subjectId, "data-evidence-present": "true" },
-      fragment(
-        el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
-        el(
-          "dl",
-          { class: "fact-list" },
-          factRow("Evidence class", subject.evidence.evidenceClass),
-          factRow("Kind of evidence record", subject.evidence.canonicalResourceType),
-          factRow("Evidence record id", subject.evidence.canonicalResourceId),
-          factRow("Observed", freshness.observedAt ?? "never"),
-          factRow("Received", freshness.receivedAt ?? "never"),
-          factRow("Freshness guarantee until", freshness.freshUntil ?? "(no guarantee recorded)"),
-          factRow("Freshness when linked", freshness.recordedFreshnessState),
-        ),
-      ),
-    );
   });
-  return el(
-    "details",
-    { class: "disclosure", "data-disclosure": "evidence" },
-    fragment(
-      el("summary", {}, text("Evidence")),
-      sections.length === 0
-        ? el("p", { class: "muted" }, text("No connectivity references exist yet, so there is no evidence to show."))
-        : fragment(...sections),
-    ),
-  );
-}
-
-function technicalDisclosure(overview: ConnectivityOverviewResource): HtmlFragment {
-  const rows = overview.subjects.map((subject) =>
-    el(
-      "section",
-      { class: "panel", "data-technical-subject": subject.subjectId },
-      fragment(
-        el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
-        subject.evidence === null
-          ? el("p", { class: "muted" }, text("No evidence record is linked yet."))
-          : el(
-              "dl",
-              { class: "fact-list" },
-              factRow("Evidence class", subject.evidence.evidenceClass),
-              factRow("Canonical resource type", subject.evidence.canonicalResourceType),
-              factRow("Canonical resource id", subject.evidence.canonicalResourceId),
-              factRow(
-                "Source version",
-                subject.evidence.sourceVersion === null ? "not recorded" : subject.evidence.sourceVersion,
-              ),
-              factRow("Causing event id", subject.evidence.eventId ?? "not recorded"),
-              el(
-                "div",
-                { class: "fact-row" },
-                el("dt", {}, text("Payload digest")),
-                el("dd", {}, el("code", {}, text(subject.evidence.payloadDigest))),
-              ),
-            ),
-      ),
-    ),
-  );
-  return el(
-    "details",
-    { class: "disclosure", "data-disclosure": "technical" },
-    fragment(
-      el("summary", {}, text("Technical detail")),
-      el(
-        "p",
-        { class: "muted" },
-        text("Record identifiers for the delivery evidence. You never need this section to understand your connection."),
-      ),
-      rows.length === 0
-        ? el("p", { class: "muted" }, text("Nothing to show yet."))
-        : fragment(...rows),
-    ),
-  );
-}
-
-function factRow(label: string, value: string | number): HtmlFragment {
-  return el(
-    "div",
-    { class: "fact-row" },
-    el("dt", {}, text(label)),
-    el("dd", {}, text(value)),
-  );
 }
 
 // --------------------------------------------------------------------------------

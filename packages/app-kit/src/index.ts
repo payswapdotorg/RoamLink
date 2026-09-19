@@ -24,4 +24,5 @@ export * from "./api/fake/seed.js";
 export * from "./api/fake/in-memory-api.js";
 export * from "./ui/html.js";
 export * from "./ui/components.js";
+export * from "./ui/disclosure.js";
 export * from "./ui/shell.js";

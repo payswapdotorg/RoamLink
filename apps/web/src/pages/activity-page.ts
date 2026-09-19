@@ -18,6 +18,7 @@ import {
   instantView,
   severityBadge,
   stateBadge,
+  disclosureSection,
   el,
   fragment,
   text,
@@ -109,11 +110,18 @@ function activityItem(notification: NotificationResource): HtmlFragment {
       ),
       evidence.length === 0
         ? fragment()
-        : el(
-            "ul",
-            { class: "evidence-list", "data-evidence-lines": "true" },
-            ...evidence.map((line) => el("li", {}, text(line))),
-          ),
+        : disclosureSection({
+            layer: "evidence",
+            summary: "Evidence for this entry",
+            intro:
+              "Every claim above traces back to the records RoamLink keeps — each with its own evidence and freshness. You never need this section to follow the story.",
+            body: el(
+              "ul",
+              { class: "evidence-list", "data-evidence-lines": "true" },
+              ...evidence.map((line) => el("li", {}, text(line))),
+            ),
+            attributes: { "data-evidence-disclosure": notification.notificationId },
+          }),
       el(
         "p",
         { class: "muted" },

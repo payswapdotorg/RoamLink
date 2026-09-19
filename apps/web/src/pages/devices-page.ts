@@ -22,6 +22,7 @@ import {
   freshnessBadge,
   instantView,
   stateBadge,
+  disclosureSection,
   el,
   fragment,
   text,
@@ -218,18 +219,57 @@ function capabilityCard(device: DeviceResource): HtmlFragment {
           freshnessBadge(device.contextFreshness),
         ),
       ),
-      el(
-        "dl",
-        { class: "fact-list", "data-automation-key": "true" },
-        ...automationLevels.map((level) =>
+      disclosureSection({
+        layer: "evidence",
+        summary: "Capability evidence",
+        intro:
+          "What RoamLink knows about this device's abilities, and how fresh that verification is. Absence of verification is stated, never bridged with an assumption.",
+        body: el(
+          "dl",
+          { class: "fact-list", "data-capability-evidence": "true" },
           el(
             "div",
             { class: "fact-row" },
-            el("dt", {}, text(level)),
-            el("dd", {}, text(AUTOMATION_LEVEL_LANGUAGE[level])),
+            el("dt", {}, text("Capability verification")),
+            el(
+              "dd",
+              {},
+              fragment(
+                freshnessBadge(device.capabilityFreshness),
+                device.capabilityFreshness === null
+                  ? text(" (no observation recorded)")
+                  : text(
+                      ` — observed ${device.capabilityFreshness.observedAt ?? "never"}, received ${device.capabilityFreshness.receivedAt ?? "never"}`,
+                    ),
+              ),
+            ),
+          ),
+          el(
+            "div",
+            { class: "fact-row" },
+            el("dt", {}, text("Context snapshot")),
+            el("dd", {}, freshnessBadge(device.contextFreshness)),
           ),
         ),
-      ),
+      }),
+      disclosureSection({
+        layer: "technical",
+        summary: "Automation levels explained",
+        intro:
+          "The five automation levels RoamLink can hold for a device. You never need this section to understand your device.",
+        body: el(
+          "dl",
+          { class: "fact-list", "data-automation-key": "true" },
+          ...automationLevels.map((level) =>
+            el(
+              "div",
+              { class: "fact-row" },
+              el("dt", {}, text(level)),
+              el("dd", {}, text(AUTOMATION_LEVEL_LANGUAGE[level])),
+            ),
+          ),
+        ),
+      }),
       el(
         "p",
         { class: "muted" },
