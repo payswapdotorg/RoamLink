@@ -388,6 +388,57 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
 - `packages/testkit` — deterministic test primitives: monotonic injectable
   clock, deterministic ID generators, in-memory event/command recorders, and
   fixture builders for the Wave-0 contract types.
+- `packages/provider-neon` — the Neon PostgreSQL configuration/health
+  adapter surface (RL-095, Wave 6): TLS-enforced connection-string parsing
+  with pooled/direct endpoint classification and value-free fail-closed
+  errors, conservative pool GUIDANCE defaults (deployment.md §5 — quotas
+  are documented, never correctness logic), a connection health check
+  composing with the observability HealthRegistry (the real probe is
+  injected by the RL-090 driver path), and connection-string redaction
+  (RL-LOCK-016). The durable source of truth stays behind the persistence
+  ports; Neon is an adapter, not architecture (ADR-0003).
+- `packages/provider-redis` — the bounded ephemeral-coordination adapter
+  surface (RL-096, Wave 6): the `EphemeralCoordinationPort` that makes
+  Redis misuse unrepresentable by construction (every write carries a TTL,
+  size-bounded values, safe-label keys, no durable structures), the
+  deterministic in-memory fake, the Upstash REST client over a pinned wire
+  contract (injected fetch, typed detail-suppressed provider errors), a
+  distributed fixed-window limiter emitting resilience
+  `LimiterDecision`s (state TTL-bounded via one pinned EVAL script), the
+  secret-redacting env surface, and the REUSABLE contract battery run
+  against BOTH paths (ADR-0003 replacement rule). Redis is optional for
+  correctness — the system degrades to the non-accelerated path.
+- `packages/provider-qstash` — the durable-jobs delivery adapter surface
+  (RL-097, Wave 6): a transport-only `DurableJobDeliveryPort` (durable
+  truth stays in the caller's PostgreSQL ledger; the idempotency key is
+  carried, never invented), the deterministic fake simulating the full
+  delivery loop (delay windows, exponential-backoff retries, dead-letter
+  after the attempt budget, explicit redrive — no silent stranding), the
+  Upstash QStash publish client (dedupe id header, injected fetch), and
+  receiver-side signature verification with webhook-inbox rigor
+  (constant-time compare, replay window both directions, closed value-free
+  failure codes, current+next signing-key rotation). Jobs flow: webhook
+  admission / scheduled work -> durable queue -> QStash delivery -> signed
+  receiver verification.
+- `packages/provider-r2` — the object-storage adapter surface (RL-098,
+  Wave 6): the closed blob `ObjectStoragePort` (put/get/delete/list/
+  presign; absence is a valid answer; bounded admission — size, presign
+  TTL, printable metadata), the dependency-free AWS SigV4 S3-compatible
+  client for Cloudflare R2 (anchored in tests to the AWS documentation's
+  published SigV4 vector; strict closed-shape ListObjectsV2 XML parsing;
+  presigned URLs), content-addressed key conventions (tenant-scoped,
+  dated, idempotent re-uploads), the deterministic fake, the
+  secret-redacting env surface, the health check, and the reusable
+  contract battery — run against the fake AND the client over a
+  SigV4-validating in-memory server. R2 never holds relational authority.
+- `infra/deployment` — the deployment manifest layer (RL-099, Wave 6):
+  per-environment env TEMPLATES (deployment.md §6: development/preview/
+  demo/production; empty values only — secrets never committed),
+  per-provider key templates, the port->adapter->env wiring manifest, the
+  free-tier operating constraints as documented guidance (§5; quotas never
+  become correctness logic), the Vercel project-config template, and the
+  operator runbooks (Neon provisioning; end-to-end deploy + health +
+  §7 deployment checks).
 - `packages/app-kit` — the shared application kit for the RL-060/RL-061
   product surfaces: the public application API contract (spec/api.md) as
   schema-first typed wire resources with fail-closed parsers, the
