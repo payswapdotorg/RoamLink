@@ -28,10 +28,11 @@
  *       per canonical resource with monotone projection versions, even
  *       under duplicates + reordering.
  *
- * DEFECT-1 (recorded, reproduced at the bottom of this file): the inbox
- * drain cannot progress past the first batch-limit records of a larger
- * backlog - see the reproducer test for the minimal case and the honest
- * bounded-behavior documentation.
+ * DEFECT-1 (recorded by RL-073, REMEDIATED on work/rl-durable-recovery -
+ * AR-008 / RL-094, see the updated reproducer at the bottom of this file):
+ * the inbox drain used to be unable to progress past the first batch-limit
+ * records of a larger backlog; batch progression now advances every bounded
+ * drain past the processed prefix.
  */
 import { describe, expect, it } from "vitest";
 
@@ -185,34 +186,24 @@ describe("RL-073 load: high-volume webhook ingestion -> projections -> read mode
   }, 240_000);
 
   // -------------------------------------------------------------------------
-  // DEFECT-1 (recorded for the Tech Lead - fix ownership decided there;
-  // packages/* is out of this work item's scope). Minimal reproducer + the
-  // honest bounded-behavior documentation. The assertions below pin the
-  // CURRENT observable behavior so the eventual fix FLIPS them (the
-  // repository's own negative-proof discipline: a suite must be able to
-  // fail).
+  // DEFECT-1 (recorded for the Tech Lead by RL-073; REMEDIATED on
+  // work/rl-durable-recovery — AR-008 / RL-094). The historical pin asserted
+  // the DEFECTIVE observable behavior (repeated processPending(2) calls
+  // re-consider the first two records forever; the third event is never
+  // processed). That pin is REPLACED by the fixed expectation, per the
+  // repository's negative-proof discipline (a suite must be able to fail):
   //
-  //   DEFECT: AdcosWebhookInboxService.processPending(limit) slices the
-  //   ADMITTED inbox list from index 0 on EVERY call. Admission state never
-  //   changes after projection (processing status lives on the extended
-  //   record), so with a backlog larger than `limit` the first `limit`
-  //   records are re-considered forever and records beyond index `limit`
-  //   are NEVER processed - the drain cannot progress past the first batch.
+  //   DEFECT (historical): processPending(limit) sliced the ADMITTED inbox
+  //   list from index 0 on EVERY call, so with a backlog larger than
+  //   `limit` the first `limit` records were re-considered forever and
+  //   records beyond index `limit` were NEVER processed.
   //
-  //   IMPACT: a webhook backlog > inboxBatchLimit (default 50) does not
-  //   drain through repeated processPending calls; the affected events'
-  //   inbox records stay PENDING indefinitely (the reliability property
-  //   "every admitted record reaches a terminal state in bounded calls"
-  //   fails at the inbox level). Projection-level convergence still
-  //   happens through the reconciler's canonical refresh (Phase C), but
-  //   the inbox terminal-state invariant is violated.
-  //
-  //   MINIMAL REPRODUCER: admit 3 valid events; processPending(2) twice ->
-  //   the first call applies 2; the second call reports both as
-  //   alreadyProjected and applies 0; the third event is never considered
-  //   (its extended record stays PENDING forever).
+  //   FIX (AR-008): the batch is the first `limit` records whose processing
+  //   status is NOT already terminal; PROJECTED records are skipped without
+  //   consuming batch slots, so repeated bounded drains advance and every
+  //   admitted record reaches a terminal state within ceil(N/limit) calls.
   // -------------------------------------------------------------------------
-  it("DEFECT-1 reproducer: a backlog larger than the batch limit never drains past the first batch", async () => {
+  it("DEFECT-1 closed (AR-008): a backlog larger than the batch limit drains fully across bounded calls", async () => {
     const world = makeLoadWorld();
     const deliveries = await ingestIntents(world.fake, world.clock, 3);
     await world.admitAll(deliveries);
@@ -221,18 +212,21 @@ describe("RL-073 load: high-volume webhook ingestion -> projections -> read mode
     expect(first.considered).toBe(2);
     expect(first.applied).toBe(2);
 
-    // Repeated drains re-consider the SAME first two records; the third is
-    // never reached - current (defective) observable behavior, pinned here
-    // so the fix flips this assertion to `applied: 1, considered: 1`.
-    for (let call = 0; call < 10; call += 1) {
-      const again = await world.boundary.inbox.processPending(2);
-      expect(again.applied).toBe(0);
-      expect(again.alreadyProjected).toBe(2);
-    }
+    // The second bounded drain ADVANCES past the processed prefix: the two
+    // PROJECTED records are skipped (alreadyProjected) and do NOT consume
+    // batch slots, so the third event is finally considered and applied.
+    const second = await world.boundary.inbox.processPending(2);
+    expect(second.considered).toBe(3);
+    expect(second.alreadyProjected).toBe(2);
+    expect(second.applied).toBe(1);
 
-    // Only two of three events ever projected; the read model is missing
-    // the third canonical resource (repair falls to reconciliation's
-    // canonical scan, not the inbox drain).
-    expect(await world.boundary.projections.count("connectivity_intent")).toBe(2);
+    // All three events projected; the read model holds every canonical
+    // resource (no starvation, no reconciliation fallback needed).
+    expect(await world.boundary.projections.count("connectivity_intent")).toBe(3);
+
+    // Bounded and stable: further drains are pure no-ops.
+    const third = await world.boundary.inbox.processPending(2);
+    expect(third.applied).toBe(0);
+    expect(third.alreadyProjected).toBe(3);
   });
 });
