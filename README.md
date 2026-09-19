@@ -439,6 +439,21 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   become correctness logic), the Vercel project-config template, and the
   operator runbooks (Neon provisioning; end-to-end deploy + health +
   §7 deployment checks).
+- `infra/deployment/smoke` — the synthetic smoke journey (RL-100, Wave 6):
+  the deployment.md §7 "synthetic smoke journey is green" gate made
+  executable. Zero-dependency Node >= 22 (root scripts `pnpm smoke` /
+  `pnpm smoke:selftest`; run via `BASE_URL=<host> pnpm smoke` against a
+  DEPLOYED stack, no secrets, no customer data). Asserts the honest
+  readiness vocabulary (`ready | degraded:<dep> | not-ready:<reason>`)
+  on `/readyz` + `/v1/readiness` with the servability HTTP codes, the
+  shell surfaces' expected markup, referenced static assets, and the
+  fail-closed ADCOS webhook ingress — and FAILS if a dependency lies
+  (a ready claim over a down check, an out-of-vocabulary status, a
+  servability-code mismatch, hidden unhealthy state). Honest degradation
+  (surfaced `degraded:*`) passes — surfacing is not failure. The runner
+  is proven by loopback selftests; first real-environment execution is
+  the operator's RL-118 phase (runbook §6b: deploy → wait ready → run
+  smoke → record).
 - `packages/app-kit` — the shared application kit for the RL-060/RL-061
   product surfaces: the public application API contract (spec/api.md) as
   schema-first typed wire resources with fail-closed parsers, the
@@ -528,8 +543,11 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
 - `apps/portal-host` — the real deployable Next.js host (RL-089): composes
   `apps/web` (under `/`), `apps/admin` (under `/admin`) and the `services/api`
   API/BFF (under `/v1`) into one Node 22+ runtime with real health
-  (`/healthz`) and readiness (`/readyz` — the database answers AND the
-  migration ledger is applied) endpoints. Route handlers are three-line
+  (`/healthz`) and readiness (`/readyz` — since RL-100 carrying the honest
+  composed vocabulary `ready | degraded:<dep> | not-ready:<reason>`: the
+  database probe + the migration ledger +, when `ROAMLINK_API_BASE_URL` is
+  configured, a bounded-timeout probe of the API's own readiness) endpoints.
+  Route handlers are three-line
   forwarders into framework-free handlers; the call-chain discipline is
   HTTP → application command/query → domain/integration → persistence
   (routes never touch the database). The boot is fail-closed: a composition

@@ -117,15 +117,63 @@ hash.
 
 ## 6. Verify health (real, not fake — deployment.md §7)
 
-1. `GET /api/health` (or the host's configured health route) must report
-   the registered checks: `database` (Neon), `redis` (only when the
-   accelerator is configured), `object-storage` (only when R2 is
-   configured).
+The composed readiness surface (RL-100) exposes the per-dependency truth
+through the SAME aggregation everywhere:
+
+- `GET /healthz` — liveness: the process answers `{status:"alive"}` (no
+  dependency calls — readiness owns those);
+- `GET /readyz` — the host's composed readiness (the database probe + the
+  migration ledger +, when `ROAMLINK_API_BASE_URL` is configured, a
+  bounded-timeout probe of the API's own readiness);
+- `GET /v1/readiness` — the API service's composed readiness (RL-100):
+  the REAL per-dependency probes bound at composition, aggregated into
+  the frozen honest vocabulary
+  `ready | degraded:<dependency,...> | not-ready:<reason,...>` (200 for
+  ready/degraded — servable; 503 for not-ready). REQUIRED dependencies
+  (PostgreSQL, the migration ledger) being down is not-ready; an OPTIONAL
+  accelerator/transport (Redis/QStash/R2) being down only ever DEGRADES —
+  its absence can never fail readiness for correctness it does not own.
+
+1. The ready/readiness endpoints must report the registered checks:
+   `database` (Neon; REQUIRED), `migrations` (the applied-versions ledger;
+   REQUIRED), and the composed optional adapters — `redis`, `qstash`,
+   `object-storage` — each present ONLY when that adapter is actually
+   configured for the environment (an uncomposed dependency is never
+   reported — no fake surface).
 2. Prove failure semantics once per environment: break a credential
    (temporarily) and confirm the affected check reports `down` with a
-   SUPPRESSED detail (no connection string, no token — RL-LOCK-016).
+   SUPPRESSED detail (no connection string, no token — RL-LOCK-016) and
+   the vocabulary surfaces `degraded:<dep>` (optional) or
+   `not-ready:<dep>` + HTTP 503 (required).
 3. Confirm readiness treats the Redis accelerator being down as
    non-fatal when the host is configured to continue without it.
+
+## 6b. Synthetic smoke journey (RL-100)
+
+The executable §7 gate: deploy -> wait ready -> run smoke -> record.
+The suite lives in `../smoke/` (see `../smoke/README.md` for the check
+list and the no-lie law) and needs NO secrets and NO customer data:
+
+1. WAIT READY: poll `GET $BASE_URL/readyz` until the answer is the
+   honest vocabulary (ready or degraded:*); a `not-ready:*` answer means
+   the deployment is NOT ready — fix before continuing (a not-ready
+   answer IS still proof the truth layer works; the smoke will pass it
+   through its vocabulary check and fail the overall run only where the
+   deployment lies — an operator may also record a not-ready state as a
+   blocked deploy rather than a smoke failure).
+2. RUN SMOKE (the deployed stack; replace the example origins):
+   `BASE_URL=https://<host-origin> [API_URL=https://<api-origin>] pnpm smoke`
+   — exit 0 required. The suite asserts the honest vocabulary on
+   `/readyz` + `/v1/readiness`, the shell surfaces, referenced static
+   assets, and the fail-closed webhook ingress; it FAILS if any
+   dependency lies (a ready claim over a down check, an out-of-vocabulary
+   status, a servability-code mismatch, hidden unhealthy state).
+3. RECORD: paste the smoke output (per-check `[ok]`/`[FAIL]` lines + the
+   summary) into the deployment log, with the deployed commit SHA; a
+   FAILED smoke blocks the §8 gate — fix, redeploy, re-run.
+4. First run in a NEW environment: also run `pnpm smoke:selftest` once
+   (proves the runner itself; loopback only) and record the version of
+   the smoke used with the deployment.
 
 ## 7. Verify the provider surfaces (RL-095..098 wiring)
 
@@ -158,7 +206,9 @@ Before calling the environment ready, ALL of:
 - [ ] R2 uploads use scoped credentials;
 - [ ] Redis is optional for correctness (demonstrated);
 - [ ] job retry is idempotent (demonstrated via duplicate jobId enqueue);
-- [ ] synthetic smoke journey is green (hosted).
+- [ ] synthetic smoke journey is green (hosted) — §6b executed against the
+      deployed origin: `BASE_URL=... pnpm smoke` exit 0, output recorded
+      with the deployed commit SHA (a lying dependency blocks this gate).
 
 ## 9. Honest-gaps discipline (AR-009)
 

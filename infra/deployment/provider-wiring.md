@@ -25,8 +25,15 @@ adapter construction (and this manifest).
 3. **Every adapter implementation passes the SAME contract battery**
    exported from its package (`define*Contract`) — the ADR-0003
    replacement rule.
-4. **Health composition**: hosts register `createNeonHealthCheck`,
-   `createRedisHealthCheck` (only when Redis is configured — an
-   accelerator being down must never by itself fail readiness) and
-   `createObjectStorageHealthCheck` with the @roamlink/observability
-   HealthRegistry.
+4. **Health composition**: hosts register `createNeonHealthCheck` (or the
+   persistence driver's liveness probe + the migration-ledger check),
+   `createRedisHealthCheck`, `createQStashHealthCheck` (RL-100, over the
+   read-only `TransportProbePort`) and `createObjectStorageHealthCheck` —
+   each ONLY when that adapter is actually composed — with the
+   @roamlink/observability HealthRegistry. PostgreSQL + migrations are
+   REQUIRED (their down state is `not-ready:<dep>`); every
+   accelerator/transport (Redis/QStash/R2) is OPTIONAL (its down state is
+   `degraded:<dep>` — an accelerator being down must never by itself fail
+   readiness). The composed vocabulary is
+   `ready | degraded:<dep,...> | not-ready:<reason,...>`; the synthetic
+   smoke (`smoke/run.mjs`) asserts it on the deployed stack.
