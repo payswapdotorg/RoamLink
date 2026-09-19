@@ -111,6 +111,15 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .evidence-list { margin: 0.3rem 0; padding-left: 1.2rem; color: #6f665e; font-size: 0.85rem; }
 .evidence-list li { margin: 0.15rem 0; }
 .needs-you { font-weight: 600; color: #7d3221; }
+/* RL-086 goals journey */
+.goal-list { list-style: none; margin: 0.5rem 0 1rem; padding: 0; display: grid; gap: 0.75rem; }
+.goal-card { background: #fff; border: 1px solid #e8e2da; border-radius: 10px; padding: 0.85rem 1rem; }
+.goal-card h3 { margin: 0 0 0.3rem; }
+.goal-card p { margin: 0.2rem 0; }
+.goal-preferences { color: #4d453e; }
+.preference-list { border: 1px solid #e8e2da; border-radius: 10px; padding: 0.6rem 0.8rem; margin: 0.6rem 0; display: grid; gap: 0.25rem; }
+.preference-option { display: flex; gap: 0.55rem; align-items: center; min-height: 44px; font-size: 0.95rem; }
+.preference-option input { width: 1.1rem; height: 1.1rem; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

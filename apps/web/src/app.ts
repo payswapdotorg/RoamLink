@@ -51,9 +51,9 @@ import {
   commercePage,
   connectivityCenterPage,
   devicesPage,
+  goalDetailPage,
+  goalsPage,
   homePage,
-  intentDetailPage,
-  intentsPage,
   morePage,
   notificationsPage,
   onboardingPage,
@@ -238,13 +238,22 @@ export class CustomerWebApp {
           devicesPage({ devices: [await this.#client.getDevice(request.params?.deviceId ?? "")] }),
         );
       case "intents":
-        return this.#withReads("your goals", async () =>
-          intentsPage({ intents: await this.#client.listExperienceIntents() }),
-        );
+        return this.#withReads("your goals", async () => {
+          const [intents, devices] = await Promise.all([
+            this.#client.listExperienceIntents(),
+            this.#client.listDevices(),
+          ]);
+          return goalsPage({ intents, devices });
+        });
       case "intent":
-        return this.#withReads("the goal", async () =>
-          intentDetailPage({ intent: await this.#client.getExperienceIntent(request.params?.intentId ?? "") }),
-        );
+        return this.#withReads("the goal", async () => {
+          const [intent, devices, connectivity] = await Promise.all([
+            this.#client.getExperienceIntent(request.params?.intentId ?? ""),
+            this.#client.listDevices(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return goalDetailPage({ intent, devices, connectivity });
+        });
       case "commerce":
         return this.#withReads("your plans and billing", async () => {
           const [products, orders, subscriptions] = await Promise.all([
