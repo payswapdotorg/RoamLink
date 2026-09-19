@@ -414,6 +414,124 @@ describe("async projection (RL-033 §6: async project, deterministic + idempoten
   });
 });
 
+describe("batch progression across a backlog larger than the limit (AR-008 / RL-094)", () => {
+  it("a backlog of N > limit drains to completion across ceil(N/limit) bounded calls", async () => {
+    const projector = new RecordingProjector();
+    const { service, persistence } = makeService(projector);
+    const N = 7;
+    for (let n = 1; n <= N; n += 1) {
+      await service.admitDelivery({
+        headers: deliveryFor(n, n).headers,
+        payload: fakeEventPayload(spec(n)),
+        receivedAt: T0,
+      });
+    }
+    const limit = 3;
+    const calls: number[] = [];
+    for (let call = 0; call < Math.ceil(N / limit); call += 1) {
+      const report = await service.processPending(limit);
+      calls.push(report.applied);
+    }
+    // 3 + 3 + 1: the drain ADVANCES every call - no record is re-considered
+    // forever, no record beyond index `limit` is starved.
+    expect(calls).toEqual([3, 3, 1]);
+    expect(projector.calls.size()).toBe(N);
+    // Every admitted record reached its terminal PROJECTED state, in
+    // admission order.
+    expect(projector.calls.events().map((view) => view.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    for (let n = 1; n <= N; n += 1) {
+      const stored = await persistence.records(ADCOS_WEBHOOK_INBOX_REPOSITORY).get(`evt-${n}`);
+      expect(parseAdmittedWebhookRecord(stored?.value).processing.status).toBe("PROJECTED");
+    }
+  });
+
+  it("terminal records do not consume batch slots: the drain advances past a processed prefix", async () => {
+    const projector = new RecordingProjector();
+    const { service } = makeService(projector);
+    for (const n of [1, 2, 3]) {
+      await service.admitDelivery({
+        headers: deliveryFor(n, n).headers,
+        payload: fakeEventPayload(spec(n)),
+        receivedAt: T0,
+      });
+    }
+    await service.processPending(); // all three PROJECTED
+    projector.calls.clear();
+    // Two NEW arrivals join the backlog BEHIND a fully-processed prefix.
+    for (const n of [4, 5]) {
+      await service.admitDelivery({
+        headers: deliveryFor(n, n).headers,
+        payload: fakeEventPayload(spec(n)),
+        receivedAt: T1,
+      });
+    }
+    // A bounded drain processes exactly the two non-terminal records: the
+    // three terminal ones are skipped (counted, not re-projected) and do
+    // NOT consume the batch slots.
+    const report = await service.processPending(2);
+    expect(report).toEqual({
+      considered: 5,
+      alreadyProjected: 3,
+      applied: 2,
+      skipped: 0,
+      failed: 0,
+      conflicts: 0,
+    });
+    expect(projector.calls.events().map((view) => view.event.event_id)).toEqual(["evt-4", "evt-5"]);
+    // Nothing left: a further bounded drain is a pure no-op.
+    const idle = await service.processPending(2);
+    expect(idle.applied).toBe(0);
+    expect(idle.alreadyProjected).toBe(5);
+    expect(projector.calls.size()).toBe(2);
+  });
+
+  it("a retried FAILED record consumes a slot (an attempt is an attempt) but does not starve later records", async () => {
+    const projector = new RecordingProjector();
+    const { service } = makeService(projector);
+    for (const n of [1, 2, 3, 4]) {
+      await service.admitDelivery({
+        headers: deliveryFor(n, n).headers,
+        payload: fakeEventPayload(spec(n)),
+        receivedAt: T0,
+      });
+    }
+    // evt-1 is transiently failing; everything else applies.
+    projector.answerWith(async (view) =>
+      view.event.event_id === "evt-1"
+        ? { outcome: "FAILED", reason: "TRANSIENT" }
+        : { outcome: "APPLIED" },
+    );
+    const first = await service.processPending(2);
+    expect(first.failed).toBe(1); // evt-1 retried
+    expect(first.applied).toBe(1); // evt-2 still progressed
+    const second = await service.processPending(2);
+    expect(second.failed).toBe(1); // evt-1 retried again
+    expect(second.applied).toBe(1); // evt-3 progressed
+    // The head record never blocks the batch from advancing: after two
+    // bounded calls evt-2 AND evt-3 both reached the projector.
+    expect(projector.calls.filter((view) => view.event.event_id !== "evt-1").map((view) => view.event.event_id)).toEqual([
+      "evt-2",
+      "evt-3",
+    ]);
+  });
+
+  it("admission order is preserved across batches (the ordering signal survives batch boundaries)", async () => {
+    const projector = new RecordingProjector();
+    const { service } = makeService(projector);
+    for (const n of [1, 2, 3, 4, 5]) {
+      await service.admitDelivery({
+        headers: deliveryFor(n, n).headers,
+        payload: fakeEventPayload(spec(n)),
+        receivedAt: T0,
+      });
+    }
+    await service.processPending(2);
+    await service.processPending(2);
+    await service.processPending(2);
+    expect(projector.calls.events().map((view) => view.sequence)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
 describe("immutability of admitted records (RL-033)", () => {
   it("only the processing sub-object may change (applyProcessingTransition guard)", () => {
     const { service } = makeService();
