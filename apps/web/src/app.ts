@@ -49,10 +49,12 @@ import { el, fragment, htmlDocument, text } from "@roamlink/app-kit";
 import {
   activityPage,
   commercePage,
+  connectivityCenterPage,
+  deviceDetailPage,
   devicesPage,
+  goalDetailPage,
+  goalsPage,
   homePage,
-  intentDetailPage,
-  intentsPage,
   morePage,
   notificationsPage,
   onboardingPage,
@@ -212,12 +214,13 @@ export class CustomerWebApp {
           return overviewPage({ connectivity, notifications });
         });
       case "connectivity":
-        return this.#withReads("your connectivity", async () =>
-          overviewPage({
-            connectivity: await this.#client.getConnectivityOverview(),
-            notifications: [],
-          }),
-        );
+        return this.#withReads("your connectivity", async () => {
+          const [connectivity, notifications] = await Promise.all([
+            this.#client.getConnectivityOverview(),
+            this.#client.listNotifications(),
+          ]);
+          return connectivityCenterPage({ connectivity, notifications });
+        });
       case "activity":
         return this.#withReads("your activity", async () => {
           const [notifications, intents, devices] = await Promise.all([
@@ -228,21 +231,40 @@ export class CustomerWebApp {
           return activityPage({ notifications, intents, devices });
         });
       case "devices":
-        return this.#withReads("your devices", async () =>
-          devicesPage({ devices: await this.#client.listDevices() }),
-        );
+        return this.#withReads("your devices", async () => {
+          const [devices, connectivity] = await Promise.all([
+            this.#client.listDevices(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return devicesPage({ devices, connectivity });
+        });
       case "device":
-        return this.#withReads("the device", async () =>
-          devicesPage({ devices: [await this.#client.getDevice(request.params?.deviceId ?? "")] }),
-        );
+        return this.#withReads("the device", async () => {
+          const [device, connectivity, notifications, intents] = await Promise.all([
+            this.#client.getDevice(request.params?.deviceId ?? ""),
+            this.#client.getConnectivityOverview(),
+            this.#client.listNotifications(),
+            this.#client.listExperienceIntents(),
+          ]);
+          return deviceDetailPage({ device, connectivity, notifications, intents });
+        });
       case "intents":
-        return this.#withReads("your goals", async () =>
-          intentsPage({ intents: await this.#client.listExperienceIntents() }),
-        );
+        return this.#withReads("your goals", async () => {
+          const [intents, devices] = await Promise.all([
+            this.#client.listExperienceIntents(),
+            this.#client.listDevices(),
+          ]);
+          return goalsPage({ intents, devices });
+        });
       case "intent":
-        return this.#withReads("the goal", async () =>
-          intentDetailPage({ intent: await this.#client.getExperienceIntent(request.params?.intentId ?? "") }),
-        );
+        return this.#withReads("the goal", async () => {
+          const [intent, devices, connectivity] = await Promise.all([
+            this.#client.getExperienceIntent(request.params?.intentId ?? ""),
+            this.#client.listDevices(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return goalDetailPage({ intent, devices, connectivity });
+        });
       case "commerce":
         return this.#withReads("your plans and billing", async () => {
           const [products, orders, subscriptions] = await Promise.all([
@@ -554,5 +576,27 @@ export function pageHeading(title: string, hint?: string): HtmlFragment {
   return fragment(
     el("h2", {}, text(title)),
     hint === undefined ? fragment() : el("p", { class: "muted" }, text(hint)),
+  );
+}
+
+/**
+ * The shared responsive table wrapper (RL-088): on narrow screens wide
+ * tables scroll horizontally inside the wrapper instead of overflowing the
+ * page (or squashing into unreadable columns). The scroll region is a
+ * labelled, keyboard-focusable region, so keyboard users can reach and
+ * scroll it too — an overflowing region that only pointer users can scroll
+ * is an accessibility failure.
+ */
+export function tableWrap(label: string, table: HtmlFragment): HtmlFragment {
+  return el(
+    "div",
+    {
+      class: "table-wrap",
+      "data-table-wrap": "true",
+      role: "region",
+      "aria-label": label,
+      tabindex: 0,
+    },
+    table,
   );
 }

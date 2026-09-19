@@ -12,7 +12,7 @@ import {
   type HtmlFragment,
 } from "@roamlink/app-kit";
 
-import { pageHeading } from "../app.js";
+import { pageHeading, tableWrap } from "../app.js";
 
 export function settingsPage(input: { readonly session: ActorSessionResource }): HtmlFragment {
   return fragment(
@@ -23,30 +23,33 @@ export function settingsPage(input: { readonly session: ActorSessionResource }):
     el(
       "section",
       { class: "panel", "data-settings-account": "true" },
-      el(
-        "table",
-        {},
+      tableWrap(
+        "Your account",
         el(
-          "tbody",
+          "table",
           {},
           el(
-            "tr",
+            "tbody",
             {},
-            el("th", {}, text("Signed in as")),
-            el("td", {}, text(input.session.actorId)),
-          ),
-          el(
-            "tr",
-            {},
-            el("th", {}, text("Workspace")),
             el(
-              "td",
+              "tr",
               {},
-              fragment(
-                text(input.session.tenantId),
-                text(` (scope: ${input.session.scope}`),
-                input.session.role === null ? text("") : text(`, role: ${input.session.role}`),
-                text(")"),
+              el("th", { scope: "row" }, text("Signed in as")),
+              el("td", {}, text(input.session.actorId)),
+            ),
+            el(
+              "tr",
+              {},
+              el("th", { scope: "row" }, text("Workspace")),
+              el(
+                "td",
+                {},
+                fragment(
+                  text(input.session.tenantId),
+                  text(` (scope: ${input.session.scope}`),
+                  input.session.role === null ? text("") : text(`, role: ${input.session.role}`),
+                  text(")"),
+                ),
               ),
             ),
           ),

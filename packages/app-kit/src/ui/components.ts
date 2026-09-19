@@ -279,61 +279,74 @@ function evidenceTable(evidence: SubjectConnectivityResource["evidence"]): HtmlF
       text("No delivery evidence is linked to this subject."),
     );
   }
+  // RL-088: the evidence table renders inside a labelled, keyboard-focusable
+  // scroll region (narrow screens scroll, never overflow) and its row
+  // headers declare their scope — state is never color- or layout-alone.
   return el(
-    "table",
-    { "data-evidence-present": "true" },
+    "div",
+    {
+      class: "table-wrap",
+      "data-table-wrap": "true",
+      role: "region",
+      "aria-label": "Delivery evidence facts",
+      tabindex: 0,
+    },
     el(
-      "tbody",
-      {},
+      "table",
+      { "data-evidence-present": "true" },
       el(
-        "tr",
+        "tbody",
         {},
-        el("th", {}, text("Evidence class")),
-        el("td", {}, text(evidence.evidenceClass)),
-      ),
-      el(
-        "tr",
-        {},
-        el("th", {}, text("Canonical resource")),
         el(
-          "td",
+          "tr",
           {},
-          text(`${evidence.canonicalResourceType} / ${evidence.canonicalResourceId}`),
+          el("th", { scope: "row" }, text("Evidence class")),
+          el("td", {}, text(evidence.evidenceClass)),
         ),
-      ),
-      el(
-        "tr",
-        {},
-        el("th", {}, text("Source version")),
         el(
-          "td",
+          "tr",
           {},
-          evidence.sourceVersion === null
-            ? el("span", { class: "muted" }, text("not recorded"))
-            : text(evidence.sourceVersion),
+          el("th", { scope: "row" }, text("Canonical resource")),
+          el(
+            "td",
+            {},
+            text(`${evidence.canonicalResourceType} / ${evidence.canonicalResourceId}`),
+          ),
         ),
-      ),
-      el(
-        "tr",
-        {},
-        el("th", {}, text("Payload digest")),
-        el("td", {}, el("code", {}, text(evidence.payloadDigest))),
-      ),
-      el(
-        "tr",
-        {},
-        el("th", {}, text("Freshness")),
         el(
-          "td",
+          "tr",
           {},
-          fragment(
-            freshnessBadge(evidence.freshness),
-            text(" "),
-            el(
-              "span",
-              { class: "muted" },
-              text(
-                `observed ${evidence.freshness.observedAt ?? "never"}; recorded as ${evidence.freshness.recordedFreshnessState} when linked`,
+          el("th", { scope: "row" }, text("Source version")),
+          el(
+            "td",
+            {},
+            evidence.sourceVersion === null
+              ? el("span", { class: "muted" }, text("not recorded"))
+              : text(evidence.sourceVersion),
+          ),
+        ),
+        el(
+          "tr",
+          {},
+          el("th", { scope: "row" }, text("Payload digest")),
+          el("td", {}, el("code", {}, text(evidence.payloadDigest))),
+        ),
+        el(
+          "tr",
+          {},
+          el("th", { scope: "row" }, text("Freshness")),
+          el(
+            "td",
+            {},
+            fragment(
+              freshnessBadge(evidence.freshness),
+              text(" "),
+              el(
+                "span",
+                { class: "muted" },
+                text(
+                  `observed ${evidence.freshness.observedAt ?? "never"}; recorded as ${evidence.freshness.recordedFreshnessState} when linked`,
+                ),
               ),
             ),
           ),

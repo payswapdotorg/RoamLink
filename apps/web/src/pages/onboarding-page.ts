@@ -337,12 +337,12 @@ function deviceStep(input: OnboardingPageInput): HtmlFragment {
           "data-onboarding-form": "enroll-device",
         },
         el("input", { type: "hidden", name: "goal", value: goal }),
-        el("label", {}, text("Name ")),
-        el("input", { type: "text", name: "name", required: true, minlength: "1" }),
-        el("label", {}, text(" Kind of device ")),
+        el("label", { for: "onboard-device-name" }, text("Name")),
+        el("input", { type: "text", name: "name", id: "onboard-device-name", required: true, minlength: "1" }),
+        el("label", { for: "onboard-device-platform" }, text("Kind of device")),
         el(
           "select",
-          { name: "platform" },
+          { name: "platform", id: "onboard-device-platform" },
           ...DEVICE_PLATFORMS.map((platform) =>
             el(
               "option",
