@@ -49,6 +49,7 @@ import { el, fragment, htmlDocument, text } from "@roamlink/app-kit";
 import {
   activityPage,
   commercePage,
+  connectivityCenterPage,
   devicesPage,
   homePage,
   intentDetailPage,
@@ -212,12 +213,13 @@ export class CustomerWebApp {
           return overviewPage({ connectivity, notifications });
         });
       case "connectivity":
-        return this.#withReads("your connectivity", async () =>
-          overviewPage({
-            connectivity: await this.#client.getConnectivityOverview(),
-            notifications: [],
-          }),
-        );
+        return this.#withReads("your connectivity", async () => {
+          const [connectivity, notifications] = await Promise.all([
+            this.#client.getConnectivityOverview(),
+            this.#client.listNotifications(),
+          ]);
+          return connectivityCenterPage({ connectivity, notifications });
+        });
       case "activity":
         return this.#withReads("your activity", async () => {
           const [notifications, intents, devices] = await Promise.all([
