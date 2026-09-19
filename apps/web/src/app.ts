@@ -58,9 +58,12 @@ import {
   morePage,
   notificationsPage,
   onboardingPage,
+  orderJourneyPage,
   overviewPage,
   settingsPage,
   supportPage,
+  workspacePage,
+  readSupportContextParams,
   findGoalChoice,
   parseOnboardingStep,
 } from "./pages/index.js";
@@ -122,6 +125,7 @@ function activeNavHref(page: WebPageName): string {
     more: pagePath("more"),
     settings: pagePath("settings"),
     overview: pagePath("overview"),
+    workspace: pagePath("workspace"),
     onboarding: pagePath("home"),
   };
   return candidates[page];
@@ -275,21 +279,45 @@ export class CustomerWebApp {
           return commercePage({ products, orders, subscriptions });
         });
       case "order":
-        return this.#withReads("the order", async () =>
-          commercePage({
-            products: [],
-            orders: [],
-            subscriptions: [],
-            orderDetail: await this.#client.getOrder(request.params?.orderId ?? ""),
-          }),
-        );
+        // RL-101: the order route IS the guided purchase-to-delivery
+        // journey - after payment the customer lands on delivery progress,
+        // never on a payment-success page (user-journey-audit §6). The
+        // connectivity truth renders from the SAME authoritative read
+        // model; the optional `commandId` param adds the place-order
+        // command's four-stage pipeline (never fabricated from reads).
+        return this.#withReads("your delivery progress", async () => {
+          const [orderDetail, connectivity, subscriptions, command] = await Promise.all([
+            this.#client.getOrder(request.params?.orderId ?? ""),
+            this.#client.getConnectivityOverview(),
+            this.#client.listSubscriptions(),
+            request.params?.commandId === undefined
+              ? Promise.resolve(undefined)
+              // A failed command-status read fails closed like every other
+              // read: the rejection propagates so #withReads renders the
+              // typed error panel instead of a partial page.
+              : this.#client.getCommandStatus(request.params.commandId),
+          ]);
+          return orderJourneyPage({
+            orderDetail,
+            connectivity,
+            subscriptions,
+            ...(command !== undefined ? { command } : {}),
+          });
+        });
       case "notifications":
         return this.#withReads("your notifications", async () =>
           notificationsPage({ notifications: await this.#client.listNotifications() }),
         );
       case "support":
+        // RL-103: context params from a contextual escape (degraded
+        // connectivity, failed automation, stale/unknown evidence, failed
+        // purchase/delivery, unsupported capability) decode fail-closed
+        // into the carried context the page renders transparently.
         return this.#withReads("your support cases", async () =>
-          supportPage({ cases: await this.#client.listSupportCases() }),
+          supportPage({
+            cases: await this.#client.listSupportCases(),
+            carriedContext: readSupportContextParams(request.params),
+          }),
         );
       case "case":
         return this.#withReads("the support case", async () => {
@@ -313,6 +341,22 @@ export class CustomerWebApp {
         return this.#withReads("your settings", async () =>
           settingsPage({ session: await this.#client.getActorSession() }),
         );
+      case "workspace":
+        // RL-104: the guided enterprise workspace journey. The org's
+        // connectivity facts render through the SAME connectivity read
+        // model (no second authority); the enterprise journey state comes
+        // from the app-kit mirrored read contract. Any failed read fails
+        // closed like every page.
+        return this.#withReads("your workspace", async () => {
+          const [session, workspace, devices, intents, connectivity] = await Promise.all([
+            this.#client.getActorSession(),
+            this.#client.getEnterpriseWorkspace(),
+            this.#client.listDevices(),
+            this.#client.listExperienceIntents(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return workspacePage({ session, workspace, devices, intents, connectivity });
+        });
       case "onboarding":
         return await this.#renderOnboarding(request);
     }
@@ -548,16 +592,28 @@ export class CustomerWebApp {
     return this.#runMutation(() => this.#client.markNotificationRead(input, options));
   }
 
-  /** Opens a support case. */
+  /**
+   * Opens a support case. Optional typed related references ride with the
+   * command (RL-103): the contextual entry points pre-carry device /
+   * connectivity / commerce / activity references so triage sees what the
+   * customer sees. The customer-visible context summary is always rendered
+   * by the Support page BEFORE the case is opened.
+   */
   async createSupportCaseFlow(
     input: {
       readonly subject: string;
       readonly description: string;
       readonly priority: "low" | "normal" | "high" | "urgent";
+      readonly relatedRefs?: readonly { readonly kind: string; readonly id: string }[];
     },
     options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
   ): Promise<MutationFlowResult> {
-    return this.#runMutation(() => this.#client.createSupportCase(input, options));
+    return this.#runMutation(() =>
+      this.#client.createSupportCase(
+        input,
+        options,
+      ),
+    );
   }
 
   async #runMutation(

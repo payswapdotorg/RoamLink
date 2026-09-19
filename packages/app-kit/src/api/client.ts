@@ -70,6 +70,7 @@ import {
   parseUserResource,
   type AuditEventResource,
 } from "./resources.js";
+import { parseEnterpriseWorkspaceResource } from "./enterprise.js";
 import { parseMutationAcknowledgement, type MutationAcknowledgement } from "./outcomes.js";
 import { route } from "./routes.js";
 import { HTTP_STATUS, type HttpRequest, type HttpTransport } from "./transport.js";
@@ -173,6 +174,20 @@ export class RoamLinkApiClient {
 
   async listSupportCases() {
     return this.#get(route("supportCases"), parseSupportCaseList);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reads - enterprise workspace (RL-104, additive)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Reads the acting tenant's enterprise workspace composition (identity +
+   * enrollment journey + connector status). Organization-scoped tenants
+   * only; the parsed resource carries the mirrored closed vocabularies and
+   * honest null sections where the journey has not started.
+   */
+  async getEnterpriseWorkspace() {
+    return this.#get(route("enterpriseWorkspace"), parseEnterpriseWorkspaceResource);
   }
 
   // ---------------------------------------------------------------------------

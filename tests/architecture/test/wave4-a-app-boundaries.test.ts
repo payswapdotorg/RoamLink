@@ -347,6 +347,36 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/auth/src/membership.ts",
       owner: "MEMBERSHIP_ROLES",
     },
+    // RL-104: the enterprise read contract is mirrored in app-kit's
+    // enterprise module (apps/web may NEVER import @roamlink/enterprise).
+    {
+      label: "enterprise enrollment states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_ENROLLMENT_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/enrollment.ts",
+      owner: "ENTERPRISE_ENROLLMENT_STATES",
+    },
+    {
+      label: "enterprise enrollment rejection reasons",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_ENROLLMENT_REJECTION_RESOURCE_REASONS",
+      ownerFile: "packages/enterprise/src/enrollment.ts",
+      owner: "ENTERPRISE_ENROLLMENT_REJECTION_REASONS",
+    },
+    {
+      label: "enterprise connector provisioning states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_CONNECTOR_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/connectors.ts",
+      owner: "CONNECTOR_PROVISIONING_STATES",
+    },
+    {
+      label: "enterprise connector provisioning failure reasons",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_CONNECTOR_FAILURE_RESOURCE_REASONS",
+      ownerFile: "packages/enterprise/src/connectors.ts",
+      owner: "CONNECTOR_PROVISIONING_FAILURE_REASONS",
+    },
   ];
 
   it.each(MIRRORS)("the app contract's $label mirror matches the owning domain vocabulary", ({ mirrorFile, mirror, ownerFile, owner }) => {

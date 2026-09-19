@@ -18,6 +18,7 @@ import {
   instantView,
   severityBadge,
   stateBadge,
+  disclosureSection,
   el,
   fragment,
   text,
@@ -31,6 +32,7 @@ import { pagePath } from "../routes.js";
 import { DERIVED_EXPERIENCE_LANGUAGE } from "./language.js";
 import { activityNarrativeFor, ACTIVITY_KIND_LANGUAGE } from "./language.js";
 import { findActiveGoal } from "./home-page.js";
+import { supportEscape, SUPPORT_REF_KINDS, type SupportRef } from "./support-context.js";
 import { pageHeading } from "../app.js";
 
 export interface ActivityPageInput {
@@ -109,11 +111,18 @@ function activityItem(notification: NotificationResource): HtmlFragment {
       ),
       evidence.length === 0
         ? fragment()
-        : el(
-            "ul",
-            { class: "evidence-list", "data-evidence-lines": "true" },
-            ...evidence.map((line) => el("li", {}, text(line))),
-          ),
+        : disclosureSection({
+            layer: "evidence",
+            summary: "Evidence for this entry",
+            intro:
+              "Every claim above traces back to the records RoamLink keeps — each with its own evidence and freshness. You never need this section to follow the story.",
+            body: el(
+              "ul",
+              { class: "evidence-list", "data-evidence-lines": "true" },
+              ...evidence.map((line) => el("li", {}, text(line))),
+            ),
+            attributes: { "data-evidence-disclosure": notification.notificationId },
+          }),
       el(
         "p",
         { class: "muted" },
@@ -135,6 +144,23 @@ function activityItem(notification: NotificationResource): HtmlFragment {
               el("a", { href: pagePath("support") }, text("Get help")),
             ),
           )
+        : fragment(),
+      // Failed/warning automation is a degraded state (RL-103): the escape
+      // pre-carries the activity record itself plus the entry's typed
+      // related references the customer permits.
+      notification.severity === "warning" || notification.severity === "critical"
+        ? supportEscape({
+            context: {
+              subject: `${notification.title} — I need help with what RoamLink recorded here.`,
+              detail: notification.body,
+              refs: [
+                { kind: "notification", id: notification.notificationId },
+                ...notification.related
+                  .filter((ref) => (SUPPORT_REF_KINDS as readonly string[]).includes(ref.kind))
+                  .map((ref) => ({ kind: ref.kind as SupportRef["kind"], id: ref.id })),
+              ],
+            },
+          })
         : fragment(),
     ),
   );

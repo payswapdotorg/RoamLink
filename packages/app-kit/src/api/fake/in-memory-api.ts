@@ -1257,6 +1257,40 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       });
     }
 
+    // -- Enterprise workspace read (RL-104) -----------------------------------------
+    if (method === "GET" && segments.length === 3 && segments[0] === "v1" && segments[1] === "enterprise" && segments[2] === "workspace") {
+      // The workspace surface is an organization-scoped customer surface:
+      // personal tenants have nothing to compose (fail-closed 403, exactly
+      // like the admin surfaces' org-scope guard - no existence oracle).
+      requireOrgScope(actor);
+      const tenant = tenantOf(tenantId);
+      const organization = tenant.organization;
+      // The journey fixtures ride with the SEED (frozen): the fake never
+      // mutates enterprise journey state here - this is a read-only
+      // composition, mirroring the domain-owned journey state.
+      const enterprise = seed.tenants[tenantId]?.enterprise;
+      return ok({
+        presentedAt: now(),
+        organization:
+          organization === undefined
+            ? null
+            : {
+                tenantId,
+                organizationId: organization.organizationId,
+                name: organization.name,
+                status: organization.status,
+              },
+        enrollment:
+          enterprise?.enrollment === undefined || enterprise.enrollment === null
+            ? null
+            : { ...enterprise.enrollment },
+        connector:
+          enterprise?.connector === undefined || enterprise.connector === null
+            ? null
+            : { ...enterprise.connector },
+      });
+    }
+
     // -- Connectivity read ---------------------------------------------------------
     if (method === "GET" && segments.length === 2 && segments[0] === "v1" && segments[1] === "connectivity") {
       const tenant = tenantOf(tenantId);
@@ -1383,6 +1417,25 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
         if (priority === undefined) {
           fail(badRequest("CASE_PRIORITY_INVALID", "the support case priority must be low, normal, high or urgent"));
         }
+        // RL-103: the caller's typed related references are honored (the
+        // command layer already validated relatedRefs[] {kind,id}); the
+        // fake stores them verbatim so the admin triage surface receives
+        // the carried context through the same command path.
+        const rawRelatedRefs = body["relatedRefs"];
+        if (rawRelatedRefs !== undefined && !Array.isArray(rawRelatedRefs)) {
+          fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs must be an array of {kind, id}"));
+        }
+        const relatedRefs: { kind: string; id: string }[] = [];
+        for (const entry of (rawRelatedRefs ?? []) as unknown[]) {
+          if (entry === null || typeof entry !== "object") {
+            fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs entries must be objects with kind + id"));
+          }
+          const record = entry as Record<string, unknown>;
+          if (typeof record["kind"] !== "string" || record["kind"].length === 0 || typeof record["id"] !== "string" || record["id"].length === 0) {
+            fail(badRequest("CASE_RELATED_REFS_INVALID", "relatedRefs entries must carry non-empty kind and id strings"));
+          }
+          relatedRefs.push({ kind: record["kind"] as string, id: record["id"] as string });
+        }
         return runCommand({
           kind: "support_case.create",
           actorId: actorHeader,
@@ -1399,7 +1452,7 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
               status: "open",
               priority,
               createdByUserId: actor.userId,
-              relatedRefs: [],
+              relatedRefs,
               messages: [],
               revision: 1,
               createdAt: now(),

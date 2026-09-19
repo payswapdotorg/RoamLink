@@ -33,6 +33,8 @@ export const WEB_PAGE_ROUTES = Object.freeze({
   case: "/support/{caseId}",
   more: "/more",
   settings: "/settings",
+  // RL-104 (additive route; existing routes stay stable per spec §3).
+  workspace: "/workspace",
 } as const);
 
 export type WebPageName = keyof typeof WEB_PAGE_ROUTES;

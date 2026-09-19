@@ -22,6 +22,7 @@ import {
   freshnessBadge,
   instantView,
   stateBadge,
+  disclosureSection,
   el,
   fragment,
   text,
@@ -42,6 +43,7 @@ import {
   DEVICE_STATUS_LANGUAGE,
   MANUAL_FALLBACK_GUIDANCE,
 } from "./language.js";
+import { supportEscape } from "./support-context.js";
 
 const PLATFORMS = [
   "ios",
@@ -186,6 +188,10 @@ export function devicesPage(input: {
 function capabilityCard(device: DeviceResource): HtmlFragment {
   const capability = deviceCapabilityStatement(device.capabilityFreshness);
   const automationLevels = ["automatic", "confirmation", "manual", "unavailable", "unknown"] as const;
+  // Unverified or expired capability verification is a degraded state
+  // (RL-103: unsupported/unknown capability carries the support escape with
+  // the device reference).
+  const degradedCapability = capability.state !== "FRESH";
   return el(
     "section",
     {
@@ -218,23 +224,73 @@ function capabilityCard(device: DeviceResource): HtmlFragment {
           freshnessBadge(device.contextFreshness),
         ),
       ),
-      el(
-        "dl",
-        { class: "fact-list", "data-automation-key": "true" },
-        ...automationLevels.map((level) =>
+      disclosureSection({
+        layer: "evidence",
+        summary: "Capability evidence",
+        intro:
+          "What RoamLink knows about this device's abilities, and how fresh that verification is. Absence of verification is stated, never bridged with an assumption.",
+        body: el(
+          "dl",
+          { class: "fact-list", "data-capability-evidence": "true" },
           el(
             "div",
             { class: "fact-row" },
-            el("dt", {}, text(level)),
-            el("dd", {}, text(AUTOMATION_LEVEL_LANGUAGE[level])),
+            el("dt", {}, text("Capability verification")),
+            el(
+              "dd",
+              {},
+              fragment(
+                freshnessBadge(device.capabilityFreshness),
+                device.capabilityFreshness === null
+                  ? text(" (no observation recorded)")
+                  : text(
+                      ` — observed ${device.capabilityFreshness.observedAt ?? "never"}, received ${device.capabilityFreshness.receivedAt ?? "never"}`,
+                    ),
+              ),
+            ),
+          ),
+          el(
+            "div",
+            { class: "fact-row" },
+            el("dt", {}, text("Context snapshot")),
+            el("dd", {}, freshnessBadge(device.contextFreshness)),
           ),
         ),
-      ),
+      }),
+      disclosureSection({
+        layer: "technical",
+        summary: "Automation levels explained",
+        intro:
+          "The five automation levels RoamLink can hold for a device. You never need this section to understand your device.",
+        body: el(
+          "dl",
+          { class: "fact-list", "data-automation-key": "true" },
+          ...automationLevels.map((level) =>
+            el(
+              "div",
+              { class: "fact-row" },
+              el("dt", {}, text(level)),
+              el("dd", {}, text(AUTOMATION_LEVEL_LANGUAGE[level])),
+            ),
+          ),
+        ),
+      }),
       el(
         "p",
         { class: "muted" },
         text("Which levels this device supports is established by verification, never assumed — anything unverified is treated as unknown."),
       ),
+      degradedCapability
+        ? supportEscape({
+            context: {
+              subject:
+                capability.state === "STALE"
+                  ? `My device ${device.name} needs its capability verification re-checked.`
+                  : `RoamLink has not verified what my device ${device.name} can do yet.`,
+              refs: [{ kind: "device", id: device.deviceId }],
+            },
+          })
+        : fragment(),
     ),
   );
 }
