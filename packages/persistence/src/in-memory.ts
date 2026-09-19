@@ -52,6 +52,7 @@ import {
   claimOutboxRecord,
   completeOutboxDelivery,
   failOutboxAttempt,
+  recoverStuckOutboxRecord,
   type OutboxDeliveryState,
   type OutboxEnqueueInput,
   type OutboxEnqueueOutcome,
@@ -194,6 +195,22 @@ function applyOutboxAttemptFailed(
   return next;
 }
 
+/** Re-owns the named DELIVERING records (AR-007 crash recovery sweep). */
+function applyOutboxRecoverInFlight(
+  state: PersistenceState,
+  keys: readonly string[],
+  at: UtcInstant,
+): readonly OutboxRecord[] {
+  const recovered: OutboxRecord[] = [];
+  for (const key of keys) {
+    const record = mustGetOutbox(state, key);
+    const next = recoverStuckOutboxRecord(record, at);
+    state.outbox.set(key, next);
+    recovered.push(next);
+  }
+  return recovered;
+}
+
 function applyInboxAdmit(state: PersistenceState, input: InboxAdmitInput): InboxAdmitResult {
   const original = state.inboxAdmitted.get(input.dedupeKey);
   if (original !== undefined) {
@@ -306,6 +323,11 @@ type PendingOp =
       readonly at: UtcInstant;
       readonly reason: string | null;
     }
+  | {
+      readonly kind: "outbox-recover-in-flight";
+      readonly keys: readonly string[];
+      readonly at: UtcInstant;
+    }
   | { readonly kind: "inbox-admit"; readonly input: InboxAdmitInput }
   | { readonly kind: "inbox-reject"; readonly input: InboxAdmitInput }
   | {
@@ -375,6 +397,22 @@ class OutboxView implements OutboxRepository {
     const claimed = applyOutboxClaim(state, due, atInstant);
     this.ctx.record({ kind: "outbox-claim", keys: due, at: atInstant });
     return claimed;
+  }
+
+  async recoverInFlight(at: string): Promise<readonly OutboxRecord[]> {
+    this.ctx.assertOpen();
+    const atInstant = parseUtcInstant(at);
+    const state = this.ctx.state();
+    // Sweep the DELIVERING set in the adapter's deterministic iteration
+    // (insertion) order; a concurrent committer that changed one of these
+    // records surfaces as the typed commit conflict at replay time.
+    const keys: string[] = [];
+    for (const [key, record] of state.outbox) {
+      if (record.deliveryState === "DELIVERING") keys.push(key);
+    }
+    const recovered = applyOutboxRecoverInFlight(state, keys, atInstant);
+    this.ctx.record({ kind: "outbox-recover-in-flight", keys, at: atInstant });
+    return Object.freeze(recovered);
   }
 
   async markDelivered(idempotencyKey: string, at: string): Promise<OutboxRecord> {
@@ -748,6 +786,9 @@ class InMemoryUnitOfWork implements UnitOfWork {
           return;
         case "outbox-attempt-failed":
           applyOutboxAttemptFailed(state, op.idempotencyKey, op.at, op.reason);
+          return;
+        case "outbox-recover-in-flight":
+          applyOutboxRecoverInFlight(state, op.keys, op.at);
           return;
         case "inbox-admit":
           applyInboxAdmit(state, op.input);

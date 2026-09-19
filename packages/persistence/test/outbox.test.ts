@@ -18,6 +18,7 @@ import {
   failOutboxAttempt,
   isOutboxDeliveryState,
   parseOutboxDeliveryState,
+  recoverStuckOutboxRecord,
   type OutboxDeliveryState,
   type OutboxRecord,
 } from "../src/index.js";
@@ -338,5 +339,216 @@ describe("outbox claim/deliver/retry transitions (RL-003)", () => {
     await expect(uow.outbox.claimDue(T0, 0)).rejects.toBeInstanceOf(DomainError);
     await expect(uow.outbox.claimDue(T0, 1.5)).rejects.toBeInstanceOf(DomainError);
     await uow.rollback();
+  });
+});
+
+describe("outbox stuck-claim recovery sweep (AR-007 / RL-093)", () => {
+  it("recoverStuckOutboxRecord: DELIVERING -> PENDING due at the recovery instant, retry budget untouched", () => {
+    const t2 = parseUtcInstant("2026-10-01T00:00:30.000Z");
+    const stranded = record({
+      deliveryState: "DELIVERING",
+      retryCount: 2,
+      lastErrorReason: "UPSTREAM_UNAVAILABLE",
+      nextAttemptAt: T0 as OutboxRecord["nextAttemptAt"],
+    });
+    const recovered = recoverStuckOutboxRecord(stranded, t2);
+    expect(recovered.deliveryState).toBe("PENDING");
+    expect(recovered.nextAttemptAt).toBe("2026-10-01T00:00:30.000Z"); // due at the recovery instant
+    expect(recovered.retryCount).toBe(2); // crash recovery is NOT a failed attempt
+    expect(recovered.lastErrorReason).toBe("UPSTREAM_UNAVAILABLE");
+    expect(recovered.deliveredAt).toBeNull();
+    // payload identity is untouched (idempotent replay verifies the digest)
+    expect(new TextDecoder().decode(recovered.payloadBytes)).toBe('{"a":1}');
+    expect(recovered.payloadDigest).toBe(stranded.payloadDigest);
+  });
+
+  it("recoverStuckOutboxRecord: terminal states stay terminal, PENDING cannot be recovered", () => {
+    const t2 = parseUtcInstant("2026-10-01T00:00:30.000Z");
+    expect(() => recoverStuckOutboxRecord(record({ deliveryState: "DELIVERED" }), t2)).toThrow(
+      DomainError,
+    );
+    expect(() => recoverStuckOutboxRecord(record({ deliveryState: "FAILED" }), t2)).toThrow(
+      DomainError,
+    );
+    expect(() => recoverStuckOutboxRecord(record({ deliveryState: "PENDING" }), t2)).toThrow(
+      DomainError,
+    );
+  });
+
+  it("AR-007 crash window: claim commits -> crash -> restart calls the sweep -> the obligation continues and completes", async () => {
+    const p = createInMemoryPersistence();
+    // The production delivery shape: business write + outbox enqueue in ONE
+    // unit of work.
+    const unitOfWork = await p.begin();
+    await unitOfWork.records("orders").insert("order-1", { status: "placed" });
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-crash-1",
+      payload: { effect: "notify-order" },
+      createdAt: T0,
+    });
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-crash-2",
+      payload: { effect: "notify-order-2" },
+      createdAt: T0,
+    });
+    await unitOfWork.commit();
+
+    // The worker claims BOTH due records; this commit is durable...
+    const claimUnit = await p.begin();
+    const claimed = await claimUnit.outbox.claimDue(T0, 10);
+    expect(claimed).toHaveLength(2);
+    await claimUnit.commit();
+    // ...and the process CRASHES before recording any outcome.
+    expect(await p.outbox.count("DELIVERING")).toBe(2);
+
+    // THE RESTART: the restarted worker calls the public stuck-claim sweep
+    // (the path that did not exist before AR-007 was closed).
+    const restarted = await p.begin();
+    const recovered = await restarted.outbox.recoverInFlight(T1);
+    await restarted.commit();
+    expect(recovered.map((r) => r.idempotencyKey)).toEqual(["cmd-crash-1", "cmd-crash-2"]);
+    expect(recovered.every((r) => r.deliveryState === "PENDING")).toBe(true);
+    expect(recovered.every((r) => r.nextAttemptAt === T1)).toBe(true);
+    expect(await p.outbox.count("DELIVERING")).toBe(0);
+
+    // The obligation CONTINUES through the normal public path: claim ->
+    // deliver. Exactly the recovered set is re-claimable at the recovery
+    // instant.
+    const claimAgain = await p.begin();
+    const reclaimed = await claimAgain.outbox.claimDue(T1, 10);
+    expect(reclaimed.map((r) => r.idempotencyKey)).toEqual(["cmd-crash-1", "cmd-crash-2"]);
+    await claimAgain.commit();
+
+    // ...and COMPLETES: both records reach their terminal DELIVERED state.
+    const outcome = await p.begin();
+    await outcome.outbox.markDelivered("cmd-crash-1", T1);
+    await outcome.outbox.markDelivered("cmd-crash-2", T1);
+    await outcome.commit();
+    expect((await p.outbox.get("cmd-crash-1"))?.deliveryState).toBe("DELIVERED");
+    expect((await p.outbox.get("cmd-crash-2"))?.deliveryState).toBe("DELIVERED");
+    expect(await p.outbox.count("DELIVERED")).toBe(2);
+  });
+
+  it("the sweep never double-delivers: nothing in flight -> empty result; delivered records are not resurrected", async () => {
+    const p = createInMemoryPersistence();
+    const unitOfWork = await p.begin();
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-done-1",
+      payload: { a: 1 },
+      createdAt: T0,
+    });
+    await unitOfWork.commit();
+    const claim = await p.begin();
+    await claim.outbox.claimDue(T0, 10);
+    await claim.commit();
+    const outcome = await p.begin();
+    await outcome.outbox.markDelivered("cmd-done-1", T1);
+    await outcome.commit();
+
+    // A sweep with NOTHING stranded in DELIVERING re-owns nothing and
+    // touches the delivered (terminal) record.
+    const sweep = await p.begin();
+    const recovered = await sweep.outbox.recoverInFlight(T1);
+    await sweep.commit();
+    expect(recovered).toEqual([]);
+    expect((await p.outbox.get("cmd-done-1"))?.deliveryState).toBe("DELIVERED");
+    expect((await p.outbox.get("cmd-done-1"))?.deliveredAt).toBe(T1);
+
+    // A later sweep still returns nothing - the terminal record stays
+    // terminal (never resurrected into the delivery path).
+    const sweepAgain = await p.begin();
+    expect(await sweepAgain.outbox.recoverInFlight("2026-10-01T00:05:00.000Z")).toEqual([]);
+    await sweepAgain.commit();
+    expect((await p.outbox.get("cmd-done-1"))?.deliveryState).toBe("DELIVERED");
+  });
+
+  it("a FAILED record is never resurrected by the sweep", async () => {
+    const p = createInMemoryPersistence();
+    const unitOfWork = await p.begin();
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-dead-1",
+      payload: { a: 1 },
+      createdAt: T0,
+      retryPolicy: { maxAttempts: 1, backoffScheduleMs: [1_000] },
+    });
+    await unitOfWork.commit();
+    const claim = await p.begin();
+    await claim.outbox.claimDue(T0, 10);
+    await claim.commit();
+    const fail = await p.begin();
+    await fail.outbox.markAttemptFailed("cmd-dead-1", T1, "BUDGET_EXHAUSTED");
+    await fail.commit();
+    expect((await p.outbox.get("cmd-dead-1"))?.deliveryState).toBe("FAILED");
+
+    const sweep = await p.begin();
+    expect(await sweep.outbox.recoverInFlight(T1)).toEqual([]);
+    await sweep.commit();
+    expect((await p.outbox.get("cmd-dead-1"))?.deliveryState).toBe("FAILED");
+  });
+
+  it("recovery does not consume the retry budget: a previously-failed record keeps its attempts", async () => {
+    const p = createInMemoryPersistence();
+    const unitOfWork = await p.begin();
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-mixed-1",
+      payload: { a: 1 },
+      createdAt: T0,
+      retryPolicy: { maxAttempts: 3, backoffScheduleMs: [1_000, 10_000, 60_000] },
+    });
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-mixed-2",
+      payload: { a: 2 },
+      createdAt: T0,
+    });
+    await unitOfWork.commit();
+    // cmd-mixed-1: one REAL failed attempt (retryCount 1), then claimed
+    // again and stranded by a crash. cmd-mixed-2: stranded on its first
+    // claim.
+    const claim1 = await p.begin();
+    await claim1.outbox.claimDue(T0, 10);
+    await claim1.commit();
+    const fail1 = await p.begin();
+    await fail1.outbox.markAttemptFailed("cmd-mixed-1", T1, "TIMEOUT");
+    await fail1.commit();
+    const claim2 = await p.begin();
+    await claim2.outbox.claimDue("2026-10-01T00:00:02.000Z", 10);
+    await claim2.commit();
+
+    const sweep = await p.begin();
+    const recovered = await sweep.outbox.recoverInFlight("2026-10-01T00:00:30.000Z");
+    await sweep.commit();
+    expect(recovered.map((r) => r.idempotencyKey)).toEqual(["cmd-mixed-1", "cmd-mixed-2"]);
+    expect(recovered.find((r) => r.idempotencyKey === "cmd-mixed-1")?.retryCount).toBe(1);
+    expect(recovered.find((r) => r.idempotencyKey === "cmd-mixed-2")?.retryCount).toBe(0);
+    // The full attempt budget is still available: both records can fail
+    // twice more before exhausting maxAttempts=3 (recovery spent nothing).
+    expect(
+      (await p.outbox.get("cmd-mixed-1"))?.retryPolicy.maxAttempts,
+    ).toBe(3);
+  });
+
+  it("the sweep is transactional: a concurrent delivered outcome wins the race as a typed commit conflict", async () => {
+    const p = createInMemoryPersistence();
+    const unitOfWork = await p.begin();
+    await unitOfWork.outbox.enqueue({
+      idempotencyKey: "cmd-race-1",
+      payload: { a: 1 },
+      createdAt: T0,
+    });
+    await unitOfWork.commit();
+    const claim = await p.begin();
+    await claim.outbox.claimDue(T0, 10);
+    await claim.commit();
+
+    // Worker A (the restarted process) opens a unit of work and sweeps.
+    const sweepUnit = await p.begin();
+    await sweepUnit.outbox.recoverInFlight(T1);
+    // Worker B (the ORIGINAL owner, still alive) records the outcome first.
+    const outcomeUnit = await p.begin();
+    await outcomeUnit.outbox.markDelivered("cmd-race-1", T1);
+    await outcomeUnit.commit();
+    // Worker A's sweep commit must NOT overwrite the delivered outcome.
+    await expect(sweepUnit.commit()).rejects.toBeInstanceOf(ConflictError);
+    expect((await p.outbox.get("cmd-race-1"))?.deliveryState).toBe("DELIVERED");
   });
 });
