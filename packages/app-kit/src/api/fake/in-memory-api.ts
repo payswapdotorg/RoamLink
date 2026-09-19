@@ -1257,6 +1257,40 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       });
     }
 
+    // -- Enterprise workspace read (RL-104) -----------------------------------------
+    if (method === "GET" && segments.length === 3 && segments[0] === "v1" && segments[1] === "enterprise" && segments[2] === "workspace") {
+      // The workspace surface is an organization-scoped customer surface:
+      // personal tenants have nothing to compose (fail-closed 403, exactly
+      // like the admin surfaces' org-scope guard - no existence oracle).
+      requireOrgScope(actor);
+      const tenant = tenantOf(tenantId);
+      const organization = tenant.organization;
+      // The journey fixtures ride with the SEED (frozen): the fake never
+      // mutates enterprise journey state here - this is a read-only
+      // composition, mirroring the domain-owned journey state.
+      const enterprise = seed.tenants[tenantId]?.enterprise;
+      return ok({
+        presentedAt: now(),
+        organization:
+          organization === undefined
+            ? null
+            : {
+                tenantId,
+                organizationId: organization.organizationId,
+                name: organization.name,
+                status: organization.status,
+              },
+        enrollment:
+          enterprise?.enrollment === undefined || enterprise.enrollment === null
+            ? null
+            : { ...enterprise.enrollment },
+        connector:
+          enterprise?.connector === undefined || enterprise.connector === null
+            ? null
+            : { ...enterprise.connector },
+      });
+    }
+
     // -- Connectivity read ---------------------------------------------------------
     if (method === "GET" && segments.length === 2 && segments[0] === "v1" && segments[1] === "connectivity") {
       const tenant = tenantOf(tenantId);

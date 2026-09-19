@@ -246,9 +246,50 @@ export interface FakeReconciliationJobSeed {
   }[];
 }
 
+/**
+ * Optional enterprise journey fixtures (RL-104, additive): the enrollment
+ * journey record mirrors packages/enterprise's enrollment vocabulary and
+ * the connector record its provisioning vocabulary (drift-guarded by
+ * tests/architecture). Absent sections render as the honest not-started
+ * state on the workspace surface.
+ */
+export interface FakeEnterpriseEnrollmentSeed {
+  readonly enrollmentId: string;
+  readonly organizationName: string;
+  readonly state: "draft" | "submitted" | "verified" | "active" | "rejected" | "cancelled";
+  readonly tenantId: string | null;
+  readonly requestedBy: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly verifiedAt?: string;
+  readonly activatedAt?: string;
+  readonly rejectionReason?: "requirements-unmet" | "verification-failed" | "duplicate-organization";
+  readonly cancelledAt?: string;
+}
+
+export interface FakeEnterpriseConnectorSeed {
+  readonly provisioningId: string;
+  readonly state: "provisioning" | "provisioned" | "failed" | "revoked";
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly provisionedAt?: string;
+  readonly failureReason?:
+    | "connector-unavailable"
+    | "capability-negotiation-empty"
+    | "configuration-delivery-failed";
+  readonly revokedAt?: string;
+}
+
+export interface FakeEnterpriseSeed {
+  readonly enrollment?: FakeEnterpriseEnrollmentSeed;
+  readonly connector?: FakeEnterpriseConnectorSeed;
+}
+
 export interface FakeTenantSeed {
   /** Organization tenant data (org:<uuid>). */
   readonly organization?: FakeOrganizationSeed;
+  /** Optional enterprise journey fixtures (RL-104, additive). */
+  readonly enterprise?: FakeEnterpriseSeed;
   readonly devices: readonly FakeDeviceSeed[];
   readonly intents: readonly FakeIntentSeed[];
   readonly orders: readonly FakeOrderSeed[];
@@ -360,6 +401,30 @@ export function fakeApiSeed(): FakeApiSeed {
             { userId: ADMIN_USER, role: "admin", status: "active" },
             { userId: MEMBER_USER, role: "member", status: "active" },
           ],
+        },
+        // RL-104: the seeded org has COMPLETED its enterprise journey
+        // (verified + activated enrollment, provisioned connector) - a
+        // "live organization" world. The OTHER org stays empty (no
+        // enterprise record: honest not-started states render there).
+        enterprise: {
+          enrollment: {
+            enrollmentId: "eeeeeeee-0000-4000-8000-000000000001",
+            organizationName: "Acme Roaming Corp",
+            state: "active",
+            tenantId: ORG_TENANT,
+            requestedBy: `act:${OWNER_USER}`,
+            createdAt: "2024-06-01T00:00:00.000Z",
+            updatedAt: "2024-06-01T00:10:00.000Z",
+            verifiedAt: "2024-06-01T00:05:00.000Z",
+            activatedAt: "2024-06-01T00:10:00.000Z",
+          },
+          connector: {
+            provisioningId: "conn-acme-01",
+            state: "provisioned",
+            createdAt: "2024-06-01T00:11:00.000Z",
+            updatedAt: "2024-06-01T00:12:00.000Z",
+            provisionedAt: "2024-06-01T00:12:00.000Z",
+          },
         },
         devices: [
           {

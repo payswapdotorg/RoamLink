@@ -34,6 +34,11 @@ export const MORE_LINKS: readonly MoreLink[] = Object.freeze([
     href: "/settings",
     description: "Your account and preferences.",
   },
+  {
+    label: "Workspace",
+    href: "/workspace",
+    description: "For teams: your organization's guided setup, device fleet, goals and live connectivity overview.",
+  },
 ]);
 
 export function morePage(): HtmlFragment {

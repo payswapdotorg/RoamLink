@@ -62,6 +62,7 @@ import {
   overviewPage,
   settingsPage,
   supportPage,
+  workspacePage,
   readSupportContextParams,
   findGoalChoice,
   parseOnboardingStep,
@@ -124,6 +125,7 @@ function activeNavHref(page: WebPageName): string {
     more: pagePath("more"),
     settings: pagePath("settings"),
     overview: pagePath("overview"),
+    workspace: pagePath("workspace"),
     onboarding: pagePath("home"),
   };
   return candidates[page];
@@ -339,6 +341,22 @@ export class CustomerWebApp {
         return this.#withReads("your settings", async () =>
           settingsPage({ session: await this.#client.getActorSession() }),
         );
+      case "workspace":
+        // RL-104: the guided enterprise workspace journey. The org's
+        // connectivity facts render through the SAME connectivity read
+        // model (no second authority); the enterprise journey state comes
+        // from the app-kit mirrored read contract. Any failed read fails
+        // closed like every page.
+        return this.#withReads("your workspace", async () => {
+          const [session, workspace, devices, intents, connectivity] = await Promise.all([
+            this.#client.getActorSession(),
+            this.#client.getEnterpriseWorkspace(),
+            this.#client.listDevices(),
+            this.#client.listExperienceIntents(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return workspacePage({ session, workspace, devices, intents, connectivity });
+        });
       case "onboarding":
         return await this.#renderOnboarding(request);
     }

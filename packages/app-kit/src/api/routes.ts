@@ -37,6 +37,11 @@ export const API_ROUTE_TEMPLATES = Object.freeze({
   supportCases: "/v1/support-cases",
   supportCaseTransitions: "/v1/support-cases/{caseId}/transitions",
   command: "/v1/commands/{commandId}",
+  // RL-104 (additive, RL-LOCK-017): the customer enterprise workspace read.
+  // The enterprise SERVICE routes (/v1/enterprise/enrollments, ...) remain
+  // owned by packages/enterprise's own api-surface; this app-contract route
+  // is the read-only workspace composition the customer surface renders.
+  enterpriseWorkspace: "/v1/enterprise/workspace",
 } as const);
 
 export type ApiRouteName = keyof typeof API_ROUTE_TEMPLATES;

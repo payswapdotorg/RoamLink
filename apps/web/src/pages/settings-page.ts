@@ -58,6 +58,21 @@ export function settingsPage(input: { readonly session: ActorSessionResource }):
     ),
     el(
       "section",
+      { class: "panel", "data-settings-workspace": "true" },
+      fragment(
+        el("h3", {}, text("Workspace (for teams)")),
+        el(
+          "p",
+          {},
+          text(
+            "If you use RoamLink with an organization, the workspace is where its guided setup, device fleet, goals and live connectivity overview live.",
+          ),
+        ),
+        el("p", {}, el("a", { href: "/workspace" }, text("Open your workspace"))),
+      ),
+    ),
+    el(
+      "section",
       { class: "panel", "data-settings-preferences": "true" },
       fragment(
         el("h3", {}, text("Connectivity preferences")),

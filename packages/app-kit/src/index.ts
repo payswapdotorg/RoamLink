@@ -17,6 +17,7 @@ export * from "./api/transport.js";
 export * from "./api/errors.js";
 export * from "./api/parse-kit.js";
 export * from "./api/resources.js";
+export * from "./api/enterprise.js";
 export * from "./api/commands.js";
 export * from "./api/routes.js";
 export * from "./api/client.js";
