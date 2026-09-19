@@ -679,7 +679,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.0
-        version: 3.2.7(@types/node@22.20.2)
+        version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
 
   packages/provider-qstash:
     dependencies:
@@ -701,7 +701,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.0
-        version: 3.2.7(@types/node@22.20.2)
+        version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
 
   packages/provider-r2:
     dependencies:
@@ -726,7 +726,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.0
-        version: 3.2.7(@types/node@22.20.2)
+        version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
 
   packages/provider-redis:
     dependencies:
@@ -754,7 +754,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^3.0.0
-        version: 3.2.7(@types/node@22.20.2)
+        version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
 
   packages/reconciliation:
     dependencies:
