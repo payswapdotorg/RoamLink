@@ -41,7 +41,7 @@ import {
   type PgPoolLike,
   type SqlDriver,
 } from "@roamlink/persistence-postgres";
-import type { UtcInstant } from "@roamlink/contracts";
+import { nowUtc, type UtcInstant } from "@roamlink/contracts";
 import {
   InMemoryAuthSessionRepository,
   InMemoryCredentialRepository,
@@ -52,7 +52,10 @@ import {
   InMemoryUserRepository,
   type PasswordHasher,
 } from "@roamlink/auth";
-import { createApiService, type ApiService } from "@roamlink/api-service";
+import { createApiService, composeReadiness, type ApiService, type ReadinessCheckBinding } from "@roamlink/api-service";
+import type { HealthCheck } from "@roamlink/observability";
+
+import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
 
@@ -90,10 +93,16 @@ export interface PortalHostComposition {
 }
 
 export interface ReadinessReport {
+  /**
+   * The honest vocabulary string (RL-100):
+   * `ready \| degraded:<dependency,...> \| not-ready:<reason,...>`.
+   */
+  readonly status: string;
+  /** Servability truth: false ONLY for not-ready:<...>. */
   readonly ready: boolean;
   readonly checks: readonly {
     readonly name: string;
-    readonly state: "healthy" | "down";
+    readonly state: "healthy" | "degraded" | "down";
     readonly detail?: string;
   }[];
 }
@@ -106,9 +115,19 @@ export interface PortalHostEnv {
   readonly webhookSigningKeys?: string | undefined;
   /** ADCOS webhook environment pin (version/environment policy). */
   readonly webhookEnvironment?: string | undefined;
+  /**
+   * The remote API service base URL (RL-100): when configured, the host's
+   * readiness composition adds a REQUIRED bounded-timeout probe of that
+   * API's GET /v1/readiness. Absent -> no remote probe is registered (the
+   * in-process API is the truth; an uncomposed dependency is never
+   * reported - no fake surface).
+   */
+  readonly apiBaseUrl?: string | undefined;
   /** Clock + id seams (defaults: real time, canonical UUIDv4). */
   readonly now?: () => UtcInstant;
   readonly newId?: () => string;
+  /** Fetch seam for the remote readiness probe (tests); defaults to global fetch. */
+  readonly fetchLike?: typeof fetch;
 }
 
 /** Thrown when the composition refuses to boot (fail-closed policy). */
@@ -164,6 +183,26 @@ async function createPortalHostCompositionWithDriver(
   const now: () => UtcInstant = env.now ?? (() => new Date().toISOString() as UtcInstant);
   const newId: () => string = env.newId ?? (() => crypto.randomUUID());
 
+  // --------------------------------------------------------------------------
+  // The composed readiness bindings (RL-100): one binding per dependency THIS
+  // process actually composed, each check probing through its provider port
+  // (the persistence driver's liveness probe; the migration-ledger query; the
+  // optional remote-API probe). The SAME bindings feed the api service's
+  // GET /v1/readiness AND the host's readyz - one truth, two surfaces.
+  // --------------------------------------------------------------------------
+  const readinessBindings: ReadinessCheckBinding[] = [
+    { check: databaseHealthCheck(driver), criticality: "required" },
+    { check: migrationLedgerHealthCheck(driver), criticality: "required" },
+  ];
+  if (env.apiBaseUrl !== undefined && env.apiBaseUrl.trim().length > 0) {
+    const probe = createRemoteApiReadinessProbe({
+      baseUrl: env.apiBaseUrl.trim(),
+      ...(env.fetchLike !== undefined ? { fetchLike: env.fetchLike } : {}),
+    });
+    readinessBindings.push({ check: remoteApiReadinessCheck({ probe }), criticality: "required" });
+  }
+  const readiness = composeReadiness({ checks: readinessBindings });
+
   // The identity stores (documented durability gap - see the module doc).
   // The password KDF is the PRODUCTION binding (Node scrypt) - never the
   // test double (packages/auth/src/password.ts makes accidental use loud).
@@ -197,21 +236,19 @@ async function createPortalHostCompositionWithDriver(
     webhookVerifier,
     now,
     newId,
+    readinessChecks: readinessBindings,
   });
 
   const readyCheck = async (): Promise<ReadinessReport> => {
-    const database = await databaseHealthCheck(driver).run();
-    const migrations = await migrationLedgerCheck(driver);
+    const report = await readiness.report();
     return {
-      ready: database.state === "healthy" && migrations.state === "healthy",
-      checks: [
-        ...(database.detail !== undefined
-          ? [{ name: "database", state: database.state, detail: database.detail }]
-          : [{ name: "database", state: database.state }]),
-        ...(migrations.detail !== undefined
-          ? [{ name: "migrations", state: migrations.state, detail: migrations.detail }]
-          : [{ name: "migrations", state: migrations.state }]),
-      ],
+      status: report.status,
+      ready: report.ready,
+      checks: report.checks.map((check) => ({
+        name: check.name,
+        state: check.state,
+        ...(check.detail !== undefined ? { detail: check.detail } : {}),
+      })),
     };
   };
 
@@ -258,27 +295,33 @@ async function bindDriver(
 }
 
 /**
- * The migration-ledger readiness probe: the ledger table (migration 0001)
- * must exist AND carry at least one applied version. A database that has
- * never been migrated is honestly reported NOT ready.
+ * The migration-ledger readiness probe as a HealthCheck (RL-100): the
+ * ledger table (migration 0001) must exist AND carry at least one applied
+ * version. A database that has never been migrated is honestly reported
+ * NOT ready.
  */
-async function migrationLedgerCheck(driver: SqlDriver): Promise<{
-  state: "healthy" | "down";
-  detail?: string;
-}> {
-  try {
-    const result = await driver.query("SELECT count(*)::int AS applied FROM roamlink_schema_migrations");
-    const rows = result.rows as { applied?: number }[];
-    const applied = rows[0]?.applied ?? 0;
-    return applied > 0
-      ? { state: "healthy", detail: `${applied} migration(s) applied` }
-      : { state: "down", detail: "the schema migration ledger is empty (run infra/migrations first)" };
-  } catch (error) {
-    return {
-      state: "down",
-      detail: `the schema migration ledger is not reachable (${error instanceof Error ? error.name : "unknown error"})`,
-    };
-  }
+function migrationLedgerHealthCheck(driver: SqlDriver): HealthCheck {
+  return {
+    name: "migrations",
+    run: async () => {
+      const checkedAt = nowUtc();
+      try {
+        const result = await driver.query("SELECT count(*)::int AS applied FROM roamlink_schema_migrations");
+        const rows = result.rows as { applied?: number }[];
+        const applied = rows[0]?.applied ?? 0;
+        return applied > 0
+          ? { name: "migrations", state: "healthy", detail: `${applied} migration(s) applied`, checkedAt }
+          : { name: "migrations", state: "down", detail: "the schema migration ledger is empty (run infra/migrations first)", checkedAt };
+      } catch (error) {
+        return {
+          name: "migrations",
+          state: "down",
+          detail: `the schema migration ledger is not reachable (${error instanceof Error ? error.name : "unknown error"})`,
+          checkedAt,
+        };
+      }
+    },
+  };
 }
 
 /** Stable digest helper for hosts that key derived state by content. */

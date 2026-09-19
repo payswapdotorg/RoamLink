@@ -225,7 +225,9 @@ export function createApiService(options: ApiServiceOptions): ApiService {
 
   // The composed readiness surface (RL-100): live aggregation of the real
   // dependency probes - recomputed on EVERY request, never a boot snapshot.
-  const readiness: ComposedReadiness = composeReadiness({ checks: options.readinessChecks });
+  const readiness: ComposedReadiness = composeReadiness(
+    options.readinessChecks !== undefined ? { checks: options.readinessChecks } : {},
+  );
 
   return {
     async handle(request: HttpRequest): Promise<HttpResponse> {

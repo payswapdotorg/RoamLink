@@ -13,6 +13,7 @@
  *
  * Layout:
  *   - `composition.ts`          the composition root (the ONLY binding site)
+ *   - `readiness.ts`            the remote-API readiness probe + check (RL-100)
  *   - `scrypt-password-hasher.ts` the production KDF binding (auth port)
  *   - `http-adapter.ts`         Web Request/Response <-> app-kit translation
  *   - `session.ts`              the httpOnly cookie session layer
@@ -26,6 +27,7 @@
  * touch the database; the host never invents state (fail-closed everywhere).
  */
 export * from "./composition.js";
+export * from "./readiness.js";
 export * from "./scrypt-password-hasher.js";
 export * from "./http-adapter.js";
 export * from "./session.js";

@@ -23,7 +23,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { parseUtcInstant, type UtcInstant } from "@roamlink/contracts";
-import type { HttpRequest } from "@roamlink/app-kit";
+import type { HttpRequest, HttpResponse } from "@roamlink/app-kit";
 import type { WebhookVerifier } from "@roamlink/adcos";
 import {
   InMemoryAuthSessionRepository,
@@ -387,7 +387,7 @@ describe("composeReadiness (RL-100): dependency checks through the adapter ports
 
 function createServiceWithReadiness(
   readinessChecks?: readonly ReadinessCheckBinding[],
-): { handle(request: HttpRequest): Promise<{ status: number; body: string }> } {
+): { handle(request: HttpRequest): Promise<HttpResponse> } {
   const clock = new DeterministicClock(T0);
   const ids = new DeterministicUuidGenerator(30_000);
   const users = new InMemoryUserRepository();
