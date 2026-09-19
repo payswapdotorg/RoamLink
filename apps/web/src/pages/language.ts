@@ -186,3 +186,80 @@ export const CONNECTIVITY_WHY_LANGUAGE: Readonly<
     nextStep: "Try again shortly. If the page keeps failing, open a support case.",
   },
 });
+
+// ---------------------------------------------------------------------------------
+// RL-085 — the Activity narrative vocabulary (spec/ux-architecture.md §8).
+//
+// The map translates a durable notification's OWN recorded state transition
+// (its aggregateType + transition pair, verbatim from the read model) into
+// the customer-facing automation narrative: what happened, and the kind of
+// thing it was. Unknown pairs fall back to the honest "recorded" narrative —
+// never a fabricated story. Commerce records always stay their own kind:
+// a commerce event NEVER renders as connectivity progress (RL-LOCK-008).
+// ---------------------------------------------------------------------------------
+
+/** The customer-facing kinds of activity entries (a closed vocabulary). */
+export const ACTIVITY_ENTRY_KINDS = [
+  "delivery",
+  "recovery",
+  "request",
+  "commerce",
+  "support",
+  "system",
+  "recorded",
+] as const;
+export type ActivityEntryKind = (typeof ACTIVITY_ENTRY_KINDS)[number];
+
+/** Human label for each activity kind. */
+export const ACTIVITY_KIND_LANGUAGE: Readonly<Record<ActivityEntryKind, string>> = Object.freeze({
+  delivery: "Delivery",
+  recovery: "Recovery",
+  request: "Request",
+  commerce: "Commerce",
+  support: "Support",
+  system: "System",
+  recorded: "Recorded change",
+});
+
+/** The narrative shape for one recorded state change. */
+export interface ActivityNarrative {
+  readonly kind: ActivityEntryKind;
+  /** What happened, in one human sentence. */
+  readonly whatHappened: string;
+}
+
+/**
+ * Narratives for the known RoamLink state transitions. Keyed by
+ * `<aggregateType>::<transition>` exactly as the durable notification
+ * records it. This map ADDS explanation only — it never changes the
+ * authoritative record (the raw transition always renders too).
+ */
+const KNOWN_EVENT_NARRATIVES: Readonly<Record<string, ActivityNarrative>> = Object.freeze({
+  "connectivity_reference::evidence_linked": {
+    kind: "delivery",
+    whatHappened:
+      "Delivery evidence was linked for your connectivity, so the network has confirmed real delivery.",
+  },
+  "connectivity_reference::created": {
+    kind: "request",
+    whatHappened: "RoamLink recorded a new connectivity reference to deliver against.",
+  },
+  "connectivity_reference::retired": {
+    kind: "request",
+    whatHappened: "An older connectivity reference was retired and is no longer in use.",
+  },
+});
+
+/** The honest fallback when a transition is not in the known narrative map. */
+export function activityNarrativeFor(
+  aggregateType: string,
+  transition: string,
+  title: string,
+): ActivityNarrative {
+  const known = KNOWN_EVENT_NARRATIVES[`${aggregateType}::${transition}`];
+  if (known !== undefined) return known;
+  return {
+    kind: "recorded",
+    whatHappened: title,
+  };
+}

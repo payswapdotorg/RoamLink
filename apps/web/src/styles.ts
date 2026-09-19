@@ -102,6 +102,15 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .observation-list { list-style: none; margin: 0.5rem 0 1rem; padding: 0; display: grid; gap: 0.6rem; }
 .observation-item { background: #fff; border: 1px solid #e8e2da; border-radius: 10px; padding: 0.75rem 0.9rem; }
 .observation-item p { margin: 0.15rem 0; }
+/* RL-085 activity narrative */
+.kind-chip { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600; background: #f1ebe1; color: #4d453e; border: 1px solid #e3d8c6; }
+.kind-chip[data-kind="delivery"] { background: #e6f4ea; color: #1e5e3a; border-color: #bcdcc6; }
+.kind-chip[data-kind="recovery"] { background: #eef0e9; color: #3f4a38; border-color: #d6dcc9; }
+.kind-chip[data-kind="request"] { background: #fbf0d3; color: #713f12; border-color: #ecd9a4; }
+.activity-what { font-size: 0.95rem; }
+.evidence-list { margin: 0.3rem 0; padding-left: 1.2rem; color: #6f665e; font-size: 0.85rem; }
+.evidence-list li { margin: 0.15rem 0; }
+.needs-you { font-weight: 600; color: #7d3221; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
