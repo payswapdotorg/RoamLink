@@ -28,11 +28,20 @@ export interface PublishRecord {
   readonly delayHeader: string | null;
 }
 
+/** One recorded read-only probe request (RL-100 wire parity). */
+export interface ProbeRecord {
+  readonly url: string;
+  readonly method: string;
+  readonly authorized: boolean;
+}
+
 export function createQStashPublishProtocol(options: QStashProtocolOptions): {
   fetchLike: FetchLike;
   publishes: PublishRecord[];
+  probes: ProbeRecord[];
 } {
   const publishes: PublishRecord[] = [];
+  const probes: ProbeRecord[] = [];
   const failNext = options.failNext ?? { count: 0 };
   const corruptNext = options.corruptNext ?? { count: 0 };
   const rejectNext = options.rejectNext ?? { count: 0, status: 500 };
@@ -49,6 +58,16 @@ export function createQStashPublishProtocol(options: QStashProtocolOptions): {
     const auth = new Headers(init?.headers).get("authorization");
     if (auth !== `Bearer ${options.token}`) {
       return jsonResponse(401, { error: "Unauthorized" });
+    }
+    // The read-only probe route (RL-100): GET {base}/v2/messages?count=1.
+    const probePrefix = `${baseUrl}/v2/messages`;
+    if (url.startsWith(probePrefix) && (init?.method ?? "GET") === "GET") {
+      probes.push({ url, method: "GET", authorized: true });
+      if (rejectNext.count > 0) {
+        rejectNext.count -= 1;
+        return jsonResponse(rejectNext.status, { error: "rate limited (simulated)" });
+      }
+      return jsonResponse(200, { messages: [], cursor: null });
     }
     const prefix = `${baseUrl}/v2/messages/`;
     if (!url.startsWith(prefix)) {
@@ -73,7 +92,7 @@ export function createQStashPublishProtocol(options: QStashProtocolOptions): {
     return jsonResponse(200, { messageId: messageIdFactory() });
   }) as unknown as FetchLike;
 
-  return { fetchLike, publishes };
+  return { fetchLike, publishes, probes };
 }
 
 function jsonResponse(status: number, body: unknown): Response {

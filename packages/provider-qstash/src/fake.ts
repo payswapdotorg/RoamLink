@@ -29,6 +29,7 @@ import {
   type JobReceiver,
   type JobState,
   type DurableJobDeliveryPort,
+  type TransportProbePort,
   DEFAULT_MAX_PAYLOAD_BYTES,
   validateDestination,
   validateJobId,
@@ -80,7 +81,7 @@ function isLive(state: JobState): boolean {
   return state === "pending" || state === "retrying";
 }
 
-export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort {
+export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort, TransportProbePort {
   readonly #clock: InMemoryJobDeliveryQueueOptions["clock"];
   readonly #signingKey: string;
   readonly #maxAttempts: number;
@@ -358,6 +359,30 @@ export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort {
 
   #nowMs(): number {
     return epochMsOf(parseUtcInstant(this.#clock.now()));
+  }
+
+  // --------------------------------------------------------------------------
+  // The read-only transport probe (RL-100; see TransportProbePort)
+  // --------------------------------------------------------------------------
+
+  #probeFailure: string | null = null;
+
+  /**
+   * Deterministic probe: resolves unless {@link breakProbes} forced an
+   * outage. Reads nothing, mutates nothing, creates no message.
+   */
+  async probe(): Promise<void> {
+    if (this.#probeFailure !== null) throw new Error(this.#probeFailure);
+  }
+
+  /** Test control: forces probe() to reject (simulated transport outage). */
+  breakProbes(reason = "simulated transport outage"): void {
+    this.#probeFailure = reason;
+  }
+
+  /** Test control: restores probe() to the healthy answer. */
+  repairProbes(): void {
+    this.#probeFailure = null;
   }
 }
 

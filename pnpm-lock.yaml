@@ -686,6 +686,9 @@ importers:
       '@roamlink/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../observability
     devDependencies:
       '@roamlink/testkit':
         specifier: workspace:*
@@ -923,6 +926,9 @@ importers:
       '@roamlink/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@roamlink/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
@@ -936,6 +942,12 @@ importers:
       '@roamlink/persistence-postgres':
         specifier: workspace:*
         version: link:../../packages/persistence-postgres
+      '@roamlink/provider-r2':
+        specifier: workspace:*
+        version: link:../../packages/provider-r2
+      '@roamlink/provider-redis':
+        specifier: workspace:*
+        version: link:../../packages/provider-redis
       '@roamlink/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit

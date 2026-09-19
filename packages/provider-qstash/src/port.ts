@@ -143,3 +143,28 @@ export function validateDestination(destination: string): string {
   }
   return destination;
 }
+
+/**
+ * The read-only transport probe port (RL-100).
+ *
+ * SCOPE RATIONALE (RL-100 recorded exception): the composed readiness
+ * surface needs a REAL probe of the transport, and every operation on
+ * {@link DurableJobDeliveryPort} MUTATES provider state (enqueue creates
+ * real messages) - a mutating call can never serve as a health probe.
+ * This port is therefore the ONE genuinely-required read-only addition:
+ * a reachability probe with no side effects (no message is created,
+ * no durable state is touched - durable truth is the caller's ledger).
+ *
+ * Implementations: the deterministic fake (tests/local, with an explicit
+ * break/repair control) and the Upstash QStash client (hosted, a
+ * read-only REST GET). Both live in this package so the AR-009 wire note
+ * (exact read route confirmed against a real account at the operator
+ * phase) stays single-sited.
+ */
+export interface TransportProbePort {
+  /**
+   * Probes the transport READ-ONLY: resolves when the provider path is
+   * reachable, rejects when it is not. Never mutates provider state.
+   */
+  probe(): Promise<void>;
+}

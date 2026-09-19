@@ -25,6 +25,13 @@
  *  - {@link QStashSignatureVerifier} + `signQStashDelivery` /
  *    `renderQStashSignatureHeader`: receiver-side verification with
  *    current/next signing-key rotation;
+ *  - {@link TransportProbePort}: the read-only reachability probe (RL-100;
+ *    enqueue mutates provider state and can never serve as a probe) with
+ *    the deterministic fake control (breakProbes/repairProbes) and the
+ *    hosted client's read-only REST GET;
+ *  - {@link createQStashHealthCheck}: the observability-compatible health
+ *    check over the probe (hosts register it as an OPTIONAL dependency -
+ *    a down transport degrades, never blocks, readiness);
  *  - {@link tryParseQStashEnv}: fail-closed, secret-redacting env access;
  *  - {@link defineDurableJobDeliveryContract}: the reusable transport
  *    battery (ADR-0003 replacement rule).
@@ -34,4 +41,5 @@ export * from "./verifier.js";
 export * from "./fake.js";
 export * from "./upstash-qstash.js";
 export * from "./env.js";
+export * from "./health.js";
 export * from "./port-contract.js";

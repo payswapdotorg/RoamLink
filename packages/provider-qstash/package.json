@@ -17,7 +17,8 @@
     "dev": "vitest"
   },
   "dependencies": {
-    "@roamlink/contracts": "workspace:*"
+    "@roamlink/contracts": "workspace:*",
+    "@roamlink/observability": "workspace:*"
   },
   "devDependencies": {
     "@roamlink/testkit": "workspace:*",
