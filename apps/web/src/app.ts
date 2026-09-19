@@ -58,6 +58,7 @@ import {
   morePage,
   notificationsPage,
   onboardingPage,
+  orderJourneyPage,
   overviewPage,
   settingsPage,
   supportPage,
@@ -275,14 +276,31 @@ export class CustomerWebApp {
           return commercePage({ products, orders, subscriptions });
         });
       case "order":
-        return this.#withReads("the order", async () =>
-          commercePage({
-            products: [],
-            orders: [],
-            subscriptions: [],
-            orderDetail: await this.#client.getOrder(request.params?.orderId ?? ""),
-          }),
-        );
+        // RL-101: the order route IS the guided purchase-to-delivery
+        // journey - after payment the customer lands on delivery progress,
+        // never on a payment-success page (user-journey-audit §6). The
+        // connectivity truth renders from the SAME authoritative read
+        // model; the optional `commandId` param adds the place-order
+        // command's four-stage pipeline (never fabricated from reads).
+        return this.#withReads("your delivery progress", async () => {
+          const [orderDetail, connectivity, subscriptions, command] = await Promise.all([
+            this.#client.getOrder(request.params?.orderId ?? ""),
+            this.#client.getConnectivityOverview(),
+            this.#client.listSubscriptions(),
+            request.params?.commandId === undefined
+              ? Promise.resolve(undefined)
+              // A failed command-status read fails closed like every other
+              // read: the rejection propagates so #withReads renders the
+              // typed error panel instead of a partial page.
+              : this.#client.getCommandStatus(request.params.commandId),
+          ]);
+          return orderJourneyPage({
+            orderDetail,
+            connectivity,
+            subscriptions,
+            ...(command !== undefined ? { command } : {}),
+          });
+        });
       case "notifications":
         return this.#withReads("your notifications", async () =>
           notificationsPage({ notifications: await this.#client.listNotifications() }),
