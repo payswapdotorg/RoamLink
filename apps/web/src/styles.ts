@@ -120,6 +120,9 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .preference-list { border: 1px solid #e8e2da; border-radius: 10px; padding: 0.6rem 0.8rem; margin: 0.6rem 0; display: grid; gap: 0.25rem; }
 .preference-option { display: flex; gap: 0.55rem; align-items: center; min-height: 44px; font-size: 0.95rem; }
 .preference-option input { width: 1.1rem; height: 1.1rem; }
+/* RL-087 device capability */
+.fallback-list { padding-left: 1.2rem; line-height: 1.65; }
+.fallback-list li { margin: 0.25rem 0; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

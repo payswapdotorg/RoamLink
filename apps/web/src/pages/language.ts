@@ -263,3 +263,59 @@ export function activityNarrativeFor(
     whatHappened: title,
   };
 }
+
+// ---------------------------------------------------------------------------------
+// RL-087 — the device capability vocabulary (spec/ux-architecture.md §9,
+// tech-lead handoff §10, RL-LOCK-011).
+//
+// Capability truth is evidence-based: the read model carries the freshness
+// of the device's capability/context snapshots, NOT the capability facts
+// themselves, so the capability card renders only what the projection
+// asserts and presents missing/unverified data honestly as UNKNOWN — never
+// an assumed capability (RL-LOCK-011: the implementation cannot assume
+// OS/radio capabilities not exposed by the platform).
+// ---------------------------------------------------------------------------------
+
+/** The honest not-verified statement (the total fallback of the map below). */
+export const DEVICE_CAPABILITY_UNKNOWN = Object.freeze({
+  label: "Not verified yet",
+  detail:
+    "RoamLink has not verified what this device can do yet. Until then, nothing is assumed and RoamLink asks before acting.",
+});
+
+/**
+ * The device-level capability statement, derived only from the capability
+ * snapshot's freshness. A closed vocabulary keyed by freshness state.
+ */
+export const DEVICE_CAPABILITY_LANGUAGE: Readonly<
+  Record<string, { readonly label: string; readonly detail: string }>
+> = Object.freeze({
+  FRESH: {
+    label: "Verified recently",
+    detail:
+      "RoamLink recently verified what this device can do. The verified capabilities ride with the device itself.",
+  },
+  STALE: {
+    label: "Needs re-checking",
+    detail:
+      "The last capability verification has expired, so RoamLink treats unconfirmed abilities as unavailable and falls back to asking you.",
+  },
+  UNKNOWN: DEVICE_CAPABILITY_UNKNOWN,
+});
+
+/** Human sentence for each automation level (the capability key). */
+export const AUTOMATION_LEVEL_LANGUAGE: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  automatic: "Automatic — RoamLink can act without asking you first.",
+  confirmation: "With your confirmation — RoamLink asks, you approve, then it acts.",
+  manual: "Manual — RoamLink tells you what to do; you do it on the device.",
+  unavailable: "Unavailable — the device or its platform cannot do this at all.",
+  unknown: "Unknown — not verified for this device yet; RoamLink assumes nothing.",
+});
+
+/** Static manual fallback guidance (presentation guidance, not authority). */
+export const MANUAL_FALLBACK_GUIDANCE: readonly string[] = Object.freeze([
+  "You can always connect or switch networks yourself from the device's own settings — RoamLink never takes that ability away.",
+  "If RoamLink cannot act on this device, it says so and gives you the steps instead of failing silently.",
+]);

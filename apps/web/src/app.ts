@@ -50,6 +50,7 @@ import {
   activityPage,
   commercePage,
   connectivityCenterPage,
+  deviceDetailPage,
   devicesPage,
   goalDetailPage,
   goalsPage,
@@ -230,13 +231,23 @@ export class CustomerWebApp {
           return activityPage({ notifications, intents, devices });
         });
       case "devices":
-        return this.#withReads("your devices", async () =>
-          devicesPage({ devices: await this.#client.listDevices() }),
-        );
+        return this.#withReads("your devices", async () => {
+          const [devices, connectivity] = await Promise.all([
+            this.#client.listDevices(),
+            this.#client.getConnectivityOverview(),
+          ]);
+          return devicesPage({ devices, connectivity });
+        });
       case "device":
-        return this.#withReads("the device", async () =>
-          devicesPage({ devices: [await this.#client.getDevice(request.params?.deviceId ?? "")] }),
-        );
+        return this.#withReads("the device", async () => {
+          const [device, connectivity, notifications, intents] = await Promise.all([
+            this.#client.getDevice(request.params?.deviceId ?? ""),
+            this.#client.getConnectivityOverview(),
+            this.#client.listNotifications(),
+            this.#client.listExperienceIntents(),
+          ]);
+          return deviceDetailPage({ device, connectivity, notifications, intents });
+        });
       case "intents":
         return this.#withReads("your goals", async () => {
           const [intents, devices] = await Promise.all([
