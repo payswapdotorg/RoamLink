@@ -464,6 +464,22 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   §9.2 rule encodes the forward-fix default and the deliberate,
   operator-commanded down-migration exception (which pairs with the RL-111
   backup/restore path). The runner is proven by loopback selftests.
+- `infra/deployment/demo-acceptance` — the demo environment acceptance gate
+  (RL-117, Wave 8): the deployment runbook §8 checklist composed and DECIDED
+  by one command (root scripts `pnpm demo:acceptance` /
+  `pnpm demo:acceptance:selftest`; live mode via
+  `BASE_URL=<demo-host> pnpm demo:acceptance`). It composes the public
+  verification surfaces — the tests/deployment batteries, the §6b smoke
+  exports, the rollback rule's servable-readiness law, the RL-108 ADCOS
+  compatibility probe (exit-faithful) and the environments config surface —
+  fills the config-validation gaps (webhook-signature configuration
+  PRESENCE, the no-in-memory-adapter production law, the R2
+  scoped-credential surface), and emits the TWELVE-ROW spec/deployment.md
+  §7 verdict: every row green | named-skip | needs-deployment | red, never
+  a silently-passing row. Exit codes: 0 accepted (named-skips carry their
+  AR-010 operator-phase flips), 1 a red row (not accepted), 2
+  config-invalid. The selftest pins the runner loopback-only — a sabotaged
+  (lying) deployment flips the verdict.
 - `packages/app-kit` — the shared application kit for the RL-060/RL-061
   product surfaces: the public application API contract (spec/api.md) as
   schema-first typed wire resources with fail-closed parsers, the

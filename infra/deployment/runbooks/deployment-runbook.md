@@ -210,6 +210,69 @@ Before calling the environment ready, ALL of:
       deployed origin: `BASE_URL=... pnpm smoke` exit 0, output recorded
       with the deployed commit SHA (a lying dependency blocks this gate).
 
+### 8.1 The executable demo-acceptance gate (RL-117)
+
+The §8 checklist is COMPOSED AND DECIDED by one command:
+`infra/deployment/demo-acceptance/check.mjs` (root scripts
+`pnpm demo:acceptance` / `pnpm demo:acceptance:selftest`). It composes the
+PUBLIC verification surfaces of this repository — the tests/deployment
+batteries (RL-075..RL-112), the §6b smoke exports, the §9 rollback rule's
+servable-readiness law, the RL-108 ADCOS compatibility probe and the
+environments config surface — and fills the config-validation gaps the
+on-tree pieces do not cover: webhook-signature configuration PRESENCE
+(`ROAMLINK_WEBHOOK_SIGNING_KEYS`), the no-in-memory-adapter production law
+at the config level, and the R2 scoped-credential surface validation.
+
+The output is a TWELVE-ROW verdict report — the twelve §7 checks, verbatim
+and in order. EVERY row resolves to exactly one of:
+
+- `green` — verified on this run, evidence recorded on the row;
+- `named-skip` — an env-gated leg that cannot run in this invocation, with
+  the NAMED reason (the AR-010 discipline verbatim: explicit reason, CI
+  stays green, operator-phase flip);
+- `needs-deployment` — the row's decisive leg requires the live demo
+  surface (BASE_URL) this invocation lacks;
+- `red` — the row failed (the §8 gate is BLOCKED);
+- `config-invalid` — the invocation's configuration is invalid.
+
+Exit codes (closed and distinguishable): **0** no red row and the
+configuration is valid (named-skips carry their operator-phase flips);
+**1** at least one red row (NOT accepted); **2** config-invalid (refused
+before any check runs).
+
+How the operator runs it against the demo deployment:
+
+1. **Prove the runner once per environment** (loopback, no deployment):
+   `pnpm demo:acceptance:selftest` — exit 0 required. It pins the
+   no-fake-success law itself: a sabotaged (lying) deployment flips the
+   verdict, a config-invalid invocation is refused with exit 2.
+2. **On-tree mode** (from the commit being deployed):
+   `pnpm demo:acceptance` — runs every check that needs no live surface:
+   the batteries' verdicts, the probe (honest not-configured when the
+   ADCOS env is absent), the smoke/rollback runner proofs, and the config
+   validation of whatever demo env surface the invocation carries.
+3. **Live mode** (the demo acceptance itself):
+   `BASE_URL=https://<demo-host-origin> pnpm demo:acceptance` (add
+   `API_URL=...` when the API is split; export the demo environment into
+   the invocation — env-only, never files — so the config-validation rows
+   can verify it). This runs the §6b smoke against the DEPLOYED stack, the
+   servable-readiness law on `/readyz` + `/v1/readiness`, and the
+   config-level laws — and flips the live rows from needs-deployment to
+   green/red.
+4. **Env-gated legs** (the AR-010 flips): when the invocation carries the
+   demo DATABASE_URL + the R2 surface + a DISTINCT
+   `ROAMLINK_BACKUP_SCRATCH_DATABASE_URL`, the RL-111 real legs run INSIDE
+   this gate (real export -> R2 -> scratch restore migrated with the real
+   infra/migrations); when it carries DATABASE_URL, the RL-110 real-DB leg
+   runs. A bogus/unreachable DSN FAILS those rows honestly (fail-closed —
+   never a silent pass). Record the named-skips that remain in the
+   deployment log with their reasons and the phase that will flip them.
+5. **RECORD**: paste the twelve-row report + the exit code + the deployed
+   commit SHA into the deployment log. Exit 1 or 2 blocks the §8 gate —
+   fix, redeploy, re-run. The gate never touches provider consoles, never
+   reads values out of the secret store, and never echoes a credential
+   (RL-LOCK-016): configuration is validated BY NAME and SHAPE only.
+
 ## 9. Rollback (redeploy-previous-SHA) (RL-112)
 
 When a deployed release is broken, the rollback is a REDEPLOY of the
