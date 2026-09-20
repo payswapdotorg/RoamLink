@@ -39,6 +39,7 @@ import {
   createPostgresPersistence,
   databaseHealthCheck,
   type PgPoolLike,
+  type PostgresPersistence,
   type SqlDriver,
 } from "@roamlink/persistence-postgres";
 import { nowUtc, type UtcInstant } from "@roamlink/contracts";
@@ -67,8 +68,10 @@ import {
   type ReadinessCheckBinding,
 } from "@roamlink/api-service";
 import type { HealthCheck } from "@roamlink/observability";
+import type { DurableJobDeliveryPort } from "@roamlink/provider-qstash";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
+import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
 
@@ -90,6 +93,17 @@ export interface PortalHostComposition {
   readonly api: ApiService;
   /** The real SQL driver (health/readiness + the migration runner bind it). */
   readonly driver: SqlDriver;
+  /**
+   * The REAL persistence ports of this process (RL-107): the maintenance
+   * trigger's recovery sweeps run through them (sweep = set-transition on
+   * the durable outbox), never ad-hoc database mutation in a route.
+   */
+  readonly persistence: PostgresPersistence;
+  /** The maintenance trigger seam (RL-107) - authenticated by the handler. */
+  readonly maintenance: {
+    readonly cronSecret: string | undefined;
+    readonly run: () => Promise<DailyMaintenanceResult>;
+  };
   /**
    * The identity stores of this process. Host-internal: exposed as the
    * honest seam until the identity persistence adapters land (ops tooling
@@ -137,7 +151,7 @@ export interface PortalHostEnv {
    */
   readonly apiBaseUrl?: string | undefined;
   /**
-   * The Redis accelerator's REST credentials (RL-105): when configured, the
+   * The Upstash Redis accelerator env (RL-105): when configured, the
    * composition binds the DISTRIBUTED fixed-window limiter over the
    * Upstash REST port as the API edge's admission control; when absent in
    * development the honest in-memory fallback is composed (with its loud
@@ -152,6 +166,21 @@ export interface PortalHostEnv {
   readonly newId?: () => string;
   /** Fetch seam for the remote readiness probe (tests); defaults to global fetch. */
   readonly fetchLike?: typeof fetch;
+  /**
+   * CRON_SECRET (RL-107): when set, /api/maintenance/daily answers ONLY
+   * `Authorization: Bearer <secret>` (Vercel cron delivers exactly that);
+   * when unset the route refuses EVERY trigger (fail-closed).
+   */
+  readonly cronSecret?: string | undefined;
+  /**
+   * QSTASH_TOKEN + ROAMLINK_MAINTENANCE_DESTINATION (RL-107): when both are
+   * set, the maintenance trigger kicks the sweeps EVENT-DRIVEN (the
+   * sanctioned async path) with deterministic per-day job ids; otherwise
+   * the trigger runs the bounded sweeps inline.
+   */
+  readonly qstashToken?: string | undefined;
+  readonly qstashBaseUrl?: string | undefined;
+  readonly maintenanceDestination?: string | undefined;
 }
 
 /** Thrown when the composition refuses to boot (fail-closed policy). */
@@ -304,6 +333,40 @@ async function createPortalHostCompositionWithDriver(
     edge: edgeRateLimiter !== undefined ? { rateLimiter: edgeRateLimiter } : {},
   });
 
+  // --------------------------------------------------------------------------
+  // The maintenance trigger seam (RL-107): the REAL persistence for the
+  // recovery sweeps, plus the event-driven kick when the QStash env + the
+  // destination are configured (the sanctioned async path).
+  // --------------------------------------------------------------------------
+  const persistence: PostgresPersistence = createPostgresPersistence(driver);
+  let asyncDelivery: DurableJobDeliveryPort | undefined;
+  if (
+    env.qstashToken !== undefined &&
+    env.qstashToken.trim().length > 0 &&
+    env.maintenanceDestination !== undefined &&
+    env.maintenanceDestination.trim().length > 0
+  ) {
+    const { UpstashQStashClient } = await import("@roamlink/provider-qstash");
+    asyncDelivery = new UpstashQStashClient({
+      token: env.qstashToken,
+      ...(env.qstashBaseUrl !== undefined ? { baseUrl: env.qstashBaseUrl } : {}),
+    });
+  }
+  const maintenance = {
+    cronSecret: env.cronSecret,
+    run: (): Promise<DailyMaintenanceResult> =>
+      runDailyMaintenance({
+        persistence,
+        // The host admits webhooks only (RL-LOCK-009); projection stays in
+        // the worker host, so no inbox drain is bound here - the result
+        // reports the skip honestly.
+        now,
+        ...(asyncDelivery !== undefined && env.maintenanceDestination !== undefined
+          ? { asyncDelivery, asyncDestination: env.maintenanceDestination }
+          : {}),
+      }),
+  };
+
   const readyCheck = async (): Promise<ReadinessReport> => {
     const report = await readiness.report();
     return {
@@ -317,7 +380,7 @@ async function createPortalHostCompositionWithDriver(
     };
   };
 
-  return { api, driver, identity, readyCheck, dispose };
+  return { api, driver, persistence, maintenance, identity, readyCheck, dispose };
 }
 
 async function bindDriver(

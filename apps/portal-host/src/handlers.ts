@@ -28,6 +28,7 @@ import {
   sessionTokenOf,
   type LoginOutcome,
 } from "./session.js";
+import { isAuthorizedCronRequest } from "./maintenance.js";
 import {
   SessionResolutionError,
   SurfaceNotFoundError,
@@ -100,6 +101,44 @@ export async function handleV1(request: Request, runtime: HostRuntime): Promise<
       return errorResponse(405, "METHOD_NOT_ALLOWED", error.message);
     }
     return internalErrorResponse();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The maintenance trigger (RL-107): /api/maintenance/daily - thin,
+// authenticated, idempotent; a serverless route NEVER runs the sweeps as a
+// long job, it kicks them (or hands them to the event-driven async path).
+// ---------------------------------------------------------------------------
+
+export async function handleMaintenanceDaily(request: Request, runtime: HostRuntime): Promise<Response> {
+  // Fail-closed authentication: without CRON_SECRET configured the route
+  // refuses EVERY trigger (an unauthenticated mutation surface is never
+  // acceptable), and with it, only the exact Bearer match passes.
+  if (!runtime.ok) {
+    return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; maintenance is unavailable");
+  }
+  const cronSecret = runtime.composition.maintenance.cronSecret;
+  if (!isAuthorizedCronRequest(request, cronSecret)) {
+    return errorResponse(
+      cronSecret === undefined ? 503 : 401,
+      cronSecret === undefined ? "CRON_SECRET_NOT_CONFIGURED" : "UNAUTHORIZED",
+      cronSecret === undefined
+        ? "the maintenance route refuses unauthenticated triggers: CRON_SECRET is not configured (fail-closed)"
+        : "the maintenance trigger requires Authorization: Bearer <CRON_SECRET>",
+    );
+  }
+  try {
+    const result = await runtime.composition.maintenance.run();
+    return new Response(JSON.stringify(result), {
+      status: 200,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  } catch (error) {
+    return errorResponse(
+      500,
+      "MAINTENANCE_FAILED",
+      `the maintenance trigger failed (details suppressed)${error instanceof Error ? `: ${error.name}` : ""}`,
+    );
   }
 }
 
