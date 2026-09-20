@@ -15,5 +15,10 @@
  * Test-double discipline (§10): the suite runs against any public
  * AdcosClient - the local fake in tests, real clients at startup. No test
  * depends on ADCOS internals.
+ *
+ * The PRODUCTION entry point (RL-108, `probe.ts`) is additive: the
+ * env-configured, exit-distinct, fail-closed probe against a real ADCOS
+ * endpoint - runnable standalone AND composed as a readiness dependency.
  */
 export * from "./suite.js";
+export * from "./probe.js";

@@ -24,6 +24,12 @@ export function portalHostEnvFromProcessEnv(
   webhookSigningKeys: string | undefined;
   webhookEnvironment: string | undefined;
   apiBaseUrl: string | undefined;
+  upstashRedisRestUrl: string | undefined;
+  upstashRedisRestToken: string | undefined;
+  cronSecret: string | undefined;
+  qstashToken: string | undefined;
+  qstashBaseUrl: string | undefined;
+  maintenanceDestination: string | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
@@ -33,6 +39,16 @@ export function portalHostEnvFromProcessEnv(
     // RL-100: when configured, the host's readiness composition probes the
     // remote API service's GET /v1/readiness (bounded timeout, REQUIRED).
     apiBaseUrl: env["ROAMLINK_API_BASE_URL"],
+    // RL-105: when configured, the API edge's admission control is the
+    // DISTRIBUTED fixed-window limiter over the Upstash REST port.
+    upstashRedisRestUrl: env["UPSTASH_REDIS_REST_URL"],
+    upstashRedisRestToken: env["UPSTASH_REDIS_REST_TOKEN"],
+    // RL-107: the fail-closed maintenance trigger secret + the optional
+    // event-driven kick (QStash) for the /api/maintenance/daily route.
+    cronSecret: env["CRON_SECRET"],
+    qstashToken: env["QSTASH_TOKEN"],
+    qstashBaseUrl: env["QSTASH_URL"],
+    maintenanceDestination: env["ROAMLINK_MAINTENANCE_DESTINATION"],
   };
 }
 

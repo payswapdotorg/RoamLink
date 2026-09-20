@@ -28,6 +28,11 @@ const AUTHZ_FAILURE_REASONS: ReadonlySet<string> = new Set([
 ]);
 
 function statusFor(error: RoamLinkError): number {
+  // The edge body cap (RL-105) rides the closed taxonomy as a validation
+  // rejection with its own reason; the mapping answers the HTTP-correct 413.
+  if (error.reason === "PAYLOAD_TOO_LARGE") {
+    return 413;
+  }
   switch (error.kind) {
     case "validation":
       return HTTP_STATUS.badRequest;
@@ -71,9 +76,26 @@ const INTERNAL_ERROR_BODY = JSON.stringify({
 /** Maps any thrown failure onto the contract's HTTP error response. */
 export function errorToResponse(error: unknown): HttpResponse {
   if (isRoamLinkError(error)) {
-    return { status: statusFor(error), body: bodyOf(error) };
+    const headers = headersOf(error);
+    return {
+      status: statusFor(error),
+      body: bodyOf(error),
+      ...(headers !== undefined ? { headers } : {}),
+    };
   }
   return { status: HTTP_STATUS.internalError, body: INTERNAL_ERROR_BODY };
+}
+
+/**
+ * Error-response headers (RL-105): a rate-limited answer carries the
+ * standard `retry-after` hint (whole seconds, derived from the typed
+ * `retryAfterMs`) next to the typed body's `retryAfterMs` field.
+ */
+function headersOf(error: RoamLinkError): Record<string, string> | undefined {
+  if (error.kind === "rate-limited" && error.retryAfterMs !== undefined) {
+    return { "retry-after": String(Math.max(1, Math.ceil(error.retryAfterMs / 1000))) };
+  }
+  return undefined;
 }
 
 /** A typed "read model not composed" response (501 - honest, never fake data). */

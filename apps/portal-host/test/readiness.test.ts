@@ -154,9 +154,33 @@ describe("the host readiness composition (RL-100)", () => {
     try {
       await migrate(composition);
       const report = await composition.readyCheck();
-      expect(report.status).toBe("ready");
+      // RL-105: development mode without Redis composes the honest in-memory
+      // rate-limit fallback, and the readiness surface carries the degradation.
+      expect(report.status).toBe("degraded:rate-limit");
       expect(report.ready).toBe(true);
-      expect(report.checks.map((check) => check.name).sort()).toEqual(["database", "migrations"]);
+      expect(report.checks.map((check) => check.name).sort()).toEqual(["database", "migrations", "rate-limit"]);
+      const rateLimit = report.checks.find((check) => check.name === "rate-limit");
+      expect(rateLimit?.state).toBe("degraded");
+      expect(rateLimit?.detail).toContain("non-production fallback");
+    } finally {
+      await composition.dispose();
+    }
+  });
+
+  it("binds the DISTRIBUTED rate limiter when the Redis env is configured (RL-105): the surface returns to ready", async () => {
+    const composition = await createPortalHostComposition(
+      migratedEnv({
+        upstashRedisRestUrl: "https://example.upstash.io",
+        upstashRedisRestToken: "example-token-never-a-secret",
+      }),
+    );
+    try {
+      await migrate(composition);
+      const report = await composition.readyCheck();
+      expect(report.status).toBe("ready");
+      const rateLimit = report.checks.find((check) => check.name === "rate-limit");
+      expect(rateLimit?.state).toBe("healthy");
+      expect(rateLimit?.detail).toContain("distributed");
     } finally {
       await composition.dispose();
     }
@@ -185,8 +209,9 @@ describe("the host readiness composition (RL-100)", () => {
     try {
       await migrate(composition);
       const report = await composition.readyCheck();
-      expect(report.status).toBe("ready");
-      expect(report.checks.map((check) => check.name).sort()).toEqual(["api", "database", "migrations"]);
+      expect(report.status).toBe("degraded:rate-limit"); // the honest in-memory fallback (development, no Redis)
+      expect(report.ready).toBe(true);
+      expect(report.checks.map((check) => check.name).sort()).toEqual(["api", "database", "migrations", "rate-limit"]);
     } finally {
       await composition.dispose();
     }
@@ -202,7 +227,7 @@ describe("the host readiness composition (RL-100)", () => {
     try {
       await migrate(composition);
       const report = await composition.readyCheck();
-      expect(report.status).toBe("degraded:api");
+      expect(report.status).toBe("degraded:api,rate-limit"); // both degradations surface, sorted
       expect(report.ready).toBe(true);
       const api = report.checks.find((check) => check.name === "api");
       expect(api?.state).toBe("degraded");

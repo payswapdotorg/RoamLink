@@ -54,3 +54,35 @@ infra/deployment/
 composition decided at the Wave-6 integration gate; this directory stays
 host-agnostic: `vercel.json` is the project configuration TEMPLATE the
 deploying app adopts at RL-100+ deploy time.
+
+## Runtime hardening wiring (RL-105/RL-107/RL-108, Wave 7B)
+
+- **API edge (RL-105)** — the portal-host composition binds the DISTRIBUTED
+  fixed-window limiter over the Upstash Redis REST port when
+  `UPSTASH_REDIS_REST_URL`/`_TOKEN` are configured; without them the
+  api-service's honest resolution law applies (in-memory fallback in
+  non-production with a loud composition line; REFUSED in production — the
+  readiness surface reports `degraded:rate-limit`, never a silent
+  single-process downgrade). 429s carry the typed body + `retry-after`.
+- **Worker host (RL-107)** — `services/workers` is the production drain
+  process (outbox + inbox + reconciliation). Compose the outbox delivery
+  channel with `QSTASH_TOKEN` + `ROAMLINK_OUTBOX_DELIVERY_DESTINATION`;
+  without a channel the drain is honestly disabled (readiness degraded,
+  records stay PENDING). The startup sweep (`recoverInFlight`) runs BEFORE
+  the first claim on every process start — the AR-007/RL-093 restart
+  discipline (see docs/deployment-recovery.md §1 "Process restart").
+- **Maintenance cron (RL-107)** — `GET /api/maintenance/daily` (vercel.json)
+  answers ONLY `Authorization: Bearer <CRON_SECRET>` (unset = every trigger
+  refused, fail-closed). Inline mode performs ONE bounded
+  `recoverInFlight` sweep + ONE bounded inbox drain per call (never a
+  long-running serverless job, deployment.md §5); with
+  `QSTASH_TOKEN` + `ROAMLINK_MAINTENANCE_DESTINATION` it kicks the sweeps
+  event-driven with deterministic per-day job ids (cron retries are
+  duplicates, RL-LOCK-014).
+- **ADCOS compatibility probe (RL-108)** — run standalone
+  (`pnpm --filter @roamlink/workers adcos:probe`) or as the worker host's
+  readiness dependency. Env-configured (the four ADCOS keys, all-or-
+  nothing; see environments/*.env.example); exit codes are DISTINCT
+  (0 compatible | 1 incompatible, mutations fail closed | 2
+  not-configured). Deployment check §7 "ADCOS compatibility gate runs
+  against the configured endpoint" executes here.

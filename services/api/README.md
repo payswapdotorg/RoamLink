@@ -70,3 +70,69 @@ gap of this wave — see "Honest gaps").
 - **Outbox delivery** (the worker that consumes the command queue) is
   RL-107's deliverable; records stay PENDING until then (visible, honest
   backlog).
+
+## Edge hardening (RL-105)
+
+The dispatch above is composed behind a hardened edge wrapper — additive to
+the handler table, changing no envelope/idempotency/authorization semantics:
+
+- **Admission control (rate limiting).** A bounded per-bucket rate limit runs
+  BEFORE dispatch (`GET /v1/readiness` is exempt — load balancers probe it).
+  Bucket keys are route-classed with a per-principal hint:
+  `webhooks-adcos.<delivery key id|anonymous>`, `auth-session`, and
+  `api.<actor header hint|anonymous>` (the actor header is transport context,
+  never an authorization grant — the session decides the actor after
+  admission). A declined admission answers the TYPED 429 through the single
+  error mapping: kind `rate-limited`, `retryAfterMs` in the body and the
+  standard `retry-after` response header. Binding law (never a silent
+  downgrade):
+  - a distributed limiter bound at composition (the provider-redis
+    `DistributedFixedWindowLimiter` over the ephemeral-coordination port) is
+    the production shape — readiness reports `rate-limit` healthy;
+  - with no limiter bound, NON-production modes compose the honest in-memory
+    sliding-window fallback, emit a loud composition log line
+    (`rate_limit_binding`, binding=in-memory) and report `degraded:rate-limit`;
+  - PRODUCTION mode with no limiter bound REFUSES the fallback: rate limiting
+    is disabled (never a quiet single-process downgrade) and the readiness
+    surface carries `degraded:rate-limit` with the reason.
+- **Correlation + structured request logging.** Every request resolves a
+  correlation id (the envelope's `x-roamlink-correlation-id` header when it
+  is a valid foreign-reference, generated at the edge otherwise), establishes
+  the observability correlation context for the whole dispatch, echoes the id
+  on every response, and emits ONE redacting structured log record per
+  request (`http_request`: method, path, status, durationMs) through
+  `@roamlink/observability`. Headers, bodies and credentials never enter a
+  record (RL-LOCK-016).
+- **Ingress body cap.** Every body over the edge cap (default 1 MiB,
+  `edge.bodyLimitBytes`) is refused with the typed 413
+  (`reason: PAYLOAD_TOO_LARGE`) BEFORE any handler or authentication runs.
+  The webhook policy keeps its own, stricter bound inside.
+
+Composition options (all additive, honest defaults):
+
+```ts
+createApiService({
+  ...,                          // the existing bindings
+  mode: "production",           // default "development"
+  edge: {
+    rateLimiter,                // the distributed limiter (composition root binds it)
+    rateLimitWindowMs: 60_000,  // in-memory fallback window
+    rateLimitMaxCost: 600,      // in-memory fallback budget
+    bodyLimitBytes: 1_048_576,  // ingress cap
+    logSink,                    // default: JSON lines on console
+    logLevel: "info",
+  },
+});
+```
+
+Hosts compose `resolveApiRateLimitBinding(mode, edge)` (the same resolution
+law the service uses) with `rateLimitReadinessCheck(binding.state)` in their
+readiness bindings — one truth for admission control, surfaced honestly.
+
+### Honest gaps (unchanged by RL-105)
+
+- **Identity durability** — the injected identity stores are still the auth
+  package's in-memory adapters (a persistence-backed identity store is its
+  own work item class; the command/webhook paths remain durable PostgreSQL).
+- **Read models** — still the honest `501 READ_MODEL_NOT_COMPOSED`; composing
+  them is not this item.

@@ -46,6 +46,17 @@ export interface TestWorld {
   readonly memberships: InMemoryMembershipRepository;
   readonly administration: TestAdministration;
   readonly service: ApiService;
+  /** The full identity-store set (exposed so edge-hardening tests re-compose the SAME world). */
+  readonly identityStores: {
+    readonly users: InMemoryUserRepository;
+    readonly directory: InMemoryUserDirectory;
+    readonly credentials: InMemoryCredentialRepository;
+    readonly sessions: InMemoryAuthSessionRepository;
+    readonly memberships: InMemoryMembershipRepository;
+    readonly organizations: InMemoryOrganizationRepository;
+    readonly ledger: InMemoryIdempotencyLedger;
+    readonly hasher: InsecureTestPasswordHasher;
+  };
 }
 
 /**
@@ -143,6 +154,7 @@ export function createTestWorld(options?: { readonly webhookVerifier?: WebhookVe
     memberships,
     administration: new TestAdministration(administration, clock),
     service,
+    identityStores: { users, directory, credentials, sessions, memberships, organizations, ledger, hasher },
   };
 }
 

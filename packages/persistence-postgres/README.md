@@ -70,13 +70,46 @@ propagates unchanged.
    of guessing. `migrateUp` is idempotent; `migrateDown` rolls back in
    descending order and reproducibly reaches the empty database.
 
+## Real-database concurrency verification (RL-106)
+
+`test/concurrency-real.test.ts` is the DATABASE_URL-gated suite that proves
+the two-connection invariants the pglite engine cannot express, against a
+REAL pooled PostgreSQL:
+
+- a reader on connection B never observes writer A's uncommitted record or
+  outbox row (READ COMMITTED connection-boundary isolation);
+- two concurrent `claimDue` callers claim DISJOINT sets
+  (`FOR UPDATE SKIP LOCKED`) that together cover every due record exactly once;
+- concurrent SAVEPOINT-fenced enqueues of the same idempotency key resolve to
+  exactly one row (`ENQUEUED` + `ALREADY_ENQUEUED`), and the different-payload
+  race is the typed `OUTBOX_IDEMPOTENCY_CONFLICT` conflict;
+- the delivered-outcome vs `recoverInFlight` race keeps its effect EXACTLY
+  ONCE in both interleavings — the delivered outcome stands (the filtered
+  sweep re-owns nothing) or the recovery re-owns the claim (the outcome is
+  refused by the shared closed state machine's typed transition guard) — and
+  every re-owned record re-claims and completes (the RL-093 restart
+  discipline, proven on the real pool).
+
+With no PostgreSQL `DATABASE_URL` configured the suite SKIPS with an explicit
+honest skip line (CI stays green with zero skipped-as-passed lies); with a
+non-Postgres URL scheme (e.g. a SQLite `file:` URL) it skips for the same
+named reason. An always-on pin in the same file documents WHY a real pool is
+required: pglite refuses a second concurrent `begin()` loudly
+(`PGLITE_TRANSACTION_CONCURRENT`).
+
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/db" pnpm -C packages/persistence-postgres \
+  exec vitest run test/concurrency-real.test.ts
+```
+
 ## Honest deltas and gaps (never weakenings, never faked)
 
 - **pglite is a single PostgreSQL session.** While a unit of work is open,
   autocommit reads on the same session execute inside that transaction, so
   the "committed readers never see uncommitted writes" isolation invariant
   cannot be expressed on pglite; it is enforced by connection boundaries on
-  the pg driver and must be verified against a real pooled database (RL-106).
+  the pg driver and is VERIFIED against a real pooled database by the
+  DATABASE_URL-gated RL-106 suite (see above).
   A second concurrent `begin()` on the pglite driver fails loudly
   (`PGLITE_TRANSACTION_CONCURRENT`) instead of silently sharing.
 - **Inbox sequences come from a real IDENTITY column**: monotonic in commit
@@ -87,8 +120,9 @@ propagates unchanged.
   deliberately not improvised here.
 - **Multi-connection race paths** (concurrent enqueue/admit CAS via
   SAVEPOINT + re-read) are verified by construction and unit tests of the
-  mapping, but a true two-connection race can only be exercised on a real
-  pool — same RL-106 verification debt, pinned here rather than faked.
+  mapping; the true two-connection races are now exercised by the
+  DATABASE_URL-gated RL-106 suite (see "Real-database concurrency
+  verification" above) and remain gated on a real pool by design.
 - **Backup/restore** is a deployment-level capability (RL-111): this package
   guarantees the schema is fully captured by `infra/migrations` + data
   dumps; it does not ship backup tooling itself.

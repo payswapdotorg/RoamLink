@@ -39,6 +39,7 @@ import {
   createPostgresPersistence,
   databaseHealthCheck,
   type PgPoolLike,
+  type PostgresPersistence,
   type SqlDriver,
 } from "@roamlink/persistence-postgres";
 import { nowUtc, type UtcInstant } from "@roamlink/contracts";
@@ -52,10 +53,25 @@ import {
   InMemoryUserRepository,
   type PasswordHasher,
 } from "@roamlink/auth";
-import { createApiService, composeReadiness, type ApiService, type ReadinessCheckBinding } from "@roamlink/api-service";
+import {
+  DistributedFixedWindowLimiter,
+  tryParseUpstashRedisEnv,
+  UPSTASH_REDIS_ENV_KEYS,
+} from "@roamlink/provider-redis";
+import {
+  createApiService,
+  composeReadiness,
+  rateLimitReadinessCheck,
+  resolveApiRateLimitBinding,
+  type ApiRateLimiter,
+  type ApiService,
+  type ReadinessCheckBinding,
+} from "@roamlink/api-service";
 import type { HealthCheck } from "@roamlink/observability";
+import type { DurableJobDeliveryPort } from "@roamlink/provider-qstash";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
+import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
 
@@ -77,6 +93,17 @@ export interface PortalHostComposition {
   readonly api: ApiService;
   /** The real SQL driver (health/readiness + the migration runner bind it). */
   readonly driver: SqlDriver;
+  /**
+   * The REAL persistence ports of this process (RL-107): the maintenance
+   * trigger's recovery sweeps run through them (sweep = set-transition on
+   * the durable outbox), never ad-hoc database mutation in a route.
+   */
+  readonly persistence: PostgresPersistence;
+  /** The maintenance trigger seam (RL-107) - authenticated by the handler. */
+  readonly maintenance: {
+    readonly cronSecret: string | undefined;
+    readonly run: () => Promise<DailyMaintenanceResult>;
+  };
   /**
    * The identity stores of this process. Host-internal: exposed as the
    * honest seam until the identity persistence adapters land (ops tooling
@@ -123,11 +150,37 @@ export interface PortalHostEnv {
    * reported - no fake surface).
    */
   readonly apiBaseUrl?: string | undefined;
+  /**
+   * The Upstash Redis accelerator env (RL-105): when configured, the
+   * composition binds the DISTRIBUTED fixed-window limiter over the
+   * Upstash REST port as the API edge's admission control; when absent in
+   * development the honest in-memory fallback is composed (with its loud
+   * composition line + degraded readiness entry); when absent in production
+   * the fallback is REFUSED and the readiness surface reports
+   * `degraded:rate-limit` (never a silent single-process downgrade).
+   */
+  readonly upstashRedisRestUrl?: string | undefined;
+  readonly upstashRedisRestToken?: string | undefined;
   /** Clock + id seams (defaults: real time, canonical UUIDv4). */
   readonly now?: () => UtcInstant;
   readonly newId?: () => string;
   /** Fetch seam for the remote readiness probe (tests); defaults to global fetch. */
   readonly fetchLike?: typeof fetch;
+  /**
+   * CRON_SECRET (RL-107): when set, /api/maintenance/daily answers ONLY
+   * `Authorization: Bearer <secret>` (Vercel cron delivers exactly that);
+   * when unset the route refuses EVERY trigger (fail-closed).
+   */
+  readonly cronSecret?: string | undefined;
+  /**
+   * QSTASH_TOKEN + ROAMLINK_MAINTENANCE_DESTINATION (RL-107): when both are
+   * set, the maintenance trigger kicks the sweeps EVENT-DRIVEN (the
+   * sanctioned async path) with deterministic per-day job ids; otherwise
+   * the trigger runs the bounded sweeps inline.
+   */
+  readonly qstashToken?: string | undefined;
+  readonly qstashBaseUrl?: string | undefined;
+  readonly maintenanceDestination?: string | undefined;
 }
 
 /** Thrown when the composition refuses to boot (fail-closed policy). */
@@ -201,6 +254,45 @@ async function createPortalHostCompositionWithDriver(
     });
     readinessBindings.push({ check: remoteApiReadinessCheck({ probe }), criticality: "required" });
   }
+
+  // --------------------------------------------------------------------------
+  // The Redis accelerator binding (RL-105): the DISTRIBUTED admission-control
+  // limiter over the ephemeral-coordination port when the Upstash REST env is
+  // configured; otherwise the api-service's honest resolution law applies
+  // (in-memory fallback in development with its loud composition line + a
+  // degraded readiness entry; refused in production -> disabled + degraded).
+  // Redis stays OPTIONAL for correctness (deployment.md §7): the surface is
+  // servable without it, the readiness vocabulary carries the degradation.
+  // --------------------------------------------------------------------------
+  let edgeRateLimiter: ApiRateLimiter | undefined;
+  if (
+    env.upstashRedisRestUrl !== undefined &&
+    env.upstashRedisRestUrl.trim().length > 0 &&
+    env.upstashRedisRestToken !== undefined &&
+    env.upstashRedisRestToken.trim().length > 0
+  ) {
+    const parsed = tryParseUpstashRedisEnv({
+      [UPSTASH_REDIS_ENV_KEYS[0]]: env.upstashRedisRestUrl,
+      [UPSTASH_REDIS_ENV_KEYS[1]]: env.upstashRedisRestToken,
+    });
+    if (!parsed.ok) {
+      throw new CompositionError(
+        `the Upstash Redis configuration is invalid and the host refuses to boot half-configured: ${parsed.error.message}`,
+      );
+    }
+    const { UpstashRedisRestClient } = await import("@roamlink/provider-redis");
+    const coordination = new UpstashRedisRestClient({
+      baseUrl: parsed.config.baseUrl,
+      token: parsed.config.token,
+    });
+    edgeRateLimiter = new DistributedFixedWindowLimiter(
+      { windowMs: 60_000, maxCost: 600, keyPrefix: "roamlink-api-edge" },
+      coordination,
+    );
+  }
+  const rateLimitBinding = resolveApiRateLimitBinding(env.mode, edgeRateLimiter !== undefined ? { rateLimiter: edgeRateLimiter } : undefined);
+  readinessBindings.push({ check: rateLimitReadinessCheck(rateLimitBinding.state), criticality: "optional" });
+
   const readiness = composeReadiness({ checks: readinessBindings });
 
   // The identity stores (documented durability gap - see the module doc).
@@ -237,7 +329,43 @@ async function createPortalHostCompositionWithDriver(
     now,
     newId,
     readinessChecks: readinessBindings,
+    mode: env.mode,
+    edge: edgeRateLimiter !== undefined ? { rateLimiter: edgeRateLimiter } : {},
   });
+
+  // --------------------------------------------------------------------------
+  // The maintenance trigger seam (RL-107): the REAL persistence for the
+  // recovery sweeps, plus the event-driven kick when the QStash env + the
+  // destination are configured (the sanctioned async path).
+  // --------------------------------------------------------------------------
+  const persistence: PostgresPersistence = createPostgresPersistence(driver);
+  let asyncDelivery: DurableJobDeliveryPort | undefined;
+  if (
+    env.qstashToken !== undefined &&
+    env.qstashToken.trim().length > 0 &&
+    env.maintenanceDestination !== undefined &&
+    env.maintenanceDestination.trim().length > 0
+  ) {
+    const { UpstashQStashClient } = await import("@roamlink/provider-qstash");
+    asyncDelivery = new UpstashQStashClient({
+      token: env.qstashToken,
+      ...(env.qstashBaseUrl !== undefined ? { baseUrl: env.qstashBaseUrl } : {}),
+    });
+  }
+  const maintenance = {
+    cronSecret: env.cronSecret,
+    run: (): Promise<DailyMaintenanceResult> =>
+      runDailyMaintenance({
+        persistence,
+        // The host admits webhooks only (RL-LOCK-009); projection stays in
+        // the worker host, so no inbox drain is bound here - the result
+        // reports the skip honestly.
+        now,
+        ...(asyncDelivery !== undefined && env.maintenanceDestination !== undefined
+          ? { asyncDelivery, asyncDestination: env.maintenanceDestination }
+          : {}),
+      }),
+  };
 
   const readyCheck = async (): Promise<ReadinessReport> => {
     const report = await readiness.report();
@@ -252,7 +380,7 @@ async function createPortalHostCompositionWithDriver(
     };
   };
 
-  return { api, driver, identity, readyCheck, dispose };
+  return { api, driver, persistence, maintenance, identity, readyCheck, dispose };
 }
 
 async function bindDriver(

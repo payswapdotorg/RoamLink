@@ -24,7 +24,9 @@
     "@roamlink/projections": "workspace:*",
     "@roamlink/reconciliation": "workspace:*",
     "@roamlink/resilience": "workspace:*",
+    "@roamlink/provider-qstash": "workspace:*",
     "@roamlink/testkit": "workspace:*",
+    "@roamlink/workers": "workspace:*",
     "@roamlink/webhook-inbox": "workspace:*"
   },
   "devDependencies": {

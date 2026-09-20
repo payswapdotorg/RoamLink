@@ -86,6 +86,19 @@ import {
   type ComposedReadiness,
   type ReadinessCheckBinding,
 } from "./readiness.js";
+import {
+  createApiEdgeRuntime,
+  createApiEdgeWrapper,
+  type ApiEdgeOptions,
+} from "./edge.js";
+import {
+  createInMemoryApiRateLimiter,
+  parseRateLimitOptions,
+  resolveRateLimitBinding,
+  type ApiRateLimiter,
+  type RateLimitBindingState,
+} from "./rate-limit.js";
+import { makeStructuredLogRecord, type StructuredLogSink } from "@roamlink/observability";
 
 export {
   READINESS_STATUS_PATTERN,
@@ -160,6 +173,15 @@ export interface ApiServiceOptions {
    * ready - the fail-closed law, never a hard-coded ready).
    */
   readonly readinessChecks?: readonly ReadinessCheckBinding[];
+  /**
+   * The runtime mode (RL-105): "production" refuses the in-memory rate-limit
+   * fallback (rate limiting is then honestly DISABLED + readiness-degraded
+   * until the composition binds a distributed limiter); "development" (the
+   * default) composes the honest in-memory fallback with a loud log line.
+   */
+  readonly mode?: "production" | "development";
+  /** The edge-hardening options (RL-105); absent -> the honest defaults. */
+  readonly edge?: ApiEdgeOptions;
 }
 
 export interface ApiService {
@@ -192,6 +214,100 @@ function canonicalDeliveryHeaders(headers: Readonly<Record<string, string>>): Re
 
 /** Creates the authenticated API/BFF service over the injected ports. */
 export function createApiService(options: ApiServiceOptions): ApiService {
+  const mode = options.mode ?? "development";
+  const inner = createInnerApiService(options);
+  const edgeOptions = options.edge ?? {};
+
+  // --- Edge hardening (RL-105) --------------------------------------------
+  // The rate-limit binding resolution is THE single source of truth: the
+  // distributed limiter when bound; the honest in-memory fallback only in
+  // non-production modes (with the loud composition line below); in
+  // production without a bound limiter the fallback is REFUSED and the
+  // binding is honestly disabled (the readiness surface carries it).
+  const binding = resolveRateLimitBinding(mode, edgeOptions.rateLimiter);
+  let limiter: ApiRateLimiter | undefined = binding.limiter;
+  if (binding.state.kind === "in-memory") {
+    const limited = parseRateLimitOptions({
+      ...(edgeOptions.rateLimitWindowMs !== undefined ? { windowMs: edgeOptions.rateLimitWindowMs } : {}),
+      ...(edgeOptions.rateLimitMaxCost !== undefined ? { maxCost: edgeOptions.rateLimitMaxCost } : {}),
+    });
+    limiter = createInMemoryApiRateLimiter(limited);
+  } else if (binding.state.kind === "disabled") {
+    limiter = undefined;
+  }
+
+  const runtime = createApiEdgeRuntime(edgeOptions);
+  emitRateLimitCompositionNotice(runtime.sink, binding.state, options.now);
+
+  const edge = createApiEdgeWrapper((request) => inner.handle(request), {
+    runtime,
+    limiter,
+    now: options.now,
+    newCorrelationId: edgeOptions.newCorrelationId ?? options.newId,
+  });
+
+  return { handle: edge };
+}
+
+/**
+ * The one honest composition-time line about admission control (never a
+ * silent fallback/downgrade): emitted through the edge's structured sink
+ * with no correlation context (composition is not a request).
+ */
+function emitRateLimitCompositionNotice(
+  sink: StructuredLogSink,
+  state: RateLimitBindingState,
+  now: () => UtcInstant,
+): void {
+  const record =
+    state.kind === "distributed"
+      ? { level: "info" as const, message: "rate_limit_binding", fields: { binding: "distributed" } }
+      : state.kind === "in-memory"
+        ? {
+            level: "warn" as const,
+            message: "rate_limit_binding",
+            fields: { binding: "in-memory", note: "non-production fallback; not distributed" },
+          }
+        : {
+            level: "warn" as const,
+            message: "rate_limit_binding",
+            fields: { binding: "disabled", note: state.reason },
+          };
+  try {
+    sink(makeStructuredLogRecord({ ...record, at: now() }));
+  } catch {
+    // A broken composition log must never refuse to boot; the binding state
+    // is still surfaced through the readiness check.
+  }
+}
+
+/**
+ * Resolves the rate-limit binding EXACTLY as the service composition does
+ * (the single source of truth) so hosts can compose the matching readiness
+ * check: pass `binding.limiter` into `edge.rateLimiter` and
+ * `rateLimitReadinessCheck(binding.state)` into the readiness bindings.
+ */
+export function resolveApiRateLimitBinding(
+  mode: "production" | "development",
+  edge: ApiEdgeOptions | undefined,
+): { readonly state: RateLimitBindingState; readonly limiter: ApiRateLimiter | undefined } {
+  const edgeOptions = edge ?? {};
+  const binding = resolveRateLimitBinding(mode, edgeOptions.rateLimiter);
+  if (binding.state.kind === "in-memory") {
+    const limited = parseRateLimitOptions({
+      ...(edgeOptions.rateLimitWindowMs !== undefined ? { windowMs: edgeOptions.rateLimitWindowMs } : {}),
+      ...(edgeOptions.rateLimitMaxCost !== undefined ? { maxCost: edgeOptions.rateLimitMaxCost } : {}),
+    });
+    return { state: binding.state, limiter: createInMemoryApiRateLimiter(limited) };
+  }
+  return binding;
+}
+
+function createInnerApiService(options: ApiServiceOptions): ApiService {
+  return createInnerService(options);
+}
+
+function createInnerService(options: ApiServiceOptions): ApiService {
   const authentication = new AuthenticationService({
     users: options.identity.users,
     directory: options.identity.directory,

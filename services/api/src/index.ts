@@ -1,6 +1,7 @@
 /**
  * @roamlink/api-service - the authenticated public API/BFF composition
- * (RL-090) plus the composed readiness surface (RL-100).
+ * (RL-090) plus the composed readiness surface (RL-100) and the hardened
+ * API edge (RL-105).
  *
  * Layout:
  *  - `api-service.ts` the service: authenticated /v1 dispatch over the
@@ -11,6 +12,13 @@
  *    per-dependency probes (bound through the provider ports at
  *    composition) aggregated into the honest vocabulary
  *    ready | degraded:<dep> | not-ready:<reason>;
+ *  - `edge.ts`        the hardened edge wrapper (RL-105): correlation-id
+ *    context + echo header, redacting structured request logging, the
+ *    ingress body cap (typed 413) and the admission-control ordering;
+ *  - `rate-limit.ts`  the admission-control seam (RL-105): the limiter
+ *    interface, the honest in-memory fallback (non-production only), the
+ *    production binding law (refused fallback -> disabled + degraded
+ *    readiness) and the per-bucket key discipline;
  *  - `envelope.ts`    the server-side command envelope (RL-LOCK-014) and the
  *    bearer-token session authentication gate (@roamlink/auth boundary);
  *  - `commands.ts`    the durable command ingestion: header-envelope
@@ -27,4 +35,6 @@ export * from "./http.js";
 export * from "./readiness.js";
 export * from "./envelope.js";
 export * from "./commands.js";
+export * from "./rate-limit.js";
+export * from "./edge.js";
 export * from "./api-service.js";
