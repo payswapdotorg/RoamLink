@@ -14,6 +14,7 @@ import {
   makeStructuredLogRecord,
   meetsLogLevelThreshold,
   parseLogLevel,
+  serializeStructuredLogRecord,
   type LogLevel,
   type LogFieldValue,
   type StructuredLogRecord,
@@ -21,6 +22,20 @@ import {
 
 /** Where validated log records go (console adapter, pipeline, test buffer...). */
 export type StructuredLogSink = (record: StructuredLogRecord) => void;
+
+/**
+ * The production console sink (RL-105/RL-107 wiring): one JSON line per
+ * record through the guaranteed-plain serialization (secret-bearing fields
+ * render as "[REDACTED]" - RL-LOCK-016). The write seam is injectable so
+ * tests capture lines without ambient console access.
+ */
+export function createConsoleStructuredLogSink(
+  write: (line: string) => void = (line) => console.log(line),
+): StructuredLogSink {
+  return (record: StructuredLogRecord) => {
+    write(JSON.stringify(serializeStructuredLogRecord(record)));
+  };
+}
 
 /** In-memory sink with a frozen snapshot view (tests, local dev). */
 export interface InMemoryLogSink {

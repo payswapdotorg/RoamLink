@@ -30,11 +30,10 @@ import type { HttpRequest, HttpResponse } from "@roamlink/app-kit";
 import {
   createAsyncCorrelationCarrier,
   createCorrelatedLogger,
+  createConsoleStructuredLogSink,
   makeCorrelationContext,
-  serializeStructuredLogRecord,
   type CorrelationContextCarrier,
   type LeveledLogger,
-  type StructuredLogRecord,
   type StructuredLogSink,
 } from "@roamlink/observability";
 
@@ -51,14 +50,7 @@ export const DEFAULT_BODY_LIMIT_BYTES = 1_048_576;
 /** The response/request correlation header name (the envelope's contract name). */
 export const CORRELATION_HEADER = "x-roamlink-correlation-id";
 
-/** One structured JSON line per record to the console (production default sink). */
-export function createConsoleStructuredLogSink(
-  write: (line: string) => void = (line) => console.log(line),
-): StructuredLogSink {
-  return (record: StructuredLogRecord) => {
-    write(JSON.stringify(serializeStructuredLogRecord(record)));
-  };
-}
+export { createConsoleStructuredLogSink } from "@roamlink/observability";
 
 export interface ApiEdgeOptions {
   /** The limiter binding; absent -> resolveRateLimitBinding's honest default. */
