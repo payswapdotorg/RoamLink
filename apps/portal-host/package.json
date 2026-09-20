@@ -24,6 +24,7 @@
     "@roamlink/observability": "workspace:*",
     "@roamlink/persistence": "workspace:*",
     "@roamlink/persistence-postgres": "workspace:*",
+    "@roamlink/provider-redis": "workspace:*",
     "@roamlink/web": "workspace:*",
     "@roamlink/webhook-inbox": "workspace:*",
     "next": "^16.1.3",

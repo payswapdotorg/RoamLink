@@ -23,6 +23,7 @@
     "@roamlink/contracts": "workspace:*",
     "@roamlink/observability": "workspace:*",
     "@roamlink/persistence": "workspace:*",
+    "@roamlink/resilience": "workspace:*",
     "@roamlink/webhook-inbox": "workspace:*"
   },
   "devDependencies": {

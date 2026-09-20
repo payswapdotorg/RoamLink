@@ -103,6 +103,9 @@ importers:
       '@roamlink/persistence-postgres':
         specifier: workspace:*
         version: link:../../packages/persistence-postgres
+      '@roamlink/provider-redis':
+        specifier: workspace:*
+        version: link:../../packages/provider-redis
       '@roamlink/web':
         specifier: workspace:*
         version: link:../web
@@ -935,6 +938,9 @@ importers:
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@roamlink/resilience':
+        specifier: workspace:*
+        version: link:../../packages/resilience
       '@roamlink/webhook-inbox':
         specifier: workspace:*
         version: link:../../packages/webhook-inbox

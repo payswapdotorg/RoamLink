@@ -52,7 +52,20 @@ import {
   InMemoryUserRepository,
   type PasswordHasher,
 } from "@roamlink/auth";
-import { createApiService, composeReadiness, type ApiService, type ReadinessCheckBinding } from "@roamlink/api-service";
+import {
+  DistributedFixedWindowLimiter,
+  tryParseUpstashRedisEnv,
+  UPSTASH_REDIS_ENV_KEYS,
+} from "@roamlink/provider-redis";
+import {
+  createApiService,
+  composeReadiness,
+  rateLimitReadinessCheck,
+  resolveApiRateLimitBinding,
+  type ApiRateLimiter,
+  type ApiService,
+  type ReadinessCheckBinding,
+} from "@roamlink/api-service";
 import type { HealthCheck } from "@roamlink/observability";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
@@ -123,6 +136,17 @@ export interface PortalHostEnv {
    * reported - no fake surface).
    */
   readonly apiBaseUrl?: string | undefined;
+  /**
+   * The Redis accelerator's REST credentials (RL-105): when configured, the
+   * composition binds the DISTRIBUTED fixed-window limiter over the
+   * Upstash REST port as the API edge's admission control; when absent in
+   * development the honest in-memory fallback is composed (with its loud
+   * composition line + degraded readiness entry); when absent in production
+   * the fallback is REFUSED and the readiness surface reports
+   * `degraded:rate-limit` (never a silent single-process downgrade).
+   */
+  readonly upstashRedisRestUrl?: string | undefined;
+  readonly upstashRedisRestToken?: string | undefined;
   /** Clock + id seams (defaults: real time, canonical UUIDv4). */
   readonly now?: () => UtcInstant;
   readonly newId?: () => string;
@@ -201,6 +225,45 @@ async function createPortalHostCompositionWithDriver(
     });
     readinessBindings.push({ check: remoteApiReadinessCheck({ probe }), criticality: "required" });
   }
+
+  // --------------------------------------------------------------------------
+  // The Redis accelerator binding (RL-105): the DISTRIBUTED admission-control
+  // limiter over the ephemeral-coordination port when the Upstash REST env is
+  // configured; otherwise the api-service's honest resolution law applies
+  // (in-memory fallback in development with its loud composition line + a
+  // degraded readiness entry; refused in production -> disabled + degraded).
+  // Redis stays OPTIONAL for correctness (deployment.md §7): the surface is
+  // servable without it, the readiness vocabulary carries the degradation.
+  // --------------------------------------------------------------------------
+  let edgeRateLimiter: ApiRateLimiter | undefined;
+  if (
+    env.upstashRedisRestUrl !== undefined &&
+    env.upstashRedisRestUrl.trim().length > 0 &&
+    env.upstashRedisRestToken !== undefined &&
+    env.upstashRedisRestToken.trim().length > 0
+  ) {
+    const parsed = tryParseUpstashRedisEnv({
+      [UPSTASH_REDIS_ENV_KEYS[0]]: env.upstashRedisRestUrl,
+      [UPSTASH_REDIS_ENV_KEYS[1]]: env.upstashRedisRestToken,
+    });
+    if (!parsed.ok) {
+      throw new CompositionError(
+        `the Upstash Redis configuration is invalid and the host refuses to boot half-configured: ${parsed.error.message}`,
+      );
+    }
+    const { UpstashRedisRestClient } = await import("@roamlink/provider-redis");
+    const coordination = new UpstashRedisRestClient({
+      baseUrl: parsed.config.baseUrl,
+      token: parsed.config.token,
+    });
+    edgeRateLimiter = new DistributedFixedWindowLimiter(
+      { windowMs: 60_000, maxCost: 600, keyPrefix: "roamlink-api-edge" },
+      coordination,
+    );
+  }
+  const rateLimitBinding = resolveApiRateLimitBinding(env.mode, edgeRateLimiter !== undefined ? { rateLimiter: edgeRateLimiter } : undefined);
+  readinessBindings.push({ check: rateLimitReadinessCheck(rateLimitBinding.state), criticality: "optional" });
+
   const readiness = composeReadiness({ checks: readinessBindings });
 
   // The identity stores (documented durability gap - see the module doc).
@@ -237,6 +300,8 @@ async function createPortalHostCompositionWithDriver(
     now,
     newId,
     readinessChecks: readinessBindings,
+    mode: env.mode,
+    edge: edgeRateLimiter !== undefined ? { rateLimiter: edgeRateLimiter } : {},
   });
 
   const readyCheck = async (): Promise<ReadinessReport> => {
