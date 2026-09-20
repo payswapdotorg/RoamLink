@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-081",
   "title": "RoamLink production readiness gate",
-  "generatedAt": "2026-09-20T13:17:03.139Z",
+  "generatedAt": "2026-09-20T16:09:46.407Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -20,17 +20,17 @@
       "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 454625,
-      "summary": "exit 0 (454625ms)",
+      "durationMs": 484490,
+      "summary": "exit 0 (484490ms)",
       "outputTail": [
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 117219",
+        "      \"durationMs\": 124108",
         "    },",
         "    {",
         "      \"id\": \"test\",",
         "      \"status\": \"pass\",",
-        "      \"durationMs\": 270375",
+        "      \"durationMs\": 289008",
         "    },",
         "    {",
         "      \"id\": \"architecture\",",
@@ -176,13 +176,15 @@
         {
           "id": "OBS:logs-correlation",
           "status": "pass",
-          "summary": "structured logging with correlation IDs wired in dogfood scenarios (tests/dogfood/src/world.ts, tests/dogfood/test/scenario-1-onboarding-first-connectivity.test.ts, tests/dogfood/test/scenario-2-degradation-failover-recovery.test.ts, tests/dogfood/test/scenario-3-offline-edge-roundtrip.test.ts, tests/dogfood/test/scenario-4-refund-incident-correlation.test.ts)",
+          "summary": "structured logging with correlation IDs wired in dogfood scenarios (tests/dogfood/src/slo-matrix.ts, tests/dogfood/src/world.ts, tests/dogfood/test/scenario-1-onboarding-first-connectivity.test.ts, tests/dogfood/test/scenario-2-degradation-failover-recovery.test.ts, tests/dogfood/test/scenario-3-offline-edge-roundtrip.test.ts, tests/dogfood/test/scenario-4-refund-incident-correlation.test.ts, tests/dogfood/test/slo-journey-emission-matrix.test.ts)",
           "evidence": [
+            "tests/dogfood/src/slo-matrix.ts",
             "tests/dogfood/src/world.ts",
             "tests/dogfood/test/scenario-1-onboarding-first-connectivity.test.ts",
             "tests/dogfood/test/scenario-2-degradation-failover-recovery.test.ts",
             "tests/dogfood/test/scenario-3-offline-edge-roundtrip.test.ts",
-            "tests/dogfood/test/scenario-4-refund-incident-correlation.test.ts"
+            "tests/dogfood/test/scenario-4-refund-incident-correlation.test.ts",
+            "tests/dogfood/test/slo-journey-emission-matrix.test.ts"
           ]
         },
         {
@@ -291,8 +293,8 @@
   "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
   "fullReport": false,
   "git": {
-    "commit": "b668584c82f22949ecba69a7b5691732b2c0003b",
-    "branch": "HEAD",
+    "commit": "4cc8cd766d64d92d960390bca9ae5f06d1ed4a92",
+    "branch": "work/rl-e2e-journeys",
     "dirtyFiles": 1
   },
   "mvpGate": {
@@ -305,7 +307,7 @@
       "failedCriterionRows": [],
       "acceptedRisks": []
     },
-    "generatedAt": "2026-09-20T13:17:03.183Z",
+    "generatedAt": "2026-09-20T16:09:46.449Z",
     "artifact": "docs/reports/mvp-gate.json"
   }
 }
