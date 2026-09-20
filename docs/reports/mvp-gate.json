@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-080",
   "title": "RoamLink MVP release gate",
-  "generatedAt": "2026-09-20T12:25:25.909Z",
+  "generatedAt": "2026-09-20T13:17:03.183Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -18,12 +18,12 @@
       "label": "pnpm install --frozen-lockfile",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 437,
-      "summary": "exit 0 (437ms)",
+      "durationMs": 481,
+      "summary": "exit 0 (481ms)",
       "outputTail": [
         "Scope: all 45 workspace projects",
         "Already up to date",
-        "Done in 400ms"
+        "Done in 391ms"
       ]
     },
     {
@@ -31,8 +31,8 @@
       "label": "pnpm lint (every workspace package)",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 63505,
-      "summary": "exit 0 (63505ms)",
+      "durationMs": 65567,
+      "summary": "exit 0 (65567ms)",
       "outputTail": [
         "tests/release-gates lint: Done",
         "tests/security lint$ eslint .",
@@ -49,8 +49,8 @@
       "label": "pnpm typecheck (every workspace package)",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 104970,
-      "summary": "exit 0 (104970ms)",
+      "durationMs": 117219,
+      "summary": "exit 0 (117219ms)",
       "outputTail": [
         "apps/portal-host typecheck: Done",
         "tests/security typecheck$ tsc --noEmit",
@@ -66,7 +66,7 @@
       "id": "test",
       "label": "every workspace test suite (44 suites)",
       "status": "pass",
-      "durationMs": 243705,
+      "durationMs": 270375,
       "summary": "44 suites green — 2418/2428 tests",
       "details": {
         "suites": [
@@ -75,7 +75,7 @@
             "dir": "packages/adcos",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2787,
+            "durationMs": 2862,
             "tests": {
               "passed": 50,
               "failed": 0,
@@ -92,7 +92,7 @@
             "dir": "apps/admin",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1597,
+            "durationMs": 1673,
             "tests": {
               "passed": 13,
               "failed": 0,
@@ -109,7 +109,7 @@
             "dir": "services/api",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 6190,
+            "durationMs": 6976,
             "tests": {
               "passed": 63,
               "failed": 0,
@@ -126,7 +126,7 @@
             "dir": "packages/app-kit",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2512,
+            "durationMs": 2769,
             "tests": {
               "passed": 76,
               "failed": 0,
@@ -143,7 +143,7 @@
             "dir": "packages/audit",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1164,
+            "durationMs": 1458,
             "tests": {
               "passed": 14,
               "failed": 0,
@@ -160,7 +160,7 @@
             "dir": "packages/auth",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2204,
+            "durationMs": 2644,
             "tests": {
               "passed": 62,
               "failed": 0,
@@ -177,7 +177,7 @@
             "dir": "packages/commerce-connectivity",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1560,
+            "durationMs": 1920,
             "tests": {
               "passed": 22,
               "failed": 0,
@@ -194,7 +194,7 @@
             "dir": "packages/compat",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1823,
+            "durationMs": 1936,
             "tests": {
               "passed": 20,
               "failed": 0,
@@ -211,7 +211,7 @@
             "dir": "packages/contracts",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2865,
+            "durationMs": 3049,
             "tests": {
               "passed": 97,
               "failed": 0,
@@ -228,7 +228,7 @@
             "dir": "packages/domain-commerce",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2191,
+            "durationMs": 2236,
             "tests": {
               "passed": 78,
               "failed": 0,
@@ -245,7 +245,7 @@
             "dir": "packages/domain-experience",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 3417,
+            "durationMs": 3675,
             "tests": {
               "passed": 116,
               "failed": 0,
@@ -262,7 +262,7 @@
             "dir": "packages/edge",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 3385,
+            "durationMs": 3448,
             "tests": {
               "passed": 124,
               "failed": 0,
@@ -279,7 +279,7 @@
             "dir": "packages/edge-actions",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2366,
+            "durationMs": 2611,
             "tests": {
               "passed": 52,
               "failed": 0,
@@ -296,7 +296,7 @@
             "dir": "packages/edge-connector",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1639,
+            "durationMs": 1794,
             "tests": {
               "passed": 37,
               "failed": 0,
@@ -313,7 +313,7 @@
             "dir": "packages/enterprise",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2943,
+            "durationMs": 3137,
             "tests": {
               "passed": 71,
               "failed": 0,
@@ -330,7 +330,7 @@
             "dir": "packages/integration",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2856,
+            "durationMs": 3717,
             "tests": {
               "passed": 105,
               "failed": 0,
@@ -347,7 +347,7 @@
             "dir": "packages/intent-compiler",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1465,
+            "durationMs": 1735,
             "tests": {
               "passed": 49,
               "failed": 0,
@@ -364,7 +364,7 @@
             "dir": "apps/mobile",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2713,
+            "durationMs": 2845,
             "tests": {
               "passed": 43,
               "failed": 0,
@@ -381,7 +381,7 @@
             "dir": "packages/notifications",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1540,
+            "durationMs": 1477,
             "tests": {
               "passed": 20,
               "failed": 0,
@@ -398,7 +398,7 @@
             "dir": "packages/observability",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 3061,
+            "durationMs": 3204,
             "tests": {
               "passed": 81,
               "failed": 0,
@@ -415,7 +415,7 @@
             "dir": "packages/persistence",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2136,
+            "durationMs": 2816,
             "tests": {
               "passed": 56,
               "failed": 0,
@@ -432,7 +432,7 @@
             "dir": "packages/persistence-postgres",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 49909,
+            "durationMs": 57291,
             "tests": {
               "passed": 61,
               "failed": 0,
@@ -449,7 +449,7 @@
             "dir": "apps/portal-host",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 27024,
+            "durationMs": 30831,
             "tests": {
               "passed": 73,
               "failed": 0,
@@ -466,7 +466,7 @@
             "dir": "packages/projections",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1948,
+            "durationMs": 2557,
             "tests": {
               "passed": 37,
               "failed": 0,
@@ -483,7 +483,7 @@
             "dir": "packages/provider-neon",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1692,
+            "durationMs": 1966,
             "tests": {
               "passed": 31,
               "failed": 0,
@@ -500,7 +500,7 @@
             "dir": "packages/provider-qstash",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2173,
+            "durationMs": 2393,
             "tests": {
               "passed": 47,
               "failed": 0,
@@ -517,7 +517,7 @@
             "dir": "packages/provider-r2",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2055,
+            "durationMs": 2112,
             "tests": {
               "passed": 37,
               "failed": 0,
@@ -534,7 +534,7 @@
             "dir": "packages/provider-redis",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2262,
+            "durationMs": 2645,
             "tests": {
               "passed": 39,
               "failed": 0,
@@ -551,7 +551,7 @@
             "dir": "packages/reconciliation",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 3715,
+            "durationMs": 4572,
             "tests": {
               "passed": 82,
               "failed": 0,
@@ -568,7 +568,7 @@
             "dir": "packages/resilience",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1632,
+            "durationMs": 1882,
             "tests": {
               "passed": 34,
               "failed": 0,
@@ -585,7 +585,7 @@
             "dir": "packages/retention",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1976,
+            "durationMs": 2432,
             "tests": {
               "passed": 52,
               "failed": 0,
@@ -602,7 +602,7 @@
             "dir": "packages/secrets",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1434,
+            "durationMs": 1620,
             "tests": {
               "passed": 25,
               "failed": 0,
@@ -619,7 +619,7 @@
             "dir": "packages/testkit",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1785,
+            "durationMs": 2256,
             "tests": {
               "passed": 36,
               "failed": 0,
@@ -636,7 +636,7 @@
             "dir": "tests/architecture",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2969,
+            "durationMs": 3250,
             "tests": {
               "passed": 98,
               "failed": 0,
@@ -653,7 +653,7 @@
             "dir": "tests/conformance",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 5977,
+            "durationMs": 7116,
             "tests": {
               "passed": 107,
               "failed": 0,
@@ -670,7 +670,7 @@
             "dir": "tests/deployment",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 5140,
+            "durationMs": 5918,
             "tests": {
               "passed": 43,
               "failed": 0,
@@ -687,7 +687,7 @@
             "dir": "tests/dogfood",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 4576,
+            "durationMs": 5014,
             "tests": {
               "passed": 9,
               "failed": 0,
@@ -704,7 +704,7 @@
             "dir": "tests/load",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 43432,
+            "durationMs": 44084,
             "tests": {
               "passed": 12,
               "failed": 0,
@@ -721,7 +721,7 @@
             "dir": "tests/release-gates",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 2498,
+            "durationMs": 2689,
             "tests": {
               "passed": 59,
               "failed": 0,
@@ -738,7 +738,7 @@
             "dir": "tests/security",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 4573,
+            "durationMs": 4973,
             "tests": {
               "passed": 57,
               "failed": 0,
@@ -755,7 +755,7 @@
             "dir": "tests/simulation",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 3966,
+            "durationMs": 4376,
             "tests": {
               "passed": 29,
               "failed": 0,
@@ -772,7 +772,7 @@
             "dir": "apps/web",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 5200,
+            "durationMs": 5521,
             "tests": {
               "passed": 148,
               "failed": 0,
@@ -789,7 +789,7 @@
             "dir": "packages/webhook-inbox",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 1706,
+            "durationMs": 1825,
             "tests": {
               "passed": 41,
               "failed": 0,
@@ -806,7 +806,7 @@
             "dir": "services/workers",
             "status": "pass",
             "exitCode": 0,
-            "durationMs": 13649,
+            "durationMs": 15070,
             "tests": {
               "passed": 12,
               "failed": 0,
@@ -826,8 +826,8 @@
       "label": "node scripts/check-architecture.mjs (frozen sanity script)",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 60,
-      "summary": "exit 0 (60ms)",
+      "durationMs": 57,
+      "summary": "exit 0 (57ms)",
       "outputTail": [
         "RoamLink architecture checks passed."
       ]
@@ -1723,8 +1723,8 @@
     "architecture:check"
   ],
   "git": {
-    "commit": "55633cb7fb36220b8db562fa2fc023e500032915",
-    "branch": "work/rl-ops-verification",
-    "dirtyFiles": 2
+    "commit": "b668584c82f22949ecba69a7b5691732b2c0003b",
+    "branch": "HEAD",
+    "dirtyFiles": 1
   }
 }
