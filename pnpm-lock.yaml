@@ -1185,6 +1185,9 @@ importers:
       '@roamlink/provider-qstash':
         specifier: workspace:*
         version: link:../../packages/provider-qstash
+      '@roamlink/provider-r2':
+        specifier: workspace:*
+        version: link:../../packages/provider-r2
       '@roamlink/provider-redis':
         specifier: workspace:*
         version: link:../../packages/provider-redis

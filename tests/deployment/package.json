@@ -34,7 +34,8 @@
     "@roamlink/auth": "workspace:*",
     "@roamlink/persistence-postgres": "workspace:*",
     "@roamlink/provider-redis": "workspace:*",
-    "@roamlink/web": "workspace:*"
+    "@roamlink/web": "workspace:*",
+    "@roamlink/provider-r2": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
