@@ -1311,6 +1311,55 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
 
+  tests/e2e:
+    dependencies:
+      '@roamlink/adcos':
+        specifier: workspace:*
+        version: link:../../packages/adcos
+      '@roamlink/app-kit':
+        specifier: workspace:*
+        version: link:../../packages/app-kit
+      '@roamlink/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
+      '@roamlink/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@roamlink/edge':
+        specifier: workspace:*
+        version: link:../../packages/edge
+      '@roamlink/edge-actions':
+        specifier: workspace:*
+        version: link:../../packages/edge-actions
+      '@roamlink/mobile':
+        specifier: workspace:*
+        version: link:../../apps/mobile
+      '@roamlink/persistence-postgres':
+        specifier: workspace:*
+        version: link:../../packages/persistence-postgres
+      '@roamlink/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
+      '@roamlink/web':
+        specifier: workspace:*
+        version: link:../../apps/web
+      '@roamlink/webhook-inbox':
+        specifier: workspace:*
+        version: link:../../packages/webhook-inbox
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.2
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.5
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@22.20.2)(tsx@4.23.13)
+
   tests/load:
     dependencies:
       '@roamlink/adcos':
