@@ -238,6 +238,38 @@ function surfaceNotFoundDocument(pathname: string): string {
   return renderLoginDocument(`there is no page at "${pathname}" - use the navigation or sign in at /login`);
 }
 
+// ---------------------------------------------------------------------------
+// The event-driven maintenance receiver (RL-110): the endpoint the QStash
+// durable jobs are delivered to. Verify-before-acting lives in
+// maintenance-receiver.ts; this handler adds the runtime/composition gates.
+// ---------------------------------------------------------------------------
+
+export async function handleMaintenanceReceiver(request: Request, runtime: HostRuntime): Promise<Response> {
+  if (!runtime.ok) {
+    return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; maintenance is unavailable");
+  }
+  const receiver = runtime.composition.maintenance.receiver;
+  if (receiver === null) {
+    // The honest not-configured (AR-009 discipline): the receiver-side QStash
+    // signing keys are absent, so NO delivery is ever acted on - never a
+    // faked trigger, never an unverified mutation surface.
+    return errorResponse(
+      503,
+      "MAINTENANCE_RECEIVER_NOT_CONFIGURED",
+      "the maintenance receiver refuses every delivery: the receiver-side QStash signing keys are not configured (fail-closed)",
+    );
+  }
+  try {
+    return await receiver.handle(request);
+  } catch (error) {
+    return errorResponse(
+      500,
+      "MAINTENANCE_RECEIVER_FAILED",
+      `the maintenance receiver failed (details suppressed)${error instanceof Error ? `: ${error.name}` : ""}`,
+    );
+  }
+}
+
 export async function handleCustomerSurface(request: Request, runtime: HostRuntime): Promise<Response> {
   if (!runtime.ok) {
     return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; no surface is served");

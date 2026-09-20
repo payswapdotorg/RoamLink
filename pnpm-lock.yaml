@@ -1143,9 +1143,21 @@ importers:
       '@roamlink/adcos':
         specifier: workspace:*
         version: link:../../packages/adcos
+      '@roamlink/admin':
+        specifier: workspace:*
+        version: link:../../apps/admin
+      '@roamlink/api-service':
+        specifier: workspace:*
+        version: link:../../services/api
+      '@roamlink/app-kit':
+        specifier: workspace:*
+        version: link:../../packages/app-kit
       '@roamlink/audit':
         specifier: workspace:*
         version: link:../../packages/audit
+      '@roamlink/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@roamlink/compat':
         specifier: workspace:*
         version: link:../../packages/compat
@@ -1164,12 +1176,18 @@ importers:
       '@roamlink/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@roamlink/persistence-postgres':
+        specifier: workspace:*
+        version: link:../../packages/persistence-postgres
       '@roamlink/projections':
         specifier: workspace:*
         version: link:../../packages/projections
       '@roamlink/provider-qstash':
         specifier: workspace:*
         version: link:../../packages/provider-qstash
+      '@roamlink/provider-redis':
+        specifier: workspace:*
+        version: link:../../packages/provider-redis
       '@roamlink/reconciliation':
         specifier: workspace:*
         version: link:../../packages/reconciliation
@@ -1179,6 +1197,9 @@ importers:
       '@roamlink/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
+      '@roamlink/web':
+        specifier: workspace:*
+        version: link:../../apps/web
       '@roamlink/webhook-inbox':
         specifier: workspace:*
         version: link:../../packages/webhook-inbox
@@ -1189,9 +1210,15 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.20.2
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
       eslint:
         specifier: ^9.17.0
         version: 9.39.5
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3

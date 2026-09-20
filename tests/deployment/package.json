@@ -27,12 +27,21 @@
     "@roamlink/provider-qstash": "workspace:*",
     "@roamlink/testkit": "workspace:*",
     "@roamlink/workers": "workspace:*",
-    "@roamlink/webhook-inbox": "workspace:*"
+    "@roamlink/webhook-inbox": "workspace:*",
+    "@roamlink/admin": "workspace:*",
+    "@roamlink/api-service": "workspace:*",
+    "@roamlink/app-kit": "workspace:*",
+    "@roamlink/auth": "workspace:*",
+    "@roamlink/persistence-postgres": "workspace:*",
+    "@roamlink/provider-redis": "workspace:*",
+    "@roamlink/web": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "eslint": "^9.17.0",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "pg": "^8.13.1",
+    "@types/pg": "^8.11.10"
   }
 }

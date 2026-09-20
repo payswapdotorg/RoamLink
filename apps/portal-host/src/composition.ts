@@ -72,6 +72,7 @@ import type { DurableJobDeliveryPort } from "@roamlink/provider-qstash";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
 import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
+import { createMaintenanceReceiver, type MaintenanceReceiver } from "./maintenance-receiver.js";
 import { createHostSloBindings, type HostSloBindings } from "./slo.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
@@ -100,10 +101,17 @@ export interface PortalHostComposition {
    * the durable outbox), never ad-hoc database mutation in a route.
    */
   readonly persistence: PostgresPersistence;
-  /** The maintenance trigger seam (RL-107) - authenticated by the handler. */
+  /**
+   * The maintenance trigger seam (RL-107) - authenticated by the handler.
+   * `receiver` is the EVENT-DRIVEN path's signed-job endpoint (RL-110):
+   * composed ONLY when the receiver-side QStash signing keys are configured
+   * (an uncomposed receiver is never reported - the route answers the
+   * honest 503 instead).
+   */
   readonly maintenance: {
     readonly cronSecret: string | undefined;
     readonly run: () => Promise<DailyMaintenanceResult>;
+    readonly receiver: MaintenanceReceiver | null;
   };
   /**
    * The host's §11 SLO bindings (RL-109): the REAL observability recorder
@@ -188,6 +196,14 @@ export interface PortalHostEnv {
   readonly qstashToken?: string | undefined;
   readonly qstashBaseUrl?: string | undefined;
   readonly maintenanceDestination?: string | undefined;
+  /**
+   * The RECEIVER-side QStash signing keys (RL-097 runbook step 2.3 / RL-110):
+   * when configured, /api/maintenance/receiver VERIFIES every delivered job
+   * before acting (rotation keeps BOTH keys configured). Unset -> the
+   * receiver refuses every delivery with the honest 503 (fail-closed).
+   */
+  readonly qstashSigningKeyCurrent?: string | undefined;
+  readonly qstashSigningKeyNext?: string | undefined;
   /**
    * ROAMLINK_SLO_OBJECTIVES (RL-109): the deployment's budgeted §11 SLO
    * objectives, `id:targetRatio:windowMs[:atRiskBurnRate]` entries keyed by
@@ -379,6 +395,21 @@ async function createPortalHostCompositionWithDriver(
           ? { asyncDelivery, asyncDestination: env.maintenanceDestination }
           : {}),
       }),
+    // The event-driven path's signed-job receiver (RL-110): composed only
+    // when the receiver-side signing keys exist (fail-closed otherwise).
+    receiver:
+      env.qstashSigningKeyCurrent !== undefined && env.qstashSigningKeyCurrent.trim().length > 0
+        ? createMaintenanceReceiver({
+            persistence,
+            now,
+            signingKeys: {
+              current: env.qstashSigningKeyCurrent,
+              ...(env.qstashSigningKeyNext !== undefined
+                ? { next: env.qstashSigningKeyNext }
+                : {}),
+            },
+          })
+        : null,
   };
 
   // --------------------------------------------------------------------------
