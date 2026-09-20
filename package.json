@@ -15,6 +15,8 @@
     "production-gate": "node scripts/release/production-gate.mjs",
     "smoke": "node infra/deployment/smoke/run.mjs",
     "smoke:selftest": "node infra/deployment/smoke/selftest.mjs",
+    "rollback:check": "node infra/deployment/rollback/check.mjs",
+    "rollback:check:selftest": "node infra/deployment/rollback/selftest.mjs",
     "dev": "pnpm -r --parallel --if-present dev",
     "prepare": "node scripts/hooks/install.mjs"
   },

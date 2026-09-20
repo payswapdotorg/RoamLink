@@ -1,16 +1,16 @@
 {
   "schema": "roamlink/accepted-risks@1",
-  "note": "Explicit, visible accepted-risk records for the RoamLink production readiness gate (RL-081). Recorded by Worker C at gate-construction time; ratification by the Tech Lead is required at merge. These records NEVER weaken a gate criterion: every criterion is still evaluated literally \u2014 an unmet row covered here is reported as a `gap` row carrying its risk ids, and any uncovered failure still fails the gate. The MVP gate (RL-080) has NO acceptance mechanism by dispatch: its failing criteria are findings for the Tech Lead, and the headline MVP finding (the \u00a711 SLO criterion, see AR-002) is what currently fails RL-080.",
+  "note": "Explicit, visible accepted-risk records for the RoamLink production readiness gate (RL-081). Recorded by Worker C at gate-construction time; ratification by the Tech Lead is required at merge. These records NEVER weaken a gate criterion: every criterion is still evaluated literally — an unmet row covered here is reported as a `gap` row carrying its risk ids, and any uncovered failure still fails the gate. The MVP gate (RL-080) has NO acceptance mechanism by dispatch: its failing criteria are findings for the Tech Lead, and the headline MVP finding (the §11 SLO criterion, see AR-002) is what currently fails RL-080.",
   "risks": [
     {
       "id": "AR-001",
-      "title": "Dogfood scenarios did not wire the observability structured logger (REMEDIATED \u2014 the world now composes the correlated logger)",
+      "title": "Dogfood scenarios did not wire the observability structured logger (REMEDIATED — the world now composes the correlated logger)",
       "criterion": "PRD-3",
       "rowId": "OBS:logs-correlation",
       "severity": "medium",
-      "justification": "At gate-construction time the dogfood scenarios did not wire the observability structured logger: correlation IDs were proven end-to-end through audit events only, and structured-log records were not part of the dogfood evidence. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): the dogfood world now composes createCorrelatedLogger over createInMemoryLogSink with the manual correlation carrier, and scenario 1 emits an \u00a711 SLO evaluation through logSloEvaluation under the journey's correlation-id family, asserting the log record carries the correlation id and the SLO's own redaction-safe fields. The production gate's OBS:logs-correlation row now passes on real structured-log evidence.",
+      "justification": "At gate-construction time the dogfood scenarios did not wire the observability structured logger: correlation IDs were proven end-to-end through audit events only, and structured-log records were not part of the dogfood evidence. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): the dogfood world now composes createCorrelatedLogger over createInMemoryLogSink with the manual correlation carrier, and scenario 1 emits an §11 SLO evaluation through logSloEvaluation under the journey's correlation-id family, asserting the log record carries the correlation id and the SLO's own redaction-safe fields. The production gate's OBS:logs-correlation row now passes on real structured-log evidence.",
       "exposure": "None remaining: structured-log records with correlation IDs are now part of the dogfood evidence (tests/dogfood/src/world.ts + scenario 1's logSloEvaluation assertion).",
-      "remediation": "LANDED: tests/dogfood/src/world.ts (correlated logger + in-memory sink + manual carrier on the \u00a711 SLO plane) and scenario-1's structured-log assertion (correlation id + slo/slo_state fields). Re-run pnpm production-gate on the remediation commit: PRD-3 passes with zero gap rows.",
+      "remediation": "LANDED: tests/dogfood/src/world.ts (correlated logger + in-memory sink + manual carrier on the §11 SLO plane) and scenario-1's structured-log assertion (correlation id + slo/slo_state fields). Re-run pnpm production-gate on the remediation commit: PRD-3 passes with zero gap rows.",
       "owner": "Tech Lead",
       "reviewBy": "ratified at merge (remediation landed; PRD-3 gap-free)",
       "references": [
@@ -19,13 +19,13 @@
     },
     {
       "id": "AR-002",
-      "title": "No \u00a711 SLO was instrumented or referenced in the dogfood/load suites (REMEDIATED \u2014 the MVP-gate blocker is closed)",
+      "title": "No §11 SLO was instrumented or referenced in the dogfood/load suites (REMEDIATED — the MVP-gate blocker is closed)",
       "criterion": "PRD-3",
       "rowId": "OBS:slo-wiring",
       "severity": "high",
-      "justification": "spec/architecture.md \u00a711 lists nine SLOs the product must measure. The observability primitives (RL-052: makeServiceLevelObjective, SloEventRecorder, burn rates, health/metrics/log composition) can instrument every one of them \u2014 proven green by tests/release-gates/test/contract-deep.test.ts \u2014 but at gate-construction time NO dogfood or load assertion referenced any \u00a711 SLO name and no product surface wired \u00a711-named SLOs, which is why the MVP release gate (RL-080) failed its SLO criterion. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): packages/observability gained the \u00a711 SLO instrumentation surface (PRODUCT_SLO_IDS, the nine roamlink_slo_<slug> metric constants, registerProductSloMetrics, createProductSloRecorder); the reconciliation engine emits its durable-action \u00a711 measurements through an optional structural sloObserver; domain-experience exposes the pure intentSatisfactionOf mapping; and the dogfood/load suites record + assert all nine SLOs through the real recorder. Both gates now exit 0 (MVP-3: 9/9 rows pass). The record is retained for history: the gap was real, visible, and closed by the documented remediation rather than by weakening the gate.",
-      "exposure": "None remaining as a verification gap: the end-to-end suites now provide mechanical SLO evidence (dogfood scenarios assert all nine \u00a711 SLOs; the load REC suite asserts SLO-E emission-volume invariants). At gate-construction time the exposure was a verification-coverage gap only \u2014 no runtime defect.",
-      "remediation": "LANDED: packages/observability/src/slo/slo-metrics.ts (the \u00a711 surface), packages/reconciliation/src/slo-emission.ts + engine/boundary sloObserver wiring, packages/domain-experience/src/decision/intent-satisfaction.ts, tests/dogfood scenario/world/journey SLO wiring and assertions for all nine SLOs, tests/load SLO-E emission invariants, package tests for every new module (observability 76, reconciliation 82, domain-experience 116 green). Re-run pnpm mvp-gate and pnpm production-gate on the remediation commit: both exit 0 with MVP-3 9/9 rows passing.",
+      "justification": "spec/architecture.md §11 lists nine SLOs the product must measure. The observability primitives (RL-052: makeServiceLevelObjective, SloEventRecorder, burn rates, health/metrics/log composition) can instrument every one of them — proven green by tests/release-gates/test/contract-deep.test.ts — but at gate-construction time NO dogfood or load assertion referenced any §11 SLO name and no product surface wired §11-named SLOs, which is why the MVP release gate (RL-080) failed its SLO criterion. REMEDIATED on work/rl-slo-wiring-remediation (MVP-3 remediation worker, Wave 6): packages/observability gained the §11 SLO instrumentation surface (PRODUCT_SLO_IDS, the nine roamlink_slo_<slug> metric constants, registerProductSloMetrics, createProductSloRecorder); the reconciliation engine emits its durable-action §11 measurements through an optional structural sloObserver; domain-experience exposes the pure intentSatisfactionOf mapping; and the dogfood/load suites record + assert all nine SLOs through the real recorder. Both gates now exit 0 (MVP-3: 9/9 rows pass). The record is retained for history: the gap was real, visible, and closed by the documented remediation rather than by weakening the gate.",
+      "exposure": "None remaining as a verification gap: the end-to-end suites now provide mechanical SLO evidence (dogfood scenarios assert all nine §11 SLOs; the load REC suite asserts SLO-E emission-volume invariants). At gate-construction time the exposure was a verification-coverage gap only — no runtime defect.",
+      "remediation": "LANDED: packages/observability/src/slo/slo-metrics.ts (the §11 surface), packages/reconciliation/src/slo-emission.ts + engine/boundary sloObserver wiring, packages/domain-experience/src/decision/intent-satisfaction.ts, tests/dogfood scenario/world/journey SLO wiring and assertions for all nine SLOs, tests/load SLO-E emission invariants, package tests for every new module (observability 76, reconciliation 82, domain-experience 116 green). Re-run pnpm mvp-gate and pnpm production-gate on the remediation commit: both exit 0 with MVP-3 9/9 rows passing.",
       "owner": "Tech Lead",
       "reviewBy": "ratified at merge (remediation landed; gates green)",
       "references": [
@@ -35,7 +35,7 @@
     },
     {
       "id": "AR-003",
-      "title": "spec/current-state.md status block was stale post-campaign (REMEDIATED \u2014 refreshed to the delivered tree)",
+      "title": "spec/current-state.md status block was stale post-campaign (REMEDIATED — refreshed to the delivered tree)",
       "criterion": "PRD-4",
       "rowId": "DOCS:current-state",
       "severity": "medium",
@@ -54,7 +54,7 @@
       "criterion": "PRD-1",
       "rowId": "SEC:findings-recorded",
       "severity": "medium",
-      "justification": "A malicious provider returning a JWT-shaped string as its payment 'provider reference' is accepted at admission and persisted into the commerce read model (charset permits dots/base64url). spec/data-model.md 'Privacy' says secrets/credentials are never persisted in ordinary domain tables. Exposure is bounded: the value is provider-supplied opaque REFERENCE data, not a RoamLink credential; PEM-shaped values are rejected by the charset; the repo's own RL-054 scanner flags the persisted record afterward (detection exists, admission-time enforcement does not). Fixing it means editing packages/domain-commerce \u2014 explicitly outside the release-gate worker's scope \u2014 so the finding is accepted for this release with the recorded remediation.",
+      "justification": "A malicious provider returning a JWT-shaped string as its payment 'provider reference' is accepted at admission and persisted into the commerce read model (charset permits dots/base64url). spec/data-model.md 'Privacy' says secrets/credentials are never persisted in ordinary domain tables. Exposure is bounded: the value is provider-supplied opaque REFERENCE data, not a RoamLink credential; PEM-shaped values are rejected by the charset; the repo's own RL-054 scanner flags the persisted record afterward (detection exists, admission-time enforcement does not). Fixing it means editing packages/domain-commerce — explicitly outside the release-gate worker's scope — so the finding is accepted for this release with the recorded remediation.",
       "exposure": "A secret-shaped value could be persisted in a commerce record and surfaced in read models; it is not a usable credential and is detectable by the existing scanner sweep.",
       "remediation": "Run assertNoSecretMaterial over provider-supplied reference fields at commerce admission, or further restrict the charset (e.g. no '.'). Minimal reproducer already pinned in tests/security S-6 so the fix flips an explicit assertion.",
       "owner": "Tech Lead",
@@ -69,9 +69,9 @@
       "criterion": "PRD-1",
       "rowId": "SEC:findings-recorded",
       "severity": "low",
-      "justification": "The RL-054 secret-shape scanner flags the FIELD NAME (key-name detector, 'token' fragment) of AuthSessionRecord.tokenDigest. The VALUE is a non-invertible SHA-256 digest \u2014 possession of the digest is not possession of the credential (verifySession requires the token; only its digest is compared) \u2014 so the substance of RL-LOCK-016 holds (proven: the live token appears in no persisted record; the digest is 64-hex). The finding records a naming-discipline inconsistency with the enterprise package's deliberate keyRef/signingKeyRef naming, which blocks wiring a repo-wide scanner sweep as a CI gate over ALL persisted records without an allow-list decision.",
+      "justification": "The RL-054 secret-shape scanner flags the FIELD NAME (key-name detector, 'token' fragment) of AuthSessionRecord.tokenDigest. The VALUE is a non-invertible SHA-256 digest — possession of the digest is not possession of the credential (verifySession requires the token; only its digest is compared) — so the substance of RL-LOCK-016 holds (proven: the live token appears in no persisted record; the digest is 64-hex). The finding records a naming-discipline inconsistency with the enterprise package's deliberate keyRef/signingKeyRef naming, which blocks wiring a repo-wide scanner sweep as a CI gate over ALL persisted records without an allow-list decision.",
       "exposure": "Scanner noise / discipline inconsistency only; no secret material is exposed.",
-      "remediation": "Rename (e.g. tokenVerificationDigest) or make an explicit, documented scanner allowance for digest fields \u2014 orchestrator call. Minimal reproducer pinned in tests/security S-2.",
+      "remediation": "Rename (e.g. tokenVerificationDigest) or make an explicit, documented scanner allowance for digest fields — orchestrator call. Minimal reproducer pinned in tests/security S-2.",
       "owner": "Tech Lead",
       "reviewBy": "when the scanner sweep is wired as a CI gate",
       "references": [
@@ -84,7 +84,7 @@
       "criterion": "PRD-1",
       "rowId": "SEC:findings-recorded",
       "severity": "low",
-      "justification": "Revoking an ALREADY-REVOKED session through a second, distinct command throws ConflictError (REVISION_CONFLICT) because the service re-saves the unchanged record whose revision no longer satisfies the stored+1 precondition. The behavior fails CLOSED (the session stays revoked; nothing reopens) \u2014 an ergonomics/idempotency gap, not a vulnerability. Fixing it means editing packages/auth \u2014 outside the release-gate worker's scope.",
+      "justification": "Revoking an ALREADY-REVOKED session through a second, distinct command throws ConflictError (REVISION_CONFLICT) because the service re-saves the unchanged record whose revision no longer satisfies the stored+1 precondition. The behavior fails CLOSED (the session stays revoked; nothing reopens) — an ergonomics/idempotency gap, not a vulnerability. Fixing it means editing packages/auth — outside the release-gate worker's scope.",
       "exposure": "Operator-visible typed error on a redundant revoke; no state corruption, no reopening of revoked sessions.",
       "remediation": "Skip the save when the record is already revoked (return the recorded outcome). Minimal reproducer pinned in tests/security A-2.",
       "owner": "Tech Lead",
@@ -141,6 +141,25 @@
       "references": [
         "docs/threat-model-verification.md#3-honest-gaps",
         "docs/deployment-recovery.md#4-honest-gaps"
+      ]
+    },
+    {
+      "id": "AR-010",
+      "title": "RL-109..RL-112 real-infrastructure verification legs execute only when the operator configures the env surfaces (DATABASE_URL, R2, QStash signing keys, scratch DSN); CI runs the deterministic cores with named skips",
+      "criterion": "PRD-2",
+      "rowId": "DEPLOY:ops-verification",
+      "severity": "medium",
+      "justification": "The Wave-7 ops-verification batteries are built and green: the SLO dashboard renders REAL recorder state through public seams (RL-109); the recovery battery proves the scheduled path (authenticated cron route, stranded-claim sweep, inbox backlog beyond one batch) and the event-driven escalation (signed receiver, verify-before-acting) over deterministic fakes and pglite real SQL, with an env-gated REAL-PostgreSQL leg (RL-110); the backup/export battery verifies the B-series laws on real infrastructure ONLY when DATABASE_URL + the R2 env surface + a distinct scratch DSN are configured (RL-111); the rollback round-trip proves DOWN on the real engine with a DATABASE_URL-gated real-pool leg, and the rollback decision rule is executable and self-tested (RL-112). This sandbox has no real Neon/PostgreSQL, no real Cloudflare R2 account, no real QStash account and no signing keys, so those legs SKIP with explicit named reasons (zero silent passes, zero skipped-as-passed lies). The residual gap is exactly AR-009's class: nothing was verified against the LIVE provider wires (real R2 SigV4 round-trip, real QStash delivery + signature canonicalization (AR-009's standing wire note), real Neon pool behavior).",
+      "exposure": "The deterministic cores pin the laws; the real-wire behaviors (R2 request signing against the live service, QStash wire canonicalization, hosted-pool concurrency) materialize only at the operator phase. A wrong real-wire assumption surfaces as a named battery failure at first real run, not as silent corruption: the batteries are the executable acceptance checks for deployment.md §7 (backup/restore passes; stuck-outbox recovery; inbox backlog beyond one batch).",
+      "remediation": "Run the env-gated legs at the operator phase: configure DATABASE_URL + the R2 env surface + ROAMLINK_BACKUP_SCRATCH_DATABASE_URL and run `pnpm -C tests/deployment exec vitest run test/backup-restore-real.test.ts`; configure DATABASE_URL for `test/recovery-battery.test.ts` and the persistence-postgres round-trip leg; confirm the live QStash signature canonicalization per AR-009's standing wire note and flip this risk (and AR-009's wire note) when the real runs are recorded.",
+      "owner": "Tech Lead",
+      "reviewBy": "operator deployment phase (RL-100+ / RL-118)",
+      "references": [
+        "tests/deployment/test/backup-restore-real.test.ts",
+        "tests/deployment/test/recovery-battery.test.ts",
+        "packages/persistence-postgres/test/rollback-roundtrip.test.ts",
+        "infra/deployment/rollback/check.mjs",
+        "docs/reports/accepted-risks.json (AR-009)"
       ]
     }
   ]

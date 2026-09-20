@@ -454,6 +454,16 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   is proven by loopback selftests; first real-environment execution is
   the operator's RL-118 phase (runbook §6b: deploy → wait ready → run
   smoke → record).
+- `infra/deployment/rollback` — the post-rollback state check (RL-112):
+  the deployment runbook §9's EXECUTABLE rollback decision rule (root
+  scripts `pnpm rollback:check` / `pnpm rollback:check:selftest`; run via
+  `BASE_URL=<host> pnpm rollback:check` after redeploying the previous
+  SHA). Asserts liveness, the honest AND SERVABLE readiness vocabulary
+  (a truthful `not-ready:*` answer is NOT an accepted rollback), and the
+  §6b synthetic smoke green. A rollback NEVER auto-runs migrateDown — the
+  §9.2 rule encodes the forward-fix default and the deliberate,
+  operator-commanded down-migration exception (which pairs with the RL-111
+  backup/restore path). The runner is proven by loopback selftests.
 - `packages/app-kit` — the shared application kit for the RL-060/RL-061
   product surfaces: the public application API contract (spec/api.md) as
   schema-first typed wire resources with fail-closed parsers, the

@@ -210,7 +210,77 @@ Before calling the environment ready, ALL of:
       deployed origin: `BASE_URL=... pnpm smoke` exit 0, output recorded
       with the deployed commit SHA (a lying dependency blocks this gate).
 
-## 9. Honest-gaps discipline (AR-009)
+## 9. Rollback (redeploy-previous-SHA) (RL-112)
+
+When a deployed release is broken, the rollback is a REDEPLOY of the
+previous application SHA — never a schema gamble. The migration decision
+rule below is EXECUTABLE (`../../deployment/rollback/check.mjs`, run via
+`pnpm rollback:check`): health + readiness servability + the §6b synthetic
+smoke decide acceptance, not prose judgment.
+
+### 9.1 The redeploy-previous-SHA procedure
+
+1. **Pin the previous SHA.** From the deployment log (§6b step 3: every
+   deploy records its commit SHA), identify the last SHA whose smoke run
+   was green. Confirm it exists: `git cat-file -e <sha>`. Build provenance
+   matters: `pnpm check && pnpm mvp-gate && pnpm production-gate` must be
+   green AT THAT SHA (they were, when it shipped — re-run only if the
+   release artifact is being rebuilt).
+2. **Redeploy** that SHA into the SAME environment (Vercel project
+   rollback to the previous deployment, or a redeploy of the pinned SHA).
+   The deploying host composes the real PostgreSQL driver path exactly as
+   §4 requires — a rollback never introduces an in-memory adapter.
+3. **Do NOT touch the schema as part of the redeploy.** Migrations are
+   NEVER part of a rollback (see 9.2).
+4. **Run the §6 health checks + the §6b synthetic smoke**, then the
+   EXECUTABLE decision rule:
+
+   ```bash
+   BASE_URL=https://<host-origin> [API_URL=https://<api-origin>] pnpm rollback:check
+   ```
+
+   It asserts, in order: `/healthz` liveness; `/readyz` and
+   `/v1/readiness` answer the honest vocabulary AND are SERVABLE
+   (`ready | degraded:*` at HTTP 200 — a truthful `not-ready:*` answer
+   means the rollback did NOT restore service and is REJECTED); and the
+   §6b synthetic smoke is green (including the no-lie law). Exit 0 =
+   the rollback is accepted; record the output + both SHAs in the
+   deployment log. Exit 1 = the rollback is NOT accepted — fix, redeploy,
+   re-run. (Prove the runner itself once per environment with
+   `pnpm rollback:check:selftest` — loopback only, no deployment needed.)
+
+### 9.2 The migration decision rule: a rollback NEVER auto-runs migrateDown
+
+- **Default — forward-fix:** the deployed schema is ADDITIVE
+  (infra/migrations discipline: new migrations only, never edited — the
+  ledger records each applied file's SHA-256 and `manifest()` reports
+  drift). A previous application SHA therefore runs against the schema the
+  newer release applied: redeploy, and the NEWER release's pending
+  migrations are applied forward when it ships again. No down-migration
+  happens, automatically or otherwise.
+- **Deliberate down-migration (the exception, operator-commanded only):**
+  when a rollback MUST shed applied migrations (e.g. the forward release's
+  schema cannot coexist with the previous application), the down-migration
+  is a maintenance-window action run BY THE OPERATOR via
+  `pnpm --filter @roamlink/persistence-postgres db:rollback -- <target>`
+  (or the equivalent direct runner call), NEVER an automatic step of any
+  deploy/rollback tooling. Why so strict: the RL-112 round-trip
+  (`packages/persistence-postgres/test/rollback-roundtrip.test.ts`) proves
+  on the real engine that the current baseline down migrations DROP the
+  data tables (`roamlink_records`, `roamlink_outbox`, `roamlink_inbox`) —
+  the honest non-survivable case. A deliberate down-migration therefore
+  PAIRS WITH a restore-from-backup (the RL-111 battery's
+  export -> R2 -> scratch-restore path, §8 "backup/restore passes") and a
+  declared maintenance window.
+- **Acceptance is identical either way:** after a forward-fix OR a
+  deliberate down-migration + restore, the SAME executable rule decides —
+  `pnpm rollback:check` exit 0 (health + servable readiness + smoke
+  green), then §8's checklist is re-walked for the affected items
+  (migrations ledger manifest drift-free; stuck-outbox recovery and inbox
+  batch progression exercised; smoke output recorded with the rolled-back
+  SHA).
+
+## 10. Honest-gaps discipline (AR-009)
 
 Record in the deployment log every behavior NOT verified in this runbook
 run (e.g. live QStash signature canonicalization, live Neon console
