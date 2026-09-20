@@ -2,7 +2,7 @@
   "schema": "roamlink/release-gate@1",
   "gate": "RL-081",
   "title": "RoamLink production readiness gate",
-  "generatedAt": "2026-09-19T23:16:58.120Z",
+  "generatedAt": "2026-09-20T04:11:09.397Z",
   "verdict": {
     "status": "pass",
     "exitCode": 0,
@@ -20,23 +20,23 @@
       "label": "RL-080 MVP release gate (hard prerequisite): node scripts/release/mvp-gate.mjs",
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 448815,
-      "summary": "exit 0 (448815ms)",
+      "durationMs": 456979,
+      "summary": "exit 0 (456979ms)",
       "outputTail": [
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 125952",
+        "      \"durationMs\": 119924",
         "    },",
         "    {",
         "      \"id\": \"test\",",
         "      \"status\": \"pass\",",
-        "      \"durationMs\": 247553",
+        "      \"durationMs\": 267462",
         "    },",
         "    {",
         "      \"id\": \"architecture\",",
         "      \"status\": \"pass\",",
         "      \"exitCode\": 0,",
-        "      \"durationMs\": 90",
+        "      \"durationMs\": 58",
         "    }",
         "  ],",
         "  \"criteria\": [",
@@ -159,7 +159,7 @@
         {
           "id": "DEPLOY:suite",
           "status": "pass",
-          "summary": "@roamlink/tests-deployment green (26/26 tests)",
+          "summary": "@roamlink/tests-deployment green (34/34 tests)",
           "evidence": [
             "tests/deployment/test/*.test.ts",
             "docs/deployment-recovery.md"
@@ -291,8 +291,8 @@
   "acceptedRisksRegistry": "docs/reports/accepted-risks.json",
   "fullReport": false,
   "git": {
-    "commit": "fa58392aa992a6edf6dc60b792657a2064de2d66",
-    "branch": "work/rl-journey-completion",
+    "commit": "898282ebdc1720dd141f3b171176e56fcc7fd673",
+    "branch": "work/rl-runtime-hardening",
     "dirtyFiles": 1
   },
   "mvpGate": {
@@ -305,7 +305,7 @@
       "failedCriterionRows": [],
       "acceptedRisks": []
     },
-    "generatedAt": "2026-09-19T23:16:58.166Z",
+    "generatedAt": "2026-09-20T04:11:09.448Z",
     "artifact": "docs/reports/mvp-gate.json"
   }
 }
