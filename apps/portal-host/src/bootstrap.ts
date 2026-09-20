@@ -30,6 +30,9 @@ export function portalHostEnvFromProcessEnv(
   qstashToken: string | undefined;
   qstashBaseUrl: string | undefined;
   maintenanceDestination: string | undefined;
+  qstashSigningKeyCurrent: string | undefined;
+  qstashSigningKeyNext: string | undefined;
+  sloObjectives: string | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
@@ -49,6 +52,11 @@ export function portalHostEnvFromProcessEnv(
     qstashToken: env["QSTASH_TOKEN"],
     qstashBaseUrl: env["QSTASH_URL"],
     maintenanceDestination: env["ROAMLINK_MAINTENANCE_DESTINATION"],
+    // RL-110: the RECEIVER-side QStash signing keys (verify before acting).
+    qstashSigningKeyCurrent: env["QSTASH_CURRENT_SIGNING_KEY"],
+    qstashSigningKeyNext: env["QSTASH_NEXT_SIGNING_KEY"],
+    // RL-109: the deployment's budgeted §11 SLO objectives (see src/slo.ts).
+    sloObjectives: env["ROAMLINK_SLO_OBJECTIVES"],
   };
 }
 
