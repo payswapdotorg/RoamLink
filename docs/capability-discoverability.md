@@ -1,0 +1,321 @@
+# RoamLink Capability-Discoverability Audit (RL-115)
+
+**Work item:** RL-115 — Capability-discoverability audit (post-gate Wave 8, Worker B)
+**Suites:** `apps/web/test/rl115-capability-discoverability.test.ts` (render-level,
+the customer web surface), `apps/mobile/test/rl115-mobile-capability-surface.test.ts`
+(render-level, the mobile/edge surface), `tests/architecture/test/wave8-b-capability-guards.test.ts`
+(structural drift-guards).
+**Source inventory:** `spec/architecture.md` §2 (Layers A–F owns-lists), §4 (the three
+control loops), §5 (projection record fields), §6 (reconciliation musts), §7 (the device
+capability matrix), §8 (enterprise model), §10 (failure semantics), §11 (the nine SLOs).
+**Requirement:** `spec/ux-architecture.md` §15 — every capability must have one
+**primary user-facing entry point**, one **contextual link** from the journey where it
+becomes relevant, one **explanatory view**, one **recovery/support path** — and
+`spec/user-journey-audit.md` line 199: *"A capability is not considered discoverable
+merely because an API or page exists."*
+**Method:** a FROZEN capability inventory (35 rows, every row citing its spec section)
+is checked against the RENDERED surfaces (the real page modules driven through the real
+app/shell objects against the deterministic fake) for the four §15 requirements. Every
+row's current verdict is recorded below with its evidence or its absence probe. Findings
+are RECORDED, not fixed (the `docs/threat-model-verification.md` precedent): all findings
+are pinned in the suites as current observable behavior, so the eventual fixes flip
+explicit assertions. Zero src changes were made by this work item.
+
+---
+
+## 1. Verdict vocabulary and how to read the matrix
+
+- **VERIFIED** — mechanically proven by a render-level test on the current tree: the
+  requirement's evidence was rendered and asserted.
+- **VERIFIED (proxy)** — the strongest mechanical proxy: the surface lives on another
+  app of this repository (mobile/admin/ops) and is proven by that surface's render-level
+  suite and/or the structural drift-guards, not by the customer web renderer itself.
+- **GAP** — the requirement is not met on this tree; recorded below as a finding with a
+  minimal reproducer.
+
+The matrix columns abbreviate the four §15 requirements: **Entry** (primary user-facing
+entry point), **Link** (contextual link from the journey), **View** (explanatory view),
+**Recovery** (recovery/support path).
+
+## 2. Capability → verdict matrix
+
+### §2 Layer A — Experience Domain
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-A-ACCOUNTS | User and organization accounts | Settings (`/settings`) | More sheet → Settings | Settings account panel | Support (nav + case flow) | **VERIFIED** |
+| CAP-A-DEVICE-REGISTRY | Device registry + capability/context snapshots | Devices (`/devices`) | Home fact card → "Manage devices" | Device detail capability card | Device manual-fallback guidance; degraded-capability escape | **VERIFIED** |
+| CAP-A-GOALS | Human preferences / ExperienceIntent (Goals) | Goals (`/intents`) | Home fact card → "Review your goal" | Goal detail (asked/derived/changed) | Support (nav + case flow) | **VERIFIED** |
+| CAP-A-NOTIFICATIONS | Notifications | Activity (`/activity`) — the narrative surface | Home → "Open Activity" | Activity timeline ("What RoamLink did") | Support escape on warning/critical entries | **VERIFIED (proxy)** — finding RL-114-F4: the dedicated `/notifications` page has ZERO inbound links (URL-only compatibility surface per spec §8) |
+| CAP-A-SUPPORT | Support carrier (cases, context, threads) | Support (`/support`) | Connectivity escape → "Get help with this" | Case detail (customer thread) | Carried-context transparency before opening | **VERIFIED** |
+| CAP-A-EXPLAINABILITY | Explainability (why/evidence/freshness, progressive disclosure) | Connectivity center (`/connectivity`) | Shell indicator → "Connectivity details" (every page) | Why/Evidence/Technical disclosure layers | Escape from degraded evidence states | **VERIFIED** |
+
+### §2 Layer B — RoamLink Commerce
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-B-CATALOG | Product catalog / customer-facing offers | Plans & Billing (`/commerce`) | More sheet → Plans & Billing | Catalog table + the "never implies connectivity delivery" rule | Support (nav + case flow) | **VERIFIED** |
+| CAP-B-ORDERS | Orders, subscriptions, entitlements | Order journey (`/orders/{id}`) | NONE in-page (host-composed post-payment redirect) | Delivery-progress view (commercial vs delivery facts) | Order escape ("Get help with this") | **VERIFIED (proxy)** — finding RL-115-F8 |
+| CAP-B-PAYMENTS-INVOICES | Payment state, invoices, pricing presentation | Order journey commercial facts | Order → "Plans & Billing" | "Commercial facts (separate)" + invoices | Support (nav + case flow) | **VERIFIED** |
+| CAP-B-REFUNDS | Refunds | NONE | NONE | NONE | Support-ref kind only | **GAP** — finding RL-115-F4 |
+
+### §2 Layer C — RoamLink Edge
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-C-OBSERVATION | Device-side observation/context collection | Device detail "What connectivity it has now" | Device ↔ Connectivity cross-links | Connectivity "Device observations" | Honest absence text when nothing observed | **VERIFIED** |
+| CAP-C-OFFLINE-OUTBOX | Durable outbox / graceful offline operation | Mobile edge shell Outbox leg | Mobile shell nav ("Outbox") | Outbox screen (ciphertext note, attempts, boundary states) | Closed manual-guidance map; honest queued≠executed | **VERIFIED (proxy)** — proven in `apps/mobile/test/rl115-mobile-capability-surface.test.ts`; the hosted web surface has no offline view |
+| CAP-C-READ-MODEL | Current connectivity read model | Connectivity center | Home → "See the full connectivity read" | Overview ("Your connectivity, honestly") | "What you can do" next-action section | **VERIFIED** |
+
+### §2 Layer D + §5/§6 — ADCOS integration plane, projections, reconciliation
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-D-RECONCILIATION | Reconciliation (durable admit, dedupe, repair, honest stale) | Customer effect: Connectivity "What RoamLink is waiting for" | More → Workspace | Honest stale/unknown language | Support escapes | **VERIFIED (proxy)** — operator view = admin Reconciliation page (structural guard); an unavailable read renders "Cannot confirm right now", never a status |
+| CAP-D-PROJECTIONS | Projection of ADCOS state (§5 record fields) | Evidence disclosure (class, canonical record, source version, observed/received, freshness, digest) | Order → Connectivity | Evidence/Technical disclosure layers | Support escapes | **VERIFIED (proxy)** — §5 fields render through the evidence disclosure; operator view = admin Projection-health page (structural guard) |
+| CAP-D-COMPAT | Compatibility checks vs the supported ADCOS API contract | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F6 |
+
+### §4 — the three control loops
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-L-DESIRED | Desired-state loop | Onboarding (`/onboarding`) | Home → "Review your goal" | Goal detail "What RoamLink derived from your goal" | Goal detail "What you can do" | **VERIFIED** |
+| CAP-L-RECOVERY | Recovery loop | Activity "Automation status" | Home → "See what RoamLink did" | Activity narrative | Support case flow | **VERIFIED** |
+| CAP-L-COMMERCIAL | Commercial loop | Order journey | NONE in-page (RL-115-F8) | Command pipeline + commercial/delivery separation | Order escape | **VERIFIED (proxy)** — finding RL-115-F8 |
+
+### §7 — the device capability matrix (11 closed names, 8 §7 bullets)
+
+The per-capability truth table (status, evidence class, freshness, gate preview, closed
+manual guidance) is the MOBILE edge shell's capability matrix. The customer WEB device
+card carries verification freshness + the five automation levels, not per-capability rows.
+
+| ID | Capability (closed names) | Verdict | Note |
+|----|---------------------------|---------|------|
+| CAP-X-WIFI | `wifi_observation`, `wifi_control` | **VERIFIED (proxy)** | Matrix rows render with gate preview (`allow` / decision + reason); web card is freshness-only |
+| CAP-X-SIM-SELECT | `cellular_data_sim_selection` | **VERIFIED (proxy)** | Generic gating mechanism only; no dedicated SIM-selection UX |
+| CAP-X-ESIM-MANAGE | `esim_profile_install/remove/enable` | **GAP** | Status rows render (all three names) with gate previews and guidance — but the rows are STATUS-ONLY: no anchor, form or button; no install/remove/enable flow, no profile inventory, no activation-code entry; zero eSIM vocabulary on the web surface. Finding RL-115-F1 |
+| CAP-X-INTERFACE-SELECT | `active_interface_selection` | **VERIFIED (proxy)** | Generic gating mechanism only |
+| CAP-X-VPN | `vpn_network_extension` | **VERIFIED (proxy)** | Generic gating mechanism only |
+| CAP-X-CONCURRENT | `concurrent_interface_constraints` | **VERIFIED (proxy)** | Renders as gate decisions + guidance |
+| CAP-X-TELEMETRY | `radio_os_telemetry` | **VERIFIED (proxy)** | Observation freshness per device; no telemetry-specific UX |
+| CAP-X-BACKGROUND | `background_execution_limits` | **VERIFIED (proxy)** | Closed gate-reason vocabulary + manual guidance |
+
+### §8 — the enterprise model
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-E-WORKSPACE | Workspace model (switcher note, org connectivity, fleet, goals, audit note, support) | Workspace (`/workspace`) | Settings → "Open your workspace" | Guided journey + live org overview (same read model) | Workspace support escape | **VERIFIED** |
+| CAP-E-ONBOARDING | Guided enterprise onboarding journey (the frozen 8-step chain) | Workspace journey | More → Workspace | Per-step states (complete/waiting/action-needed/blocked/not-started/not-available) | Workspace support section | **VERIFIED** |
+| CAP-E-POLICY | Organization-level policies + policy summary | NONE (the page renders its own honest "Not available yet") | NONE | NONE | NONE | **GAP** — finding RL-115-F7 |
+| CAP-E-CONNECTOR-ENROLLMENT | Enterprise connector (enrollment/provisioning as a user task) | STATUS ONLY ("No connector has been set up yet.") | NONE — no action exists | Journey step facts only | Support | **GAP** — finding RL-115-F3 |
+| CAP-E-SSO-SCIM-MDM | SSO/SCIM/MDM integrations | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F5 |
+| CAP-E-AUDIT | Organization audit trail | Admin console Audit page (structural guard) | Workspace names the admin ops surface | Admin audit view | Support | **VERIFIED (proxy)** |
+
+### §10 — failure semantics
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-S-FAILURE-STATES | The separated lifecycle states incl. unknown/stale | Connectivity journey (observed → requested → … stages) | Order ↔ Connectivity cross-links | Order/Subscription connectivity journeys; mutation four-stage pipeline | Support escapes | **VERIFIED** |
+
+### §11 — the nine SLOs
+
+| ID | Capability | Entry | Link | View | Recovery | Verdict |
+|----|------------|-------|------|------|----------|---------|
+| CAP-SLO | SLO health (the nine §11 product SLOs) | URL-only: `/ops/slo` (portal-host, session-gated) | NONE — no surface links it | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **GAP** — finding RL-115-F2 |
+
+**Tally:** 15 VERIFIED · 13 VERIFIED (proxy) · 7 GAP.
+
+---
+
+## 3. Findings (recorded — fix ownership: Tech Lead)
+
+Every finding below is pinned as current observable behavior in the suites, so the
+eventual fixes flip explicit assertions.
+
+### RL-115-F1 — eSIM profile management has no UX path (CAP-X-ESIM-MANAGE)
+
+- **Where:** the §7 device capability matrix's only UX carriers — the mobile capability
+  truth table (`apps/mobile/src/views.ts capabilityMatrixScreen`) and the web device
+  capability card.
+- **What:** the mobile matrix renders all three closed eSIM names
+  (`esim_profile_install`, `esim_profile_remove`, `esim_profile_enable`) as STATUS rows
+  with evidence/freshness/gate previews, and the closed guidance map explains a blocked
+  install — but nothing more. There is no flow to install/remove/enable a profile, no
+  profile inventory view, no activation-code entry; the customer web surface carries zero
+  eSIM vocabulary. The §15 primary-entry requirement is therefore unmet for eSIM
+  MANAGEMENT: a customer cannot discover, from any surface, how to manage an eSIM.
+- **Exposure bound:** capability VISIBILITY and honest gating are verified (proxy); the
+  gap is the missing management journey, not a false claim elsewhere.
+- **Minimal reproducers:**
+  1. `apps/web` suite, GAP probe CAP-X-ESIM-MANAGE: render all 17 web routes → the joined
+     document text contains no `esim` / `e-sim` / `sim selection` (case-insensitive).
+  2. `apps/mobile` suite, GAP probe CAP-X-ESIM-MANAGE: the rendered capability matrix
+     contains the three eSIM rows but zero `<a`, `<form` or `<button` elements.
+- **Candidate remediation (orchestrator disposition):** a guided eSIM management journey
+  (profile list + gated install/remove/enable actions riding the existing desired-state
+  command envelope), reachable from the device detail page.
+
+### RL-115-F2 — the §11 SLO dashboard has no entry point from any surface (CAP-SLO)
+
+- **Where:** `apps/portal-host/src/ops-slo-page.ts` (the dashboard, RL-109) vs the admin
+  console nav (`apps/admin/src/app.ts`) and the customer navs.
+- **What:** spec/ux-architecture.md §13 requires admin to expose "SLO health". The
+  dashboard EXISTS and honestly renders the nine §11 rows over the real recorder — but it
+  is reachable ONLY by knowing `/ops/slo`: the admin console's five-item nav carries no
+  SLO destination, and no web/admin/mobile source references the path. By journey-audit
+  line 199 it is not discoverable.
+- **Minimal reproducer:** the RL-115 GAP probe CAP-SLO renders home/settings/more/
+  workspace/connectivity and asserts zero `/ops/slo` references and zero SLO nav labels;
+  the structural guard asserts the same over all three apps' sources while pinning that
+  the ops surface itself still exists.
+- **Candidate remediation:** an admin-console nav entry (or ops-surface link) to the
+  session-gated dashboard.
+
+### RL-115-F3 — enterprise connector enrollment has no action path (CAP-E-CONNECTOR-ENROLLMENT)
+
+- **Where:** `apps/web/src/pages/workspace-page.ts` (connector status + journey step) vs
+  the enterprise package's API machinery (RL-104 read contract only).
+- **What:** the workspace honestly renders connector STATUS ("No connector has been set
+  up yet.", journey step "Not started", provisioning states when present) but offers NO
+  affordance to start provisioning: the web app composes no connector flow, no command
+  path, no route. The capability's §15 entry point is a status readout, not an action.
+- **Minimal reproducer:** the RL-115 GAP probe renders a workspace WITHOUT enterprise
+  fixtures and asserts `data-connector-absent="true"` + the "Not started" step + zero
+  anchors whose text matches connector/provision/enroll; the structural guard asserts no
+  `provisionConnector`/`enrollConnector`/`flows/*connector*` exists in the web sources.
+- **Candidate remediation:** a guided connector-setup action on the connector journey
+  step (provision → poll → verify), riding the command envelope.
+
+### RL-115-F4 — refunds have no customer surface (CAP-B-REFUNDS)
+
+- **Where:** `apps/web/src/pages/commerce-page.ts`, `order-journey-page.ts` vs
+  `packages/domain-commerce` (refund aggregate exists) and the support-ref vocabulary
+  (`refund` kind).
+- **What:** Layer B owns "customer-facing … refunds", but no surface renders refund
+  state — the commerce page shows products/orders/subscriptions, the order journey shows
+  payments/invoices; the only refund trace in the UX layer is the support-ref kind.
+- **Minimal reproducer:** the RL-115 GAP probe renders commerce + order and asserts the
+  joined text contains no "refund" (case-insensitive); the structural guard asserts no
+  refund vocabulary in the web page sources.
+- **Candidate remediation:** a refund read model section on the order journey (state +
+  freshness, riding the projection discipline).
+
+### RL-115-F5 — SSO/SCIM/MDM integrations have zero UX vocabulary (CAP-E-SSO-SCIM-MDM)
+
+- **Where:** all app surfaces.
+- **What:** §8 lists SSO/SCIM/MDM integrations; no web, admin or mobile source carries
+  the vocabulary at all. There is no integration-status view, let alone a setup journey.
+- **Minimal reproducer:** the RL-115 GAP probe asserts `\b(SSO|SCIM|MDM)\b` is absent
+  from workspace/settings/more renders; the structural guard asserts absence over all
+  three apps' sources.
+- **Candidate remediation:** an enterprise integrations section on the workspace page
+  (honest not-available states until the API exists — the page's established pattern).
+
+### RL-115-F6 — no integration/compatibility-health surface (CAP-D-COMPAT)
+
+- **Where:** `apps/admin/src/pages/*` vs §13 ("integration/compatibility health").
+- **What:** the env-gated compatibility probe (RL-108) runs host-side, but the admin
+  console has no page exposing its outcome; §13's admin musts are otherwise covered
+  (tenants, audit, reconciliation, projection health, support triage).
+- **Minimal reproducer:** the structural guard asserts the admin page sources contain no
+  compatibility/integration-health vocabulary.
+- **Candidate remediation:** an admin integration-health surface fed by the probe's
+  fail-closed state (compatible/incompatible/not-configured with timestamps).
+
+### RL-115-F7 — organization policies render only their own absence (CAP-E-POLICY)
+
+- **Where:** `apps/web/src/pages/workspace-page.ts policySummarySection` + the `policy`
+  journey step.
+- **What:** the workspace page HONESTLY renders "Not available yet" (`data-policy-gap`,
+  step state `not-available`) because no org-policy read model exists. §15-wise the
+  capability has no entry/view; the page's own recorded honest state is the finding.
+- **Minimal reproducer:** the RL-115 GAP probe asserts `data-policy-gap="true"` and the
+  step's "Not available yet" state render.
+- **Candidate remediation:** an org-policy read model in the application contract, then
+  the summary section the page already promises.
+
+### RL-115-F8 — the delivery-progress order journey is URL-only (CAP-B-ORDERS / CAP-L-COMMERCIAL)
+
+- **Where:** `apps/web/src/pages/commerce-page.ts` (Orders table) vs
+  `apps/web/src/pages/order-journey-page.ts` (the RL-101 guided purchase-to-delivery
+  view) and `WEB_PAGE_ROUTES.order`.
+- **What:** the delivery-progress view — the commercial loop's explanatory view and the
+  user-journey-audit §6 requirement ("after payment, navigate to a delivery progress
+  view") — renders only when a host composes the post-payment redirect. No static link
+  reaches it: the commerce Orders table renders plain rows (no anchors), and the route
+  appears in no page source. A customer with a placed order cannot navigate to its
+  delivery journey from the commerce surface.
+- **Minimal reproducer:** the RL-115 GAP probe asserts the commerce document contains
+  `data-orders="true"` and the seeded order id as text, but no `/orders/` href anywhere;
+  the structural guard asserts the Orders table section composes no `pagePath("order")`.
+- **Candidate remediation:** link each Orders-table row to its delivery-progress page
+  (and keep the post-payment redirect).
+
+---
+
+## 4. Candidate gaps investigated and dispositioned
+
+The dispatch named three candidates; each was verified, not assumed:
+
+1. **eSIM profile management** — confirmed GAP (RL-115-F1), with the nuance that status
+   visibility IS verified on the mobile matrix: the gap is the management journey.
+2. **SLO dashboard entry from the admin console** — confirmed GAP (RL-115-F2): the view
+   is real (host-side, honest), the entry is missing everywhere.
+3. **Enterprise connector enrollment discoverability** — confirmed GAP (RL-115-F3):
+   status is discoverable on the workspace; the enrollment ACTION is not.
+
+Three further gaps were found by the audit and recorded above: refunds (F4),
+SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit
+by the page itself (F7) and the URL-only delivery-progress journey (F8).
+
+## 5. Honest verification limits (AR-009/AR-010 discipline)
+
+- The render-level proofs are deterministic scanners over rendered HTML — they prove
+  structure, vocabulary and linkage, not visual appearance, real screen-reader behavior
+  or real touch hardware. No browser/AT tooling was added (the repo is deliberately
+  dependency-light); §14's visual dimension is verified at the stylesheet-contract level.
+- The admin console and ops dashboard rows are VERIFIED (proxy): their render-level
+  behavior is covered by their own existing suites plus this audit's structural guards
+  (this work item's scope excludes `apps/admin/test` and `apps/portal-host`).
+- Everything standing from the campaign remains standing: no real-cloud execution
+  (AR-009) and no real-infra verification legs (AR-010) — the hosted product a customer
+  would actually traverse still does not exist, so "discoverable" here means discoverable
+  by the rendered surfaces of this tree.
+- `docs/reports/accepted-risks.json` was deliberately NOT extended: these findings are
+  verification records for the Tech Lead to disposition (the threat-model precedent),
+  not self-accepted risks.
+
+## 6. RL-114 cross-reference (the responsive/accessibility lane of Wave 8B)
+
+The RL-114 extended suites pin the UX findings in their headers and tests; summarized
+here for one-stop reading (full reproducers in the suites):
+
+| Finding | Surface | One-line record | Pinned in |
+|---------|---------|-----------------|-----------|
+| RL-114-F1 | web | No rendered web document contains an `<h1>` (shell title is an anchor); every hierarchy starts at h2 | `apps/web/test/rl114-extended-a11y.test.ts` |
+| RL-114-F2 | web | Level skips on edge paths: Connectivity's h2→h4 disclosure panels; read-failure and mutation-result bodies lead with h3 | same |
+| RL-114-F3 | web | The 44px floor skips generic in-content action links and the shell indicator link | same |
+| RL-114-F4 | web | `/notifications` is URL-only (zero inbound links) | same |
+| RL-114-F5 | mobile | The mobile shell lacks the web shell's a11y layer: no skip link, no `:focus-visible` rule, no reduced-motion guard, no 44px floor, no safe-area, unlabelled nav | `apps/mobile/test/rl114-mobile-document-contract.test.ts` |
+| RL-114-F6 | mobile | All four nav anchors (`#now/#capabilities/#controls/#outbox`) are dead — no matching ids exist | same |
+| RL-114-F7 | mobile | Tables render `<th>` without scope, outside labelled scroll regions | same |
+
+The RL-114 VERIFIED contracts (loading/error/empty per surface, badge text pairing,
+per-leg mobile document contract, guidance pairing) are the green suites referenced
+above.
+
+## 7. How to run
+
+```bash
+pnpm -C apps/web test -- rl115            # the render-level cross-reference suite
+pnpm -C apps/mobile test -- rl115         # the mobile capability-surface suite
+pnpm -C tests/architecture test -- wave8-b # the structural drift-guards
+pnpm -C apps/web test -- rl114            # the extended responsive/a11y suite (web)
+pnpm -C apps/mobile test -- rl114         # the mobile document contract
+```
+
+The drift-guards fail when a surface gains or loses a capability reference, when the
+cited vocabularies (routes, navs, §7 capability names, §11 SLO ids, support-ref kinds)
+change, or when the doc and the suite inventories diverge — that is the point: the
+inventory is frozen against the spec, and any change to the surfaces must update the
+audit in the same change.
