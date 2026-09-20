@@ -17,6 +17,8 @@
     "smoke:selftest": "node infra/deployment/smoke/selftest.mjs",
     "rollback:check": "node infra/deployment/rollback/check.mjs",
     "rollback:check:selftest": "node infra/deployment/rollback/selftest.mjs",
+    "demo:acceptance": "node infra/deployment/demo-acceptance/check.mjs",
+    "demo:acceptance:selftest": "node infra/deployment/demo-acceptance/selftest.mjs",
     "dev": "pnpm -r --parallel --if-present dev",
     "prepare": "node scripts/hooks/install.mjs"
   },
