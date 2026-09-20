@@ -72,6 +72,7 @@ import type { DurableJobDeliveryPort } from "@roamlink/provider-qstash";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
 import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
+import { createHostSloBindings, type HostSloBindings } from "./slo.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
 
@@ -104,6 +105,12 @@ export interface PortalHostComposition {
     readonly cronSecret: string | undefined;
     readonly run: () => Promise<DailyMaintenanceResult>;
   };
+  /**
+   * The host's §11 SLO bindings (RL-109): the REAL observability recorder
+   * this process emits through, plus the deployment-configured objectives.
+   * The ops surface (see ops-slo-page.ts) renders their state read-only.
+   */
+  readonly slo: HostSloBindings;
   /**
    * The identity stores of this process. Host-internal: exposed as the
    * honest seam until the identity persistence adapters land (ops tooling
@@ -181,6 +188,13 @@ export interface PortalHostEnv {
   readonly qstashToken?: string | undefined;
   readonly qstashBaseUrl?: string | undefined;
   readonly maintenanceDestination?: string | undefined;
+  /**
+   * ROAMLINK_SLO_OBJECTIVES (RL-109): the deployment's budgeted §11 SLO
+   * objectives, `id:targetRatio:windowMs[:atRiskBurnRate]` entries keyed by
+   * the closed §11 SLO ids. Absent -> every SLO renders honestly
+   * measured-only (never silently classified). See ./slo.ts.
+   */
+  readonly sloObjectivesRaw?: string | undefined;
 }
 
 /** Thrown when the composition refuses to boot (fail-closed policy). */
@@ -367,6 +381,13 @@ async function createPortalHostCompositionWithDriver(
       }),
   };
 
+  // --------------------------------------------------------------------------
+  // The §11 SLO bindings (RL-109): the REAL recorder + the deployment's
+  // configured objectives. The ops surface renders their state read-only
+  // (ops-slo-page.ts) - real recorder state, zero invented numbers.
+  // --------------------------------------------------------------------------
+  const slo = createHostSloBindings({ objectivesRaw: env.sloObjectivesRaw, now });
+
   const readyCheck = async (): Promise<ReadinessReport> => {
     const report = await readiness.report();
     return {
@@ -380,7 +401,7 @@ async function createPortalHostCompositionWithDriver(
     };
   };
 
-  return { api, driver, persistence, maintenance, identity, readyCheck, dispose };
+  return { api, driver, persistence, maintenance, slo, identity, readyCheck, dispose };
 }
 
 async function bindDriver(

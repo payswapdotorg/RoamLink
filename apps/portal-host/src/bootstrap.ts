@@ -30,6 +30,7 @@ export function portalHostEnvFromProcessEnv(
   qstashToken: string | undefined;
   qstashBaseUrl: string | undefined;
   maintenanceDestination: string | undefined;
+  sloObjectives: string | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
@@ -49,6 +50,8 @@ export function portalHostEnvFromProcessEnv(
     qstashToken: env["QSTASH_TOKEN"],
     qstashBaseUrl: env["QSTASH_URL"],
     maintenanceDestination: env["ROAMLINK_MAINTENANCE_DESTINATION"],
+    // RL-109: the deployment's budgeted §11 SLO objectives (see src/slo.ts).
+    sloObjectives: env["ROAMLINK_SLO_OBJECTIVES"],
   };
 }
 

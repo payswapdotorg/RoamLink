@@ -19,3 +19,4 @@ export * from "./health/health.js";
 export * from "./slo/slo.js";
 export * from "./slo/slo-health.js";
 export * from "./slo/slo-metrics.js";
+export * from "./slo/slo-dashboard.js";

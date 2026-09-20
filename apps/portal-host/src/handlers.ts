@@ -11,7 +11,7 @@
  * Discipline (spec/deployment.md §4): these handlers translate transport
  * ONLY - no database access, no outcome decisions, no invented state.
  */
-import { HTTP_STATUS } from "@roamlink/app-kit";
+import { HTTP_STATUS, el, fragment, htmlDocument, pageShell, text, type ActorSessionResource } from "@roamlink/app-kit";
 import { CompositionError } from "./composition.js";
 import type { HostRuntime } from "./bootstrap.js";
 
@@ -38,6 +38,9 @@ import {
   resolveAdminPage,
   resolveWebPage,
 } from "./surface.js";
+import { resolveActorSession } from "./ops-surface.js";
+import { opsSloSurfaceDocument } from "./ops-slo-page.js";
+import { buildProductSloDashboard } from "@roamlink/observability";
 
 // ---------------------------------------------------------------------------
 // Health / readiness (spec/deployment.md: "health/readiness is real, not fake")
@@ -143,8 +146,85 @@ export async function handleMaintenanceDaily(request: Request, runtime: HostRunt
 }
 
 // ---------------------------------------------------------------------------
-// The surfaces (apps/web under "/", apps/admin under "/admin")
+// The ops SLO dashboard (RL-109): the HOST-SIDE operator surface over the
+// composition's real §11 SLO bindings (see ./slo.ts for the architecture
+// decision). Fail-closed rendering gate BEFORE any surface state is read.
 // ---------------------------------------------------------------------------
+
+/** The operator read permission (mirrors the console's read-surface mapping). */
+const OPS_SURFACE_READ_PERMISSION = "org:read";
+
+export async function handleOpsSloSurface(request: Request, runtime: HostRuntime): Promise<Response> {
+  if (!runtime.ok) {
+    return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; no surface is served");
+  }
+  const token = sessionTokenOf(request.headers.get("cookie") ?? undefined);
+  if (token === undefined) return redirectTo("/login");
+  let session: ActorSessionResource;
+  try {
+    session = await resolveActorSession(runtime.composition.api, token);
+  } catch (error) {
+    if (error instanceof SessionResolutionError) return redirectTo("/login");
+    return internalErrorResponse();
+  }
+  // Fail-closed permission gate (the admin-console discipline): a denied
+  // actor NEVER triggers the surface's state read — and this surface's
+  // state read is the composition's own recorder evaluation.
+  if (!session.permissions.includes(OPS_SURFACE_READ_PERMISSION)) {
+    return htmlResponse(
+      renderOpsAccessDeniedDocument(session, OPS_SURFACE_READ_PERMISSION),
+    );
+  }
+  const { recorder, objectives } = runtime.composition.slo;
+  const snapshot = buildProductSloDashboard({
+    events: recorder.events,
+    now: recorder.now,
+    objectives,
+  });
+  return htmlResponse(opsSloSurfaceDocument({ snapshot }));
+}
+
+function renderOpsAccessDeniedDocument(
+  session: { readonly tenantId: string; readonly scope: string; readonly role: string | null },
+  permission: string,
+): string {
+  return htmlDocument(
+    "RoamLink Ops - Access denied",
+    pageShell({
+      appTitle: "RoamLink Ops",
+      navLinks: [{ label: "SLO dashboard", href: "/ops/slo" }],
+      main: fragment(
+        el(
+          "div",
+          {
+            class: "panel error",
+            "data-access-denied": "true",
+            "data-required-permission": permission,
+          },
+          fragment(
+            el("h3", {}, text("Access denied")),
+            el(
+              "p",
+              {},
+              text(
+                `This ops surface requires the '${permission}' permission in tenant ${session.tenantId}.`,
+              ),
+            ),
+            el(
+              "p",
+              { class: "muted" },
+              text(
+                `Your session: scope ${session.scope}${session.role === null ? "" : `, role ${session.role}`}. Authorization is enforced by the API; this decision is final for this session.`,
+              ),
+            ),
+          ),
+        ),
+      ),
+      footerNote:
+        "RoamLink ops surface (RL-109): fail-closed rendering gate; denied actors never read surface state.",
+    }),
+  ).html;
+}
 
 function htmlResponse(document: string, status = 200): Response {
   return new Response(document, { status, headers: { "content-type": "text/html; charset=utf-8" } });
