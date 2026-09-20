@@ -30,6 +30,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
+import { parseMigrationVersion } from "@roamlink/persistence";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -148,7 +149,7 @@ describe("RL-112 RT-3: the partial rollback to a target keeps the target applied
       await runner.migrateUp();
 
       // DOWN to 0002: 0004 then 0003 rolled back; 0002 stays applied.
-      const rolledBack = await runner.migrateDown("0002");
+      const rolledBack = await runner.migrateDown(parseMigrationVersion("0002"));
       expect(rolledBack).toEqual(["0004", "0003"]);
       const afterDown = await runner.manifest();
       expect(afterDown.applied.map((entry) => entry.version)).toEqual(["0001", "0002"]);
