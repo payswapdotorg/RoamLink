@@ -20,6 +20,7 @@
  *   - `surface.ts`              mounting apps/web + apps/admin
  *   - `handlers.ts`             the pure route handlers (no framework import)
  *   - `bootstrap.ts`            the memoized env-driven runtime
+ *   - `demo-accounts.ts`        the demo environment's public accounts (quick action logins)
  *   - `app/`                    three-line Next.js forwarders ONLY
  *
  * Authority discipline (spec/deployment.md §4): HTTP -> application
@@ -34,3 +35,4 @@ export * from "./session.js";
 export * from "./surface.js";
 export * from "./handlers.js";
 export * from "./bootstrap.js";
+export * from "./demo-accounts.js";

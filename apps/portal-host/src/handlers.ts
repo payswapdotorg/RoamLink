@@ -318,8 +318,15 @@ export async function handleAdminSurface(request: Request, runtime: HostRuntime)
 // The host session layer (login document + the cookie-binding submit)
 // ---------------------------------------------------------------------------
 
-export function handleLoginPage(): Response {
-  return htmlResponse(renderLoginDocument());
+/**
+ * The login document. The demo environment's public roster (quick action
+ * sign-in forms) renders ONLY when the composition booted AND the
+ * ROAMLINK_DEMO_ACCOUNTS gate enabled it; a refused composition still serves
+ * the plain credential form (the submit then answers the honest 503).
+ */
+export function handleLoginPage(runtime: HostRuntime): Response {
+  const demoAccounts = runtime.ok ? runtime.composition.demo.accounts : undefined;
+  return htmlResponse(renderLoginDocument(undefined, demoAccounts));
 }
 
 const PLACEHOLDER_ACTOR = "usr:unauthenticated";

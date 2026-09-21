@@ -480,6 +480,22 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
   AR-010 operator-phase flips), 1 a red row (not accepted), 2
   config-invalid. The selftest pins the runner loopback-only — a sabotaged
   (lying) deployment flips the verdict.
+- `apps/portal-host` demo accounts (`src/demo-accounts.ts`) — the demo
+  environment's PUBLIC sign-in fixtures with quick action logins, gated by
+  `ROAMLINK_DEMO_ACCOUNTS` ("1"/"true" enables; unset/"0"/"false" disables;
+  any other value refuses the host boot — see
+  `infra/deployment/environments/demo.env.example`). When enabled, the
+  composition seeds three personas through the REAL `@roamlink/auth`
+  administration boundary (Demo Customer on a personal tenant; Demo Org
+  Owner and Demo Org Member on the `RoamLink Demo Cooperative`
+  organization) with fully deterministic identities (fixed UUIDs,
+  idempotency keys and envelope mint instant — every cold boot rebuilds
+  the identical roster), and `/login` renders one-click sign-in forms that
+  POST each persona's public credentials to the SAME `/auth/session`
+  cookie binding the manual form uses (no parallel auth path, no
+  client-side script). The personas are public fixtures: `.example`
+  domain emails, a shared password rendered on the login page, no secret
+  material anywhere (RL-LOCK-016).
 - `packages/app-kit` — the shared application kit for the RL-060/RL-061
   product surfaces: the public application API contract (spec/api.md) as
   schema-first typed wire resources with fail-closed parsers, the

@@ -33,6 +33,7 @@ export function portalHostEnvFromProcessEnv(
   qstashSigningKeyCurrent: string | undefined;
   qstashSigningKeyNext: string | undefined;
   sloObjectives: string | undefined;
+  demoAccounts: string | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
@@ -57,6 +58,9 @@ export function portalHostEnvFromProcessEnv(
     qstashSigningKeyNext: env["QSTASH_NEXT_SIGNING_KEY"],
     // RL-109: the deployment's budgeted §11 SLO objectives (see src/slo.ts).
     sloObjectives: env["ROAMLINK_SLO_OBJECTIVES"],
+    // The public demo accounts gate (see src/demo-accounts.ts): the demo
+    // environment's public fixtures, disabled everywhere else by default.
+    demoAccounts: env["ROAMLINK_DEMO_ACCOUNTS"],
   };
 }
 
