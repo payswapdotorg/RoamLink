@@ -469,6 +469,28 @@ function deviceManagementForms(device: DeviceResource): HtmlFragment {
   );
 }
 
+function deviceSimSection(device: DeviceResource): HtmlFragment {
+  return el(
+    "section",
+    { "data-device-sim": "true" },
+    fragment(
+      pageHeading(
+        "SIM & Profiles",
+        "The eSIM profiles on this device — installs, removals and enablement, gated by what the platform actually allows.",
+      ),
+      el(
+        "p",
+        {},
+        el(
+          "a",
+          { href: pagePath("deviceSim", { deviceId: device.deviceId }) },
+          text("Manage SIM & profiles"),
+        ),
+      ),
+    ),
+  );
+}
+
 export function deviceDetailPage(input: {
   readonly device: DeviceResource;
   readonly connectivity: ConnectivityOverviewResource;
@@ -482,6 +504,7 @@ export function deviceDetailPage(input: {
       `${DEVICE_PLATFORM_LANGUAGE[device.platform] ?? device.platform} · ${DEVICE_STATUS_LANGUAGE[device.status] ?? device.status}`,
     ),
     capabilityCard(device),
+    deviceSimSection(device),
     deviceObservationSection(device, input.connectivity),
     deviceGoalsSection(device, input.intents),
     deviceActionsSection(device, input.notifications),

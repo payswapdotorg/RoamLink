@@ -319,3 +319,62 @@ export const MANUAL_FALLBACK_GUIDANCE: readonly string[] = Object.freeze([
   "You can always connect or switch networks yourself from the device's own settings — RoamLink never takes that ability away.",
   "If RoamLink cannot act on this device, it says so and gives you the steps instead of failing silently.",
 ]);
+
+// ---------------------------------------------------------------------------------
+// RL-115-F1 remediation (PA-001) — the SIM & Profiles vocabulary
+// (spec/ux-architecture.md §9 + §15; spec/architecture.md §7).
+//
+// Presentation-only translations of the eSIM read model's closed vocabularies.
+// A status row is EVIDENCE, never a permission: actions pass the capability
+// gate first (RL-LOCK-011), and a blocked action renders its manual guidance
+// from the closed map below — never a disabled mystery.
+// ---------------------------------------------------------------------------------
+
+/** Human sentences for the per-capability platform statuses. */
+export const ESIM_CAPABILITY_STATUS_LANGUAGE: Readonly<Record<string, string>> = Object.freeze({
+  available: "Available — the platform reports this works on this device",
+  "requires-permission":
+    "Needs your permission — the platform requires an explicit permission grant first",
+  unavailable: "Not available — the platform reports this device cannot do this",
+  unknown: "Not verified yet — no evidence recorded for this device",
+});
+
+/** Human sentences for the gate preview decisions. */
+export const ESIM_GATE_LANGUAGE: Readonly<Record<string, string>> = Object.freeze({
+  allow: "Allowed now",
+  deny: "Blocked",
+  degrade: "Blocked until you grant the permission",
+});
+
+/** Human sentences for the honest eSIM profile states. */
+export const ESIM_PROFILE_STATE_LANGUAGE: Readonly<Record<string, string>> = Object.freeze({
+  enabled: "Installed and enabled",
+  disabled: "Installed, currently disabled",
+  "install-requested": "Install requested — waiting for the device to confirm",
+  "remove-requested": "Removal requested — waiting for the device to confirm",
+});
+
+/**
+ * The CLOSED manual-guidance map for blocked eSIM actions, keyed by the
+ * gate's closed reason vocabulary (the same map discipline the mobile
+ * capability surface carries). Presentation guidance, never authority: it
+ * tells the customer what to do on the device itself when RoamLink cannot
+ * act — instead of hiding the action behind a disabled control.
+ */
+export function esimManualGuidanceFor(reason: string | null, capability: string): string {
+  const words = capability.replace(/_/g, " ");
+  switch (reason) {
+    case "capability-requires-permission":
+      return `Grant the ${words} permission in this device's platform settings, then come back — RoamLink never bypasses a platform permission.`;
+    case "capability-unavailable":
+      return `The platform reports ${words} as unavailable on this device. Use the device's own settings to manage it manually.`;
+    case "capability-unknown":
+      return `RoamLink has no evidence yet for ${words} on this device — nothing is assumed; the observation fills this in.`;
+    case "evidence-class-insufficient":
+      return `The evidence for ${words} is too weak to act on — wait for a fresh observation before trying again.`;
+    case "evidence-stale":
+      return `The ${words} observation has expired — re-check this device before acting.`;
+    default:
+      return "Use the device's own settings to manage this manually — RoamLink only acts on verified capability evidence.";
+  }
+}

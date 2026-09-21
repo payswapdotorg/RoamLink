@@ -23,6 +23,9 @@ export const WEB_PAGE_ROUTES = Object.freeze({
   connectivity: "/connectivity",
   devices: "/devices",
   device: "/devices/{deviceId}",
+  // RL-115-F1 remediation (PA-001, additive): the device-level eSIM
+  // management journey, reachable from the device detail page.
+  deviceSim: "/devices/{deviceId}/sim",
   intents: "/intents",
   intent: "/intents/{intentId}",
   commerce: "/commerce",

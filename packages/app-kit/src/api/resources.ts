@@ -248,6 +248,246 @@ function parseDeviceResourceAt(label: string, value: unknown): DeviceResource {
 }
 
 // --------------------------------------------------------------------------------
+// Device SIM & eSIM profiles (RL-115-F1 remediation, PA-001)
+// --------------------------------------------------------------------------------
+
+/**
+ * The closed eSIM capability-name members this surface manages (a subset of
+ * the §7 device capability vocabulary, spec/architecture.md §7 — the same
+ * three names the domain-experience/edge closed vocabularies carry).
+ */
+export const ESIM_CAPABILITY_NAMES = [
+  "esim_profile_install",
+  "esim_profile_remove",
+  "esim_profile_enable",
+] as const;
+export type EsimCapabilityName = (typeof ESIM_CAPABILITY_NAMES)[number];
+
+/**
+ * The platform-reported status per eSIM capability (mirrors the edge
+ * capability-snapshot status vocabulary's members that reach this surface).
+ * A status is evidence-backed metadata, never an action permission: acting
+ * still passes the gate (RL-LOCK-011).
+ */
+export const ESIM_CAPABILITY_STATUSES = [
+  "available",
+  "requires-permission",
+  "unavailable",
+  "unknown",
+] as const;
+export type EsimCapabilityStatus = (typeof ESIM_CAPABILITY_STATUSES)[number];
+
+/** The gate decisions the read may preview (mirrors the edge capability gate). */
+export const ESIM_GATE_DECISIONS = ["allow", "deny", "degrade"] as const;
+export type EsimGateDecision = (typeof ESIM_GATE_DECISIONS)[number];
+
+/** The closed gate-reason vocabulary (mirrors the edge deny/degrade reasons). */
+export const ESIM_GATE_REASONS = [
+  "capability-requires-permission",
+  "capability-unavailable",
+  "capability-unknown",
+  "evidence-class-insufficient",
+  "evidence-stale",
+] as const;
+export type EsimGateReason = (typeof ESIM_GATE_REASONS)[number];
+
+/**
+ * The honest eSIM profile states. `install-requested` and `remove-requested`
+ * are COMMANDED states: a command acceptance is never an installed profile
+ * (the central truthfulness rule) — the platform confirmation flips them to
+ * the confirmed states with evidence.
+ */
+export const ESIM_PROFILE_RESOURCE_STATES = [
+  "install-requested",
+  "enabled",
+  "disabled",
+  "remove-requested",
+] as const;
+export type EsimProfileState = (typeof ESIM_PROFILE_RESOURCE_STATES)[number];
+
+/** The outstanding desired-state command kinds on a profile. */
+export const ESIM_PENDING_COMMAND_KINDS = ["install", "remove", "enable", "disable"] as const;
+export type EsimPendingCommandKind = (typeof ESIM_PENDING_COMMAND_KINDS)[number];
+
+/** One eSIM capability's truth row: status, evidence, freshness, gate preview. */
+export interface EsimCapabilityRowResource {
+  readonly capability: EsimCapabilityName;
+  readonly status: EsimCapabilityStatus;
+  /** Evidence class backing the status (null when nothing was observed). */
+  readonly evidenceClass: string | null;
+  readonly freshness: FreshnessView | null;
+  /** What the capability gate decides right now — before any action is offered. */
+  readonly gate: {
+    readonly decision: EsimGateDecision;
+    /** The closed-vocabulary block reason; null on an allow. */
+    readonly reason: EsimGateReason | null;
+  };
+}
+
+/** One eSIM profile record with its honest evidence state. */
+export interface EsimProfileResource {
+  readonly profileId: string;
+  readonly label: string;
+  readonly state: EsimProfileState;
+  /**
+   * The platform evidence class backing the recorded state. Null while the
+   * record is only COMMANDED (install/remove requested): a requested
+   * install is not an installed profile.
+   */
+  readonly evidenceClass: string | null;
+  readonly freshness: FreshnessView | null;
+  readonly installedAt: string | null;
+  /** The outstanding desired-state command, when the platform has not confirmed yet. */
+  readonly pending: {
+    readonly kind: EsimPendingCommandKind;
+    readonly commandId: string;
+    readonly requestedAt: string;
+  } | null;
+}
+
+/**
+ * The device-level SIM & Profiles read: the three eSIM capability truth
+ * rows, the platform's install contract (whether installing requires
+ * activation-code entry) and the profile inventory.
+ */
+export interface DeviceSimResource {
+  readonly deviceId: string;
+  readonly capabilities: readonly EsimCapabilityRowResource[];
+  readonly installRequiresActivationCode: boolean;
+  readonly profiles: readonly EsimProfileResource[];
+}
+
+function parseEsimCapabilityRowAt(label: string, value: unknown): EsimCapabilityRowResource {
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, [
+    "capability",
+    "status",
+    "evidenceClass",
+    "freshness",
+    "gate",
+  ]);
+  requireFields(label, record, ["capability", "status", "gate"]);
+  const gate = asObject(`${label}.gate`, record["gate"]);
+  rejectUnknownFields(`${label}.gate`, gate, ["decision", "reason"]);
+  requireFields(`${label}.gate`, gate, ["decision"]);
+  const decision = asEnum(`${label}.gate.decision`, ESIM_GATE_DECISIONS, gate["decision"]);
+  const reason = gate["reason"];
+  return Object.freeze({
+    capability: asEnum(`${label}.capability`, ESIM_CAPABILITY_NAMES, record["capability"]),
+    status: asEnum(`${label}.status`, ESIM_CAPABILITY_STATUSES, record["status"]),
+    evidenceClass:
+      record["evidenceClass"] === null || record["evidenceClass"] === undefined
+        ? null
+        : asString(`${label}.evidenceClass`, record["evidenceClass"]),
+    freshness:
+      record["freshness"] === null || record["freshness"] === undefined
+        ? null
+        : parseFreshnessView(`${label}.freshness`, record["freshness"]),
+    gate: Object.freeze({
+      decision,
+      // An allow gate carries no reason; a blocked gate always does.
+      reason:
+        decision === "allow"
+          ? null
+          : asEnum(`${label}.gate.reason`, ESIM_GATE_REASONS, reason ?? undefined),
+    }),
+  });
+}
+
+function parseEsimProfileAt(label: string, value: unknown): EsimProfileResource {
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, [
+    "profileId",
+    "label",
+    "state",
+    "evidenceClass",
+    "freshness",
+    "installedAt",
+    "pending",
+  ]);
+  requireFields(label, record, ["profileId", "label", "state"]);
+  const state = asEnum(`${label}.state`, ESIM_PROFILE_RESOURCE_STATES, record["state"]);
+  const rawPending = record["pending"];
+  return Object.freeze({
+    profileId: asString(`${label}.profileId`, record["profileId"]),
+    label: asString(`${label}.label`, record["label"]),
+    state,
+    evidenceClass:
+      record["evidenceClass"] === null || record["evidenceClass"] === undefined
+        ? null
+        : asString(`${label}.evidenceClass`, record["evidenceClass"]),
+    freshness:
+      record["freshness"] === null || record["freshness"] === undefined
+        ? null
+        : parseFreshnessView(`${label}.freshness`, record["freshness"]),
+    installedAt:
+      record["installedAt"] === null || record["installedAt"] === undefined
+        ? null
+        : asInstant(`${label}.installedAt`, record["installedAt"]),
+    pending:
+      rawPending === null || rawPending === undefined
+        ? null
+        : parseEsimPendingAt(`${label}.pending`, rawPending),
+  });
+}
+
+function parseEsimPendingAt(
+  label: string,
+  value: unknown,
+): NonNullable<EsimProfileResource["pending"]> {
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, ["kind", "commandId", "requestedAt"]);
+  requireFields(label, record, ["kind", "commandId", "requestedAt"]);
+  return Object.freeze({
+    kind: asEnum(`${label}.kind`, ESIM_PENDING_COMMAND_KINDS, record["kind"]),
+    commandId: asString(`${label}.commandId`, record["commandId"]),
+    requestedAt: asInstant(`${label}.requestedAt`, record["requestedAt"]),
+  });
+}
+
+export function parseDeviceSimResource(value: unknown): DeviceSimResource {
+  const label = "DeviceSimResource";
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, [
+    "deviceId",
+    "capabilities",
+    "installRequiresActivationCode",
+    "profiles",
+  ]);
+  requireFields(label, record, [
+    "deviceId",
+    "capabilities",
+    "installRequiresActivationCode",
+    "profiles",
+  ]);
+  const capabilities = arrayOf(
+    `${label}.capabilities`,
+    record["capabilities"],
+    parseEsimCapabilityRowAt,
+  );
+  if (capabilities.length !== ESIM_CAPABILITY_NAMES.length) {
+    throw new ValidationError(
+      `${label}.capabilities must carry exactly the three eSIM capability rows (esim_profile_install, esim_profile_remove, esim_profile_enable)`,
+      {
+        reason: "RESOURCE_INVALID",
+        details: [
+          { path: `${label}.capabilities`, issue: "not exactly the closed three-row set" },
+        ],
+      },
+    );
+  }
+  return Object.freeze({
+    deviceId: asString(`${label}.deviceId`, record["deviceId"]),
+    capabilities,
+    installRequiresActivationCode: asBoolean(
+      `${label}.installRequiresActivationCode`,
+      record["installRequiresActivationCode"],
+    ),
+    profiles: arrayOf(`${label}.profiles`, record["profiles"], parseEsimProfileAt),
+  });
+}
+
+// --------------------------------------------------------------------------------
 // Experience intents (RL-011/013 surface)
 // --------------------------------------------------------------------------------
 

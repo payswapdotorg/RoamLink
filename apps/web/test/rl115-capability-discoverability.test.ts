@@ -24,14 +24,16 @@
  * proxy — used for the mobile/admin/ops-owned surfaces verified from this
  * suite's sibling suites and the structural guards), GAP (pinned absence).
  *
- * PA-003 CLOSURE (the audit's designed mechanism — fixes flip explicit
+ * PA CLOSURES (the audit's designed mechanism — fixes flip explicit
  * assertions): RL-115-F8 is CLOSED (every Orders-table row now links to
  * its delivery-progress journey; CAP-B-ORDERS and CAP-L-COMMERCIAL are
  * VERIFIED with their contextual links), and RL-114-F4 is RESOLVED as
  * designed behavior (Option B: /notifications is compatibility-only with
- * a visible role note; CAP-A-NOTIFICATIONS is VERIFIED). The closure
- * probes below carry the flipped expectations; the remaining GAP probes
- * still pin their recorded absences.
+ * a visible role note; CAP-A-NOTIFICATIONS is VERIFIED). RL-115-F1 is
+ * CLOSED (the eSIM management journey — CAP-X-ESIM-MANAGE flipped GAP ->
+ * VERIFIED: the pinned absence probe became the VERIFIED probe, the doc
+ * matrix row flipped with it). The closure probes below carry the flipped
+ * expectations; the remaining GAP probes still pin the open findings.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -356,9 +358,11 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-X-ESIM-MANAGE",
     capability: "eSIM profile installation/removal/enablement (esim_profile_install/remove/enable)",
     spec: "spec/architecture.md §7",
-    verdict: "GAP",
-    gapNote:
-      "status visibility is proven on the mobile truth table (all three eSIM capability names render with status/evidence/freshness/gate previews), but the rows are STATUS-ONLY: no anchor, form or button exists — there is no install/remove/enable flow, no profile inventory view, no activation-code entry, and the customer web surface has zero eSIM vocabulary (RL-115-F1)",
+    verdict: "VERIFIED",
+    entry: { page: "deviceSim", mustRender: ["SIM &amp; Profiles", "Install a new profile", "esim_profile_install"] },
+    contextualLink: { from: "device", href: "/devices/dddddddd-0000-4000-8000-000000000001/sim", labelContains: "Manage SIM" },
+    explanatoryView: { page: "deviceSim", mustRender: ["What this device can do with eSIM profiles", "Profiles on this device"] },
+    recovery: { page: "deviceSim", mustRender: ["When the platform cannot do it for you"] },
   },
   {
     id: "CAP-X-INTERFACE-SELECT",
@@ -504,7 +508,7 @@ describe("RL-115 §15.1 primary entry points (render-level)", () => {
       const hit = cache.get(page);
       if (hit !== undefined) return hit;
       const params =
-        page === "device" ? { deviceId: PHONE_ID } :
+        page === "device" || page === "deviceSim" ? { deviceId: PHONE_ID } :
         page === "intent" ? { intentId: SEEDED_INTENT_ID } :
         page === "order" ? { orderId: SEED_ORDER_ID } :
         page === "case" ? { caseId: CASE_ID } :
@@ -532,7 +536,7 @@ describe("RL-115 §15.1 primary entry points (render-level)", () => {
   it("every VERIFIED row's explanatory view renders its evidence", async () => {
     const { app } = buildApp();
     const paramsFor = (page: string): Record<string, string> | undefined =>
-      page === "device" ? { deviceId: PHONE_ID } :
+      page === "device" || page === "deviceSim" ? { deviceId: PHONE_ID } :
       page === "intent" ? { intentId: SEEDED_INTENT_ID } :
       page === "order" ? { orderId: SEED_ORDER_ID } :
       page === "case" ? { caseId: CASE_ID } :
@@ -564,7 +568,7 @@ describe("RL-115 §15.2 contextual links from the journey (render-level)", () =>
       return html;
     };
     const paramsFor = (page: string): Record<string, string> | undefined =>
-      page === "device" ? { deviceId: PHONE_ID } :
+      page === "device" || page === "deviceSim" ? { deviceId: PHONE_ID } :
       page === "intent" ? { intentId: SEEDED_INTENT_ID } :
       page === "order" ? { orderId: SEED_ORDER_ID } :
       page === "case" ? { caseId: CASE_ID } :
@@ -612,7 +616,7 @@ describe("RL-115 §15.4 recovery/support paths (render-level)", () => {
   it("every VERIFIED row's recovery marker renders on its recovery page", async () => {
     const { app } = buildApp();
     const paramsFor = (page: string): Record<string, string> | undefined =>
-      page === "device" ? { deviceId: PHONE_ID } :
+      page === "device" || page === "deviceSim" ? { deviceId: PHONE_ID } :
       page === "intent" ? { intentId: SEEDED_INTENT_ID } :
       page === "order" ? { orderId: SEED_ORDER_ID } :
       page === "case" ? { caseId: CASE_ID } :
@@ -632,16 +636,27 @@ describe("RL-115 §15.4 recovery/support paths (render-level)", () => {
 });
 
 // --------------------------------------------------------------------------------
-// The GAP probes (pinned absences — the audit's negative proofs)
+// The flipped probe (RL-115-F1 -> VERIFIED by PA-001: fixes flip explicit
+// assertions — the audit's designed mechanism)
 // --------------------------------------------------------------------------------
 
-describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
-  it("GAP CAP-X-ESIM-MANAGE (RL-115-F1): zero eSIM vocabulary on the customer web surface", async () => {
+describe("RL-115 flipped probe (PA-001: the eSIM management journey now exists)", () => {
+  it("VERIFIED CAP-X-ESIM-MANAGE (RL-115-F1, flipped): the web surface carries the eSIM vocabulary and the journey is reachable from the device page", async () => {
     const { app } = buildApp();
+    // The journey is REACHABLE: the device detail page carries the SIM &
+    // Profiles section and its link (Devices -> Device -> SIM & Profiles).
+    const device = await app.renderDocument({ page: "device", params: { deviceId: PHONE_ID } });
+    expect(device).toContain('data-device-sim="true"');
+    expect(
+      new RegExp(`<a [^>]*href="/devices/${PHONE_ID}/sim"[^>]*>[\\s\\S]{0,200}?Manage SIM`).test(device),
+      "the device page must link the SIM & Profiles journey",
+    ).toBe(true);
+    // The joined web surface now CONTAINS the eSIM vocabulary (the pinned
+    // absence is gone): all three closed capability names render.
     const documents: string[] = [];
     for (const page of Object.keys(WEB_PAGE_ROUTES)) {
       const params =
-        page === "device" ? { deviceId: PHONE_ID } :
+        page === "device" || page === "deviceSim" ? { deviceId: PHONE_ID } :
         page === "intent" ? { intentId: SEEDED_INTENT_ID } :
         page === "order" ? { orderId: SEED_ORDER_ID } :
         page === "case" ? { caseId: CASE_ID } :
@@ -649,10 +664,26 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
       documents.push(await app.renderDocument({ page: page as never, ...(params !== undefined ? { params } : {}) }));
     }
     const joined = documents.join("\n").toLowerCase();
-    expect(joined).not.toContain("esim");
-    expect(joined).not.toContain("e-sim");
-    expect(joined).not.toContain("sim selection");
+    expect(joined).toContain("esim_profile_install");
+    expect(joined).toContain("esim_profile_remove");
+    expect(joined).toContain("esim_profile_enable");
+    expect(joined).toContain("activation code");
+    // ...and the journey offers the gated management flows.
+    const sim = await app.renderDocument({ page: "deviceSim", params: { deviceId: PHONE_ID } });
+    expect(sim).toContain('data-flow="esim-install"');
+    expect(sim).toContain('data-flow="esim-remove"');
+    expect(sim).toContain('data-flow="esim-enable"');
+    expect(sim).toContain("Install profile");
   });
+});
+
+// --------------------------------------------------------------------------------
+// The GAP probes (pinned, recorded — not fixed)
+// --------------------------------------------------------------------------------
+
+describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
+  // (CAP-X-ESIM-MANAGE / RL-115-F1 lived here as a pinned absence until
+  // PA-001 flipped it into the VERIFIED probe above.)
 
   it("GAP CAP-E-CONNECTOR-ENROLLMENT (RL-115-F3): connector status renders but no enrollment action does", async () => {
     // A workspace WITHOUT enterprise fixtures (the honest pre-enrollment world).

@@ -14,6 +14,13 @@ export const API_ROUTE_TEMPLATES = Object.freeze({
   device: "/v1/devices/{deviceId}",
   deviceUpdate: "/v1/devices/{deviceId}/update",
   deviceRetire: "/v1/devices/{deviceId}/retire",
+  // RL-115-F1 remediation (PA-001, additive RL-LOCK-017): the device-level
+  // eSIM management journey — the SIM & Profiles read (capability truth +
+  // profile inventory) plus the three capability-gated eSIM commands.
+  deviceSim: "/v1/devices/{deviceId}/sim",
+  deviceSimInstall: "/v1/devices/{deviceId}/sim/install",
+  deviceSimProfileRemove: "/v1/devices/{deviceId}/sim/profiles/{profileId}/remove",
+  deviceSimProfileEnable: "/v1/devices/{deviceId}/sim/profiles/{profileId}/enable",
   experienceIntents: "/v1/experience-intents",
   experienceIntent: "/v1/experience-intents/{intentId}",
   experienceIntentVersions: "/v1/experience-intents/{intentId}/versions",

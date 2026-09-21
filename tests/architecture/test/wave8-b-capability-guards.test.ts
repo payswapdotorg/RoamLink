@@ -13,18 +13,18 @@
  *  - every capability row and every GAP finding stays in sync with the doc;
  *  - the §7 device-capability vocabulary the matrix rows cite stays closed;
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
- *  - the recorded ABSENCES (eSIM management UX, SLO entry point, connector
- *    enrollment action, refund surface, SSO/SCIM/MDM surface, compatibility
- *    health surface, /notifications inbound links) stay truthful — if one
- *    of these tests FAILS because a surface changed, the inventory + doc
- *    MUST be updated in the same change.
- *
- * PA-003 CLOSURES (the audit's designed mechanism — fixes flip explicit
- * assertions): RL-115-F8 is closed (the Orders table now composes its
- * journey links — the guard asserts the composition, through the route
- * table), and RL-114-F4 is resolved as the designed Option B contract
- * (/notifications is compatibility-only: zero inbound links BY DESIGN,
- * plus the visible compatibility-role note on the page itself).
+ *  - the recorded ABSENCES (SLO entry point, connector enrollment action,
+ *    refund surface, SSO/SCIM/MDM surface, compatibility health surface,
+ *    /notifications inbound links) stay truthful — if one of these tests
+ *    FAILS because a surface changed, the inventory + doc MUST be updated
+ *    in the same change;
+ *  - FLIPPED ABSENCES: PA-001 requires the eSIM management vocabulary on
+ *    the customer web surface (the flipped presence guard below — the
+ *    mobile surface stays status-only until its own work order); PA-003
+ *    requires the Orders-table journey composition (through the route
+ *    table) and resolves /notifications as the designed Option B contract
+ *    (compatibility-only: zero inbound links BY DESIGN, plus the visible
+ *    compatibility-role note on the page itself).
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -213,11 +213,21 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     expect(read("apps/portal-host/src/ops-slo-page.ts")).toContain('"data-slo-dashboard": "true"');
   });
 
-  it("no customer web surface source carries eSIM management vocabulary (CAP-X-ESIM-MANAGE, RL-115-F1)", () => {
+  it("the customer web surface carries the eSIM management journey vocabulary (CAP-X-ESIM-MANAGE, RL-115-F1 flipped by PA-001)", () => {
     const joined = readDirJoined("apps/web/src");
-    expect(joined.toLowerCase()).not.toContain("esim");
-    // The mobile surface carries the capability NAMES (status rows) but no
-    // management affordance — its views add no eSIM management vocabulary.
+    // The flipped absence: the web surface NOW carries the closed eSIM
+    // capability names (the journey page's truth table), the dedicated
+    // route, and the three command flows. The mobile matrix stays the
+    // per-capability truth table owner (its own work order owns its journey).
+    expect(joined).toContain("esim_profile_install");
+    expect(joined).toContain("esim_profile_remove");
+    expect(joined).toContain("esim_profile_enable");
+    expect(joined).toContain('deviceSim: "/devices/{deviceId}/sim"');
+    expect(joined).toContain("installEsimProfileFlow");
+    expect(joined).toContain("removeEsimProfileFlow");
+    expect(joined).toContain("enableEsimProfileFlow");
+    // The mobile surface still carries the capability NAMES (status rows) but
+    // no management affordance — its views add no eSIM management vocabulary.
     const mobileViews = read("apps/mobile/src/views.ts");
     expect(mobileViews).not.toMatch(/install[a-z]* button|activate profile|activation code/i);
   });
