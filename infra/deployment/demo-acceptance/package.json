@@ -1,0 +1,14 @@
+{
+  "name": "@roamlink/demo-acceptance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RoamLink demo environment acceptance gate (RL-117) - composes the on-tree deployment verification surfaces into the TWELVE-ROW spec/deployment.md §7 verdict. Zero dependencies; the operator's demo-acceptance script (see ../runbooks/deployment-runbook.md §8).",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "check": "node check.mjs",
+    "selftest": "node selftest.mjs"
+  }
+}
