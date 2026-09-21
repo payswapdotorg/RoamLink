@@ -4,6 +4,10 @@
  * `options.styles`. Same design system: warm-light, quiet, generous
  * whitespace, strong hierarchy; states carry text + data attributes, motion
  * respects prefers-reduced-motion.
+ *
+ * PA-003 (RL-115-F8): `.order-link` is the Orders-table journey-link family
+ * — the same card-style action-link discipline (and 44px touch-target
+ * floor) as `.support-escape a` and `.more-item-link`.
  */
 export const WEB_APP_STYLES = `
 h2 { font-size: 1.15rem; margin: 1.25rem 0 0.5rem; }
@@ -99,6 +103,8 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .support-escape { margin: 0.75rem 0 0.25rem; }
 .support-escape a { display: inline-flex; align-items: center; min-height: 44px; padding: 0.35rem 0.9rem; background: #fdfbf7; border: 1px solid #d9c9a8; border-radius: 8px; font-weight: 600; text-decoration: none; }
 .support-escape a:hover { border-color: #c9b989; }
+.order-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0.35rem 0.9rem; background: #fdfbf7; border: 1px solid #d9c9a8; border-radius: 8px; font-weight: 600; text-decoration: none; }
+.order-link:hover { border-color: #c9b989; }
 .observation-list { list-style: none; margin: 0.5rem 0 1rem; padding: 0; display: grid; gap: 0.6rem; }
 .observation-item { background: #fff; border: 1px solid #e8e2da; border-radius: 10px; padding: 0.75rem 0.9rem; }
 .observation-item p { margin: 0.15rem 0; }

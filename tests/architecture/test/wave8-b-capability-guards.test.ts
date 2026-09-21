@@ -15,9 +15,16 @@
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
  *  - the recorded ABSENCES (eSIM management UX, SLO entry point, connector
  *    enrollment action, refund surface, SSO/SCIM/MDM surface, compatibility
- *    health surface, /orders inbound links, /notifications inbound links)
- *    stay truthful — if one of these tests FAILS because a surface changed,
- *    the inventory + doc MUST be updated in the same change.
+ *    health surface, /notifications inbound links) stay truthful — if one
+ *    of these tests FAILS because a surface changed, the inventory + doc
+ *    MUST be updated in the same change.
+ *
+ * PA-003 CLOSURES (the audit's designed mechanism — fixes flip explicit
+ * assertions): RL-115-F8 is closed (the Orders table now composes its
+ * journey links — the guard asserts the composition, through the route
+ * table), and RL-114-F4 is resolved as the designed Option B contract
+ * (/notifications is compatibility-only: zero inbound links BY DESIGN,
+ * plus the visible compatibility-role note on the page itself).
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -252,23 +259,36 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     expect(adminPages.toLowerCase()).not.toContain("integration health");
   });
 
-  it("the commerce Orders table composes no order links and /orders stays URL-only (RL-115-F8)", () => {
+  it("the commerce Orders table composes its delivery-progress journey links through the route table (RL-115-F8, closed by PA-003)", () => {
     const commerce = read("apps/web/src/pages/commerce-page.ts");
-    // The orders table body renders plain text cells — no pagePath("order").
+    // PA-003 closed RL-115-F8: every Orders-table row composes its journey
+    // link through the route table (pagePath("order", ...)) — never a
+    // hand-written /orders/ path — so the delivery-progress view is
+    // reachable from the commerce surface, not URL-only.
     const ordersSection = commerce.slice(
       commerce.indexOf('pageHeading("Orders")'),
       commerce.indexOf('pageHeading("Subscriptions")'),
     );
-    expect(ordersSection).not.toContain('pagePath("order"');
-    expect(ordersSection).not.toContain("/orders/");
+    expect(ordersSection, "every row composes pagePath(\"order\")").toContain('pagePath("order"');
+    expect(ordersSection, "no hand-written /orders/ path").not.toContain('"/orders/');
   });
 
-  it("the /notifications compatibility page has no inbound link anywhere in the web sources (RL-114-F4)", () => {
+  it("the /notifications compatibility-only contract holds (RL-114-F4, resolved Option B by PA-003): zero inbound links by design + the visible compatibility-role note", () => {
+    // The designed contract (PA-003, Option B): Activity is the SOLE
+    // user-facing notification surface; /notifications is EXPLICITLY
+    // compatibility-only. Zero inbound links is BY DESIGN — no page source
+    // may compose a link to it.
     for (const file of readTsFiles("apps/web/src/pages")) {
       const source = read(file);
       expect(source, `${file}: no /notifications link`).not.toContain('pagePath("notifications")');
       expect(source, `${file}: no /notifications href`).not.toContain('href: "/notifications"');
     }
+    // The compatibility surface states its own role and links the live
+    // narrative (the render-level pins live in rl114-extended-a11y and
+    // the rl115 closure probes; this is the structural half).
+    const notifications = read("apps/web/src/pages/notifications-page.ts");
+    expect(notifications, "the compatibility-role note exists").toContain('data-compatibility-role');
+    expect(notifications, "the note links the live narrative").toContain('pagePath("activity")');
   });
 });
 

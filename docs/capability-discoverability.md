@@ -21,6 +21,13 @@ are RECORDED, not fixed (the `docs/threat-model-verification.md` precedent): all
 are pinned in the suites as current observable behavior, so the eventual fixes flip
 explicit assertions. Zero src changes were made by this work item.
 
+**Post-audit update (PA-003 — Order + Notification Discoverability):** per the
+audit's designed mechanism (fixes flip explicit assertions), RL-115-F8 is CLOSED
+and RL-114-F4 is RESOLVED as the designed Option B contract. The affected matrix
+rows (CAP-B-ORDERS, CAP-L-COMMERCIAL, CAP-A-NOTIFICATIONS) are VERIFIED below
+with their closure evidence, and the flipped assertions live in the same suites
+that pinned the gaps. All other findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -46,7 +53,7 @@ entry point), **Link** (contextual link from the journey), **View** (explanatory
 | CAP-A-ACCOUNTS | User and organization accounts | Settings (`/settings`) | More sheet → Settings | Settings account panel | Support (nav + case flow) | **VERIFIED** |
 | CAP-A-DEVICE-REGISTRY | Device registry + capability/context snapshots | Devices (`/devices`) | Home fact card → "Manage devices" | Device detail capability card | Device manual-fallback guidance; degraded-capability escape | **VERIFIED** |
 | CAP-A-GOALS | Human preferences / ExperienceIntent (Goals) | Goals (`/intents`) | Home fact card → "Review your goal" | Goal detail (asked/derived/changed) | Support (nav + case flow) | **VERIFIED** |
-| CAP-A-NOTIFICATIONS | Notifications | Activity (`/activity`) — the narrative surface | Home → "Open Activity" | Activity timeline ("What RoamLink did") | Support escape on warning/critical entries | **VERIFIED (proxy)** — finding RL-114-F4: the dedicated `/notifications` page has ZERO inbound links (URL-only compatibility surface per spec §8) |
+| CAP-A-NOTIFICATIONS | Notifications | Activity (`/activity`) — the sole user-facing notification surface | Home → "Open Activity" | Activity timeline ("What RoamLink did") | Support escape on warning/critical entries | **VERIFIED** — RL-114-F4 resolved by PA-003 (Option B): `/notifications` is compatibility-only BY DESIGN — zero inbound links is the contract (pinned as designed behavior in `apps/web/test/rl114-extended-a11y.test.ts` + the wave8-b structural guard) and the page carries the visible compatibility-role note naming Activity as the live narrative |
 | CAP-A-SUPPORT | Support carrier (cases, context, threads) | Support (`/support`) | Connectivity escape → "Get help with this" | Case detail (customer thread) | Carried-context transparency before opening | **VERIFIED** |
 | CAP-A-EXPLAINABILITY | Explainability (why/evidence/freshness, progressive disclosure) | Connectivity center (`/connectivity`) | Shell indicator → "Connectivity details" (every page) | Why/Evidence/Technical disclosure layers | Escape from degraded evidence states | **VERIFIED** |
 
@@ -55,7 +62,7 @@ entry point), **Link** (contextual link from the journey), **View** (explanatory
 | ID | Capability | Entry | Link | View | Recovery | Verdict |
 |----|------------|-------|------|------|----------|---------|
 | CAP-B-CATALOG | Product catalog / customer-facing offers | Plans & Billing (`/commerce`) | More sheet → Plans & Billing | Catalog table + the "never implies connectivity delivery" rule | Support (nav + case flow) | **VERIFIED** |
-| CAP-B-ORDERS | Orders, subscriptions, entitlements | Order journey (`/orders/{id}`) | NONE in-page (host-composed post-payment redirect) | Delivery-progress view (commercial vs delivery facts) | Order escape ("Get help with this") | **VERIFIED (proxy)** — finding RL-115-F8 |
+| CAP-B-ORDERS | Orders, subscriptions, entitlements | Order journey (`/orders/{id}`) | Orders table → "Open delivery progress" (per row) | Delivery-progress view (commercial vs delivery facts) | Order escape ("Get help with this") | **VERIFIED** — RL-115-F8 closed by PA-003: every Orders-table row links to its delivery-progress journey (anchor + real href + `.order-link` 44px floor; flipped probe in `apps/web/test/rl115-capability-discoverability.test.ts`, structural guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the host-composed post-payment redirect stays |
 | CAP-B-PAYMENTS-INVOICES | Payment state, invoices, pricing presentation | Order journey commercial facts | Order → "Plans & Billing" | "Commercial facts (separate)" + invoices | Support (nav + case flow) | **VERIFIED** |
 | CAP-B-REFUNDS | Refunds | NONE | NONE | NONE | Support-ref kind only | **GAP** — finding RL-115-F4 |
 
@@ -81,7 +88,7 @@ entry point), **Link** (contextual link from the journey), **View** (explanatory
 |----|------------|-------|------|------|----------|---------|
 | CAP-L-DESIRED | Desired-state loop | Onboarding (`/onboarding`) | Home → "Review your goal" | Goal detail "What RoamLink derived from your goal" | Goal detail "What you can do" | **VERIFIED** |
 | CAP-L-RECOVERY | Recovery loop | Activity "Automation status" | Home → "See what RoamLink did" | Activity narrative | Support case flow | **VERIFIED** |
-| CAP-L-COMMERCIAL | Commercial loop | Order journey | NONE in-page (RL-115-F8) | Command pipeline + commercial/delivery separation | Order escape | **VERIFIED (proxy)** — finding RL-115-F8 |
+| CAP-L-COMMERCIAL | Commercial loop | Order journey | Orders table → "Open delivery progress" (RL-115-F8 closed by PA-003) | Command pipeline + commercial/delivery separation | Order escape | **VERIFIED** — RL-115-F8 closed by PA-003 (same closure evidence as CAP-B-ORDERS) |
 
 ### §7 — the device capability matrix (11 closed names, 8 §7 bullets)
 
@@ -123,7 +130,8 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | URL-only: `/ops/slo` (portal-host, session-gated) | NONE — no surface links it | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **GAP** — finding RL-115-F2 |
 
-**Tally:** 15 VERIFIED · 13 VERIFIED (proxy) · 7 GAP.
+**Tally:** 18 VERIFIED · 10 VERIFIED (proxy) · 7 GAP. (PA-003 moved CAP-B-ORDERS,
+CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS from VERIFIED (proxy) to VERIFIED.)
 
 ---
 
@@ -234,22 +242,44 @@ eventual fixes flip explicit assertions.
 - **Candidate remediation:** an org-policy read model in the application contract, then
   the summary section the page already promises.
 
-### RL-115-F8 — the delivery-progress order journey is URL-only (CAP-B-ORDERS / CAP-L-COMMERCIAL)
+### RL-115-F8 — the delivery-progress order journey is URL-only (CAP-B-ORDERS / CAP-L-COMMERCIAL) — **CLOSED by PA-003**
 
 - **Where:** `apps/web/src/pages/commerce-page.ts` (Orders table) vs
   `apps/web/src/pages/order-journey-page.ts` (the RL-101 guided purchase-to-delivery
   view) and `WEB_PAGE_ROUTES.order`.
-- **What:** the delivery-progress view — the commercial loop's explanatory view and the
-  user-journey-audit §6 requirement ("after payment, navigate to a delivery progress
-  view") — renders only when a host composes the post-payment redirect. No static link
-  reaches it: the commerce Orders table renders plain rows (no anchors), and the route
-  appears in no page source. A customer with a placed order cannot navigate to its
-  delivery journey from the commerce surface.
-- **Minimal reproducer:** the RL-115 GAP probe asserts the commerce document contains
-  `data-orders="true"` and the seeded order id as text, but no `/orders/` href anywhere;
-  the structural guard asserts the Orders table section composes no `pagePath("order")`.
-- **Candidate remediation:** link each Orders-table row to its delivery-progress page
-  (and keep the post-payment redirect).
+- **What (the recorded gap):** the delivery-progress view — the commercial loop's
+  explanatory view and the user-journey-audit §6 requirement ("after payment,
+  navigate to a delivery progress view") — renders only when a host composes the
+  post-payment redirect. No static link reaches it: the commerce Orders table
+  renders plain rows (no anchors), and the route appears in no page source. A
+  customer with a placed order cannot navigate to its delivery journey from the
+  commerce surface.
+- **Original minimal reproducer (the pin, now flipped):** the RL-115 GAP probe
+  asserted the commerce document contains `data-orders="true"` and the seeded
+  order id as text, but no `/orders/` href anywhere; the structural guard asserted
+  the Orders table section composes no `pagePath("order")`.
+- **CLOSURE (PA-003, VERIFIED):** every Orders-table row now links to its
+  delivery-progress journey through the route table —
+  `pagePath("order", { orderId })` rendered as `<a class="order-link"
+  href="/orders/{orderId}">Open delivery progress</a>` in a new "Delivery
+  progress" column (`apps/web/src/pages/commerce-page.ts`). The anchor is a real
+  `href` (keyboard reachable) carrying the repo's card-style action-link class
+  `.order-link` with the 44px touch-target floor (`apps/web/src/styles.ts`, the
+  same discipline as `.support-escape a`). The host-composed post-payment
+  redirect is unchanged (additive discoverability, not a flow change).
+- **Closure evidence (flipped assertions):**
+  1. `apps/web/test/rl115-capability-discoverability.test.ts` — the GAP probe
+     became the closure probe "VERIFIED CAP-B-ORDERS (RL-115-F8 closed)": every
+     `data-order-id` row (including a NEWLY placed order) composes its
+     `<a class="order-link" href="/orders/{orderId}">` link, and the inventory
+     rows CAP-B-ORDERS / CAP-L-COMMERCIAL are VERIFIED with the contextual link
+     commerce → `/orders/{seeded id}` → "Open delivery progress".
+  2. `tests/architecture/test/wave8-b-capability-guards.test.ts` — the structural
+     guard now asserts the Orders section COMPOSES `pagePath("order"` and no
+     hand-written `/orders/` path.
+  3. `apps/web/test/rl114-extended-a11y.test.ts` — the frozen 44px anchor-floor
+     enumeration gained `.order-link` (the finding RL-114-F3 itself stands for
+     the generic in-content links).
 
 ---
 
@@ -266,7 +296,8 @@ The dispatch named three candidates; each was verified, not assumed:
 
 Three further gaps were found by the audit and recorded above: refunds (F4),
 SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit
-by the page itself (F7) and the URL-only delivery-progress journey (F8).
+by the page itself (F7) and the URL-only delivery-progress journey (F8). F8 has since
+been CLOSED by PA-003 (see the finding record above); the other findings stand.
 
 ## 5. Honest verification limits (AR-009/AR-010 discipline)
 
@@ -295,7 +326,7 @@ here for one-stop reading (full reproducers in the suites):
 | RL-114-F1 | web | No rendered web document contains an `<h1>` (shell title is an anchor); every hierarchy starts at h2 | `apps/web/test/rl114-extended-a11y.test.ts` |
 | RL-114-F2 | web | Level skips on edge paths: Connectivity's h2→h4 disclosure panels; read-failure and mutation-result bodies lead with h3 | same |
 | RL-114-F3 | web | The 44px floor skips generic in-content action links and the shell indicator link | same |
-| RL-114-F4 | web | `/notifications` is URL-only (zero inbound links) | same |
+| RL-114-F4 | web | RESOLVED by PA-003 (Option B): `/notifications` is compatibility-only BY DESIGN — zero inbound links is the contract, the page carries the visible compatibility-role note, Activity is the sole narrative surface | same |
 | RL-114-F5 | mobile | The mobile shell lacks the web shell's a11y layer: no skip link, no `:focus-visible` rule, no reduced-motion guard, no 44px floor, no safe-area, unlabelled nav | `apps/mobile/test/rl114-mobile-document-contract.test.ts` |
 | RL-114-F6 | mobile | All four nav anchors (`#now/#capabilities/#controls/#outbox`) are dead — no matching ids exist | same |
 | RL-114-F7 | mobile | Tables render `<th>` without scope, outside labelled scroll regions | same |

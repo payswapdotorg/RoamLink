@@ -23,6 +23,15 @@
  * proof on this tree), VERIFIED(proxy) (the strongest render/structural
  * proxy — used for the mobile/admin/ops-owned surfaces verified from this
  * suite's sibling suites and the structural guards), GAP (pinned absence).
+ *
+ * PA-003 CLOSURE (the audit's designed mechanism — fixes flip explicit
+ * assertions): RL-115-F8 is CLOSED (every Orders-table row now links to
+ * its delivery-progress journey; CAP-B-ORDERS and CAP-L-COMMERCIAL are
+ * VERIFIED with their contextual links), and RL-114-F4 is RESOLVED as
+ * designed behavior (Option B: /notifications is compatibility-only with
+ * a visible role note; CAP-A-NOTIFICATIONS is VERIFIED). The closure
+ * probes below carry the flipped expectations; the remaining GAP probes
+ * still pin their recorded absences.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -148,13 +157,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-A-NOTIFICATIONS",
     capability: "Notifications (represented in Activity; dedicated route kept)",
     spec: "spec/architecture.md §2 Layer A; spec/ux-architecture.md §8",
-    verdict: "VERIFIED(proxy)",
+    verdict: "VERIFIED",
     entry: { page: "activity", mustRender: ["Activity", "Needs your attention"] },
     contextualLink: { from: "home", href: "/activity", labelContains: "Open Activity" },
     explanatoryView: { page: "activity", mustRender: ["What RoamLink did"] },
     recovery: { page: "support", mustRender: ["Open a support case"] },
     gapNote:
-      "proxy: the /notifications page itself has zero inbound links (RL-114-F4, URL-only compatibility surface per spec §8); Activity is the discoverable notification surface",
+      "by design (PA-003, Option B — RL-114-F4 resolved): /notifications is EXPLICITLY compatibility-only; zero inbound links is the contract (pinned as designed behavior in rl114-extended-a11y + the wave8-b guard) and the page carries the visible compatibility-role note naming Activity as the live narrative; Activity is the sole user-facing notification surface",
   },
   {
     id: "CAP-A-SUPPORT",
@@ -192,12 +201,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-B-ORDERS",
     capability: "Orders, subscriptions and customer entitlements",
     spec: "spec/architecture.md §2 Layer B; §4 commercial loop",
-    verdict: "VERIFIED(proxy)",
+    verdict: "VERIFIED",
     entry: { page: "order", mustRender: ["Your delivery progress"] },
+    contextualLink: { from: "commerce", href: `/orders/${SEED_ORDER_ID}`, labelContains: "Open delivery progress" },
     explanatoryView: { page: "order", mustRender: ["Commercial facts (separate)", "Order connectivity journey"] },
     recovery: { page: "order", mustRender: ["Get help with this"] },
     gapNote:
-      "proxy: the delivery-progress view renders and the entry exists, but NO in-page link reaches it — the commerce Orders table renders plain rows (no anchors) and the route is composed by the host's post-payment redirect (RL-115-F8)",
+      "closed (PA-003 — RL-115-F8): every Orders-table row now links to its delivery-progress journey (anchor + real href + 44px floor); the host-composed post-payment redirect stays",
   },
   {
     id: "CAP-B-PAYMENTS-INVOICES",
@@ -310,12 +320,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-L-COMMERCIAL",
     capability: "Commercial loop (order/payment -> entitlement -> delivery evidence -> billing)",
     spec: "spec/architecture.md §4; spec/user-journey-audit.md §6",
-    verdict: "VERIFIED(proxy)",
+    verdict: "VERIFIED",
     entry: { page: "order", mustRender: ["Your delivery progress"] },
+    contextualLink: { from: "commerce", href: `/orders/${SEED_ORDER_ID}`, labelContains: "Open delivery progress" },
     explanatoryView: { page: "order", mustRender: ["Command pipeline", "Commercial facts (separate)"] },
     recovery: { page: "order", mustRender: ["Get help with this"] },
     gapNote:
-      "proxy: same contextual-link absence as CAP-B-ORDERS (RL-115-F8) — the loop's explanatory view is URL-only from the static surface",
+      "closed (PA-003 — RL-115-F8): the loop's explanatory view is now reachable in-page from the commerce Orders table (same closure as CAP-B-ORDERS)",
   },
 
   // ---- §7 device capability matrix (the 8 bullets, 11 closed names) -------
@@ -704,16 +715,9 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     // (The admin-side absence is pinned structurally in tests/architecture.)
   });
 
-  it("GAP CAP-B-ORDERS (RL-115-F8, pinned): the commerce Orders table renders no order links — the delivery-progress view is URL-only", async () => {
-    const { app } = buildApp();
-    const commerce = await app.renderDocument({ page: "commerce" });
-    // The orders table exists...
-    expect(commerce).toContain('data-orders="true"');
-    // ...and the seeded order is rendered as a row (its id as text)...
-    expect(commerce).toContain(SEED_ORDER_ID);
-    // ...but NOTHING in the document links to the order journey route.
-    expect(commerce).not.toContain("/orders/");
-  });
+  // (RL-115-F8's GAP probe was flipped by PA-003 into the closure probe
+  //  below — "RL-115 closure probes (PA-003)" — when every Orders-table row
+  //  gained its delivery-progress journey link.)
 
   it("GAP CAP-E-POLICY (RL-115-F7): the policy summary renders its own honest not-available state", async () => {
     const { app } = buildApp();
@@ -721,6 +725,67 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     expect(workspace).toContain('data-policy-gap="true"');
     expect(workspace).toContain("Not available yet");
     expect(workspace).toMatch(/data-workspace-step="policy"[^>]*>[\s\S]{0,400}?Not available yet/);
+  });
+});
+
+// --------------------------------------------------------------------------------
+// The closure probes (PA-003 — the fixes flip explicit assertions)
+// --------------------------------------------------------------------------------
+
+describe("RL-115 closure probes (PA-003)", () => {
+  it("VERIFIED CAP-B-ORDERS (RL-115-F8 closed): every Orders-table row links to its delivery-progress journey", async () => {
+    const { app } = buildApp();
+    const commerce = await app.renderDocument({ page: "commerce" });
+    // The orders table exists, and the seeded order is rendered as a row
+    // (its id as text - the F8 pin's precondition, unchanged)...
+    expect(commerce).toContain('data-orders="true"');
+    expect(commerce).toContain(SEED_ORDER_ID);
+    // ...and EVERY row now carries the contextual journey link: a real
+    // anchor, the row's own order id in the href, the human label, and
+    // the 44px-floor action-link class (keyboard reachable + touch safe).
+    const orderIds = [...commerce.matchAll(/<tr data-order-id="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(orderIds.length).toBeGreaterThanOrEqual(1);
+    for (const orderId of orderIds) {
+      expect(
+        commerce,
+        `order ${orderId}: journey link`,
+      ).toContain(`<a class="order-link" href="/orders/${orderId}"`);
+    }
+    expect(commerce).toContain(">Open delivery progress</a>");
+    // The link is composed per row, not special-cased for the seed: a
+    // NEWLY placed order gets the same journey link.
+    const placed = await app.placeOrderFlow({
+      lines: [{ variantId: "55555555-0000-4000-8000-000000000002", quantity: 1 }],
+    });
+    expect(placed.status).toBe("ok");
+    const after = await app.renderDocument({ page: "commerce" });
+    const afterIds = [...after.matchAll(/<tr data-order-id="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(afterIds.length).toBe(orderIds.length + 1);
+    for (const orderId of afterIds) {
+      expect(
+        after,
+        `order ${orderId}: journey link after a new purchase`,
+      ).toContain(`<a class="order-link" href="/orders/${orderId}"`);
+    }
+  });
+
+  it("VERIFIED CAP-A-NOTIFICATIONS (RL-114-F4 resolved, Option B): the compatibility surface states its role and links the live narrative", async () => {
+    // The orchestrator decision (PA-003, Option B): Activity is the SOLE
+    // user-facing notification surface; /notifications is EXPLICITLY
+    // compatibility-only. The render-level half of the designed contract
+    // lives here; the zero-inbound-links half is pinned in
+    // apps/web/test/rl114-extended-a11y.test.ts and the wave8-b guard.
+    const { app } = buildApp();
+    const page = await app.renderDocument({ page: "notifications" });
+    expect(page).toContain('data-compatibility-role="true"');
+    expect(page).toContain("this page is a compatibility surface");
+    expect(page).toContain("Activity is the live narrative");
+    expect(page).toContain('href="/activity"');
+    // The note is unconditional: it renders in the empty world too.
+    const fresh = buildApp({ seed: freshCustomerSeed() });
+    const empty = await fresh.app.renderDocument({ page: "notifications" });
+    expect(empty).toContain('data-compatibility-role="true"');
+    expect(empty).toContain('data-notifications-empty="true"');
   });
 });
 
