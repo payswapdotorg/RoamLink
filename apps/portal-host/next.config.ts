@@ -15,7 +15,6 @@ const ROAMLINK_PACKAGES = [
   "@roamlink/app-kit",
   "@roamlink/auth",
   "@roamlink/commerce-connectivity",
-  "@roamlink/contracts",
   "@roamlink/domain-commerce",
   "@roamlink/domain-experience",
   "@roamlink/integration",
@@ -35,6 +34,21 @@ const nextConfig: NextConfig = {
   // The pg pool and the embedded pglite engine are Node-side; never bundle
   // them into client/edge chunks.
   serverExternalPackages: ["pg", "@electric-sql/pglite"],
+  // The workspace's typecheck authority is `pnpm typecheck` (strict
+  // tsc --noEmit over the same tsconfig, enforced by the release gates);
+  // the build's internal TS pass is redundant AND would try to
+  // npm-install @types/react inside the pnpm workspace (unsupported
+  // protocol) — so it is skipped here, never weakened elsewhere.
+  typescript: { ignoreBuildErrors: true },
+  // The workspace's TS sources use the TypeScript-ESM import convention
+  // (`./module.js` naming the sibling `module.ts`). Neither of Next's
+  // bundlers applies the tsc `.js` -> `.ts` mapping by default, so the
+  // webpack build maps it explicitly (extensionAlias; the standard
+  // interop). Builds run with `next build --webpack`.
+  webpack: (config) => {
+    config.resolve.extensionAlias = { ".js": [".ts", ".tsx", ".js"] };
+    return config;
+  },
 };
 
 export default nextConfig;
