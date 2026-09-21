@@ -61,6 +61,7 @@ import {
   orderJourneyPage,
   overviewPage,
   settingsPage,
+  simProfilesPage,
   supportPage,
   workspacePage,
   readSupportContextParams,
@@ -116,6 +117,7 @@ function activeNavHref(page: WebPageName): string {
     notifications: pagePath("activity"),
     devices: pagePath("devices"),
     device: pagePath("devices"),
+    deviceSim: pagePath("devices"),
     intents: pagePath("intents"),
     intent: pagePath("intents"),
     commerce: pagePath("commerce"),
@@ -251,6 +253,28 @@ export class CustomerWebApp {
             this.#client.listExperienceIntents(),
           ]);
           return deviceDetailPage({ device, connectivity, notifications, intents });
+        });
+      case "deviceSim":
+        // RL-115-F1 (PA-001): the device-level eSIM management journey. The
+        // capability truth + profile inventory render from the SIM read; the
+        // optional `commandId` param adds the last eSIM command's four-stage
+        // pipeline (never fabricated from reads); a failed flow result rides
+        // through as the page's contextual support escape. Any failed read
+        // fails closed like every page.
+        return this.#withReads("the SIM and profiles", async () => {
+          const [device, sim, command] = await Promise.all([
+            this.#client.getDevice(request.params?.deviceId ?? ""),
+            this.#client.getDeviceSim(request.params?.deviceId ?? ""),
+            request.params?.commandId === undefined
+              ? Promise.resolve(undefined)
+              : this.#client.getCommandStatus(request.params.commandId),
+          ]);
+          return simProfilesPage({
+            device,
+            sim,
+            ...(command !== undefined ? { command } : {}),
+            ...(request.lastResult !== undefined ? { lastResult: request.lastResult } : {}),
+          });
         });
       case "intents":
         return this.#withReads("your goals", async () => {
@@ -448,6 +472,36 @@ export class CustomerWebApp {
         expectedVersion: device.revision,
       });
     });
+  }
+
+  /**
+   * Installs an eSIM profile on a device (RL-115-F1, PA-001): the
+   * capability gate runs server-side before any state is touched; the
+   * activation code rides the command when the platform's install contract
+   * requires one. The acknowledgement's executed stage records RoamLink's
+   * desired state — the device's confirmation arrives as profile evidence.
+   */
+  async installEsimProfileFlow(
+    input: { readonly deviceId: string; readonly activationCode: string },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    return this.#runMutation(() => this.#client.installEsimProfile(input, options));
+  }
+
+  /** Removes an eSIM profile (capability-gated server-side). */
+  async removeEsimProfileFlow(
+    input: { readonly deviceId: string; readonly profileId: string },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    return this.#runMutation(() => this.#client.removeEsimProfile(input, options));
+  }
+
+  /** Enables or disables an eSIM profile (capability-gated server-side). */
+  async enableEsimProfileFlow(
+    input: { readonly deviceId: string; readonly profileId: string; readonly enabled: boolean },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    return this.#runMutation(() => this.#client.enableEsimProfile(input, options));
   }
 
   /** Creates a draft experience intent (version 1). */

@@ -1,6 +1,7 @@
-/** The customer web app's pages (RL-060 + RL-082/083/084 + RL-101/103/104). */
+/** The customer web app's pages (RL-060 + RL-082/083/084 + RL-101/103/104 + PA-001). */
 export * from "./overview-page.js";
 export * from "./devices-page.js";
+export * from "./sim-profiles-page.js";
 export * from "./intents-page.js";
 export * from "./commerce-page.js";
 export * from "./order-journey-page.js";

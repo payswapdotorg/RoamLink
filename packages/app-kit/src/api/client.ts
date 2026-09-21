@@ -28,7 +28,9 @@ import {
   advanceSupportCaseBody,
   createExperienceIntentBody,
   createSupportCaseBody,
+  enableEsimProfileBody,
   enrollDeviceBody,
+  installEsimProfileBody,
   placeOrderBody,
   recordPaymentBody,
   supersedeExperienceIntentBody,
@@ -36,16 +38,21 @@ import {
   updateDeviceBody,
   validateCancelOrder,
   validateCompleteOrder,
+  validateEnableEsimProfileRequest,
   validateMarkNotificationRead,
   validateReactivateOrganization,
+  validateRemoveEsimProfile,
   validateRetireDevice,
   validateSuspendOrganization,
   type AdvanceSupportCaseRequest,
   type CreateExperienceIntentRequest,
   type CreateSupportCaseRequest,
+  type EnableEsimProfileRequest,
   type EnrollDeviceRequest,
+  type InstallEsimProfileRequest,
   type PlaceOrderRequest,
   type RecordPaymentRequest,
+  type RemoveEsimProfileRequest,
   type SupersedeExperienceIntentRequest,
   type TriggerReconciliationRequest,
   type UpdateDeviceRequest,
@@ -56,6 +63,7 @@ import {
   parseConnectivityOverviewResource,
   parseDeviceList,
   parseDeviceResource,
+  parseDeviceSimResource,
   parseExperienceIntentList,
   parseExperienceIntentResource,
   parseNotificationList,
@@ -130,6 +138,16 @@ export class RoamLinkApiClient {
 
   async getDevice(deviceId: string) {
     return this.#get(route("device", { deviceId }), parseDeviceResource);
+  }
+
+  /**
+   * The device's SIM & Profiles read (RL-115-F1 remediation): the three
+   * eSIM capability truth rows (status, evidence, freshness, gate preview),
+   * the platform's install contract and the profile inventory — every
+   * claimed state carries its evidence/freshness.
+   */
+  async getDeviceSim(deviceId: string) {
+    return this.#get(route("deviceSim", { deviceId }), parseDeviceSimResource);
   }
 
   async listExperienceIntents() {
@@ -259,6 +277,33 @@ export class RoamLinkApiClient {
   ) {
     const deviceId = validateRetireDevice(request);
     return this.#mutate("deviceRetire", "{}", options, { deviceId });
+  }
+
+  /**
+   * Installs an eSIM profile (RL-115-F1). Capability-gated server-side
+   * against `esim_profile_install`; the activation code rides the body when
+   * the platform's install contract requires one.
+   */
+  async installEsimProfile(request: InstallEsimProfileRequest, options?: MutationRequestOptions) {
+    const deviceId = requireDeviceId(request?.deviceId);
+    return this.#mutate(
+      "deviceSimInstall",
+      installEsimProfileBody(request),
+      options,
+      { deviceId },
+    );
+  }
+
+  /** Removes an installed eSIM profile (capability-gated server-side). */
+  async removeEsimProfile(request: RemoveEsimProfileRequest, options?: MutationRequestOptions) {
+    const ids = validateRemoveEsimProfile(request);
+    return this.#mutate("deviceSimProfileRemove", "{}", options, ids);
+  }
+
+  /** Enables or disables an installed eSIM profile (capability-gated server-side). */
+  async enableEsimProfile(request: EnableEsimProfileRequest, options?: MutationRequestOptions) {
+    const ids = validateEnableEsimProfileRequest(request);
+    return this.#mutate("deviceSimProfileEnable", enableEsimProfileBody(request), options, ids);
   }
 
   async createExperienceIntent(request: CreateExperienceIntentRequest, options?: MutationRequestOptions) {
@@ -508,4 +553,20 @@ function validateSupportCaseId(caseId: unknown): string {
     });
   }
   return caseId;
+}
+
+function requireDeviceId(deviceId: unknown): string {
+  if (
+    typeof deviceId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(deviceId)
+  ) {
+    throw new ApiClientError({
+      kind: "validation",
+      reason: "REQUEST_PAYLOAD_INVALID",
+      message: "the device id must be a canonical lowercase UUID",
+      retryable: false,
+      status: 0,
+    });
+  }
+  return deviceId;
 }

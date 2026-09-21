@@ -26,6 +26,30 @@ export interface RetireDeviceRequest {
   readonly deviceId: string;
 }
 
+/**
+ * Install-command payload (RL-115-F1 remediation, PA-001). The activation
+ * code is the carrier-issued install credential the platform's install
+ * contract requires when `DeviceSimResource.installRequiresActivationCode`
+ * is true; it rides the command body like any other typed payload.
+ */
+export interface InstallEsimProfileRequest {
+  readonly deviceId: string;
+  readonly activationCode: string;
+}
+
+/** Remove-command payload (the profile id rides the path; see client). */
+export interface RemoveEsimProfileRequest {
+  readonly deviceId: string;
+  readonly profileId: string;
+}
+
+/** Enable/disable-command payload (one capability, one desired state). */
+export interface EnableEsimProfileRequest {
+  readonly deviceId: string;
+  readonly profileId: string;
+  readonly enabled: boolean;
+}
+
 export interface CreateExperienceIntentRequest {
   readonly deviceId: string;
   readonly rationale: string;
@@ -169,6 +193,43 @@ export function updateDeviceBody(request: UpdateDeviceRequest): string {
 /** Validates a retire-device payload (id rides the path, body is empty). */
 export function validateRetireDevice(request: RetireDeviceRequest): string {
   return requireId("RetireDeviceRequest.deviceId", request?.deviceId);
+}
+
+/**
+ * Validates + serializes an install-eSIM-profile payload. The activation
+ * code is validated as a non-empty string only: it is an opaque,
+ * carrier-issued credential whose shape RoamLink does not own (no carrier
+ * semantics, spec/authority-model.md — value-free errors, RL-LOCK-016).
+ */
+export function installEsimProfileBody(request: InstallEsimProfileRequest): string {
+  return JSON.stringify({
+    activationCode: requireString("InstallEsimProfileRequest.activationCode", request?.activationCode),
+  });
+}
+
+/** Validates a remove-eSIM-profile payload (ids ride the path). */
+export function validateRemoveEsimProfile(request: RemoveEsimProfileRequest): { deviceId: string; profileId: string } {
+  return {
+    deviceId: requireId("RemoveEsimProfileRequest.deviceId", request?.deviceId),
+    profileId: requireId("RemoveEsimProfileRequest.profileId", request?.profileId),
+  };
+}
+
+/** Validates an enable-eSIM-profile payload (ids ride the path; the body carries the desired state). */
+export function validateEnableEsimProfileRequest(request: EnableEsimProfileRequest): { deviceId: string; profileId: string } {
+  return {
+    deviceId: requireId("EnableEsimProfileRequest.deviceId", request?.deviceId),
+    profileId: requireId("EnableEsimProfileRequest.profileId", request?.profileId),
+  };
+}
+
+/** Validates + serializes an enable-eSIM-profile payload. */
+export function enableEsimProfileBody(request: EnableEsimProfileRequest): string {
+  requireId("EnableEsimProfileRequest.profileId", request?.profileId);
+  if (typeof request?.enabled !== "boolean") {
+    invalid("EnableEsimProfileRequest.enabled", "must be a boolean");
+  }
+  return JSON.stringify({ enabled: request.enabled });
 }
 
 function validateAccessClasses(label: string, value: unknown): readonly IntentAccessClass[] {

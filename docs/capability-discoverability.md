@@ -100,7 +100,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|---------------------------|---------|------|
 | CAP-X-WIFI | `wifi_observation`, `wifi_control` | **VERIFIED (proxy)** | Matrix rows render with gate preview (`allow` / decision + reason); web card is freshness-only |
 | CAP-X-SIM-SELECT | `cellular_data_sim_selection` | **VERIFIED (proxy)** | Generic gating mechanism only; no dedicated SIM-selection UX |
-| CAP-X-ESIM-MANAGE | `esim_profile_install/remove/enable` | **GAP** | Status rows render (all three names) with gate previews and guidance — but the rows are STATUS-ONLY: no anchor, form or button; no install/remove/enable flow, no profile inventory, no activation-code entry; zero eSIM vocabulary on the web surface. Finding RL-115-F1 |
+| CAP-X-ESIM-MANAGE | `esim_profile_install/remove/enable` | **VERIFIED** | RL-115-F1 CLOSED by PA-001: the SIM & Profiles journey (`/devices/{id}/sim`, linked from the device page) renders the three-row truth table + gated install (activation-code entry)/remove/enable flows with the closed guidance map; the mobile matrix remains the per-capability truth table owner |
 | CAP-X-INTERFACE-SELECT | `active_interface_selection` | **VERIFIED (proxy)** | Generic gating mechanism only |
 | CAP-X-VPN | `vpn_network_extension` | **VERIFIED (proxy)** | Generic gating mechanism only |
 | CAP-X-CONCURRENT | `concurrent_interface_constraints` | **VERIFIED (proxy)** | Renders as gate decisions + guidance |
@@ -130,8 +130,13 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | URL-only: `/ops/slo` (portal-host, session-gated) | NONE — no surface links it | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **GAP** — finding RL-115-F2 |
 
-**Tally:** 18 VERIFIED · 10 VERIFIED (proxy) · 7 GAP. (PA-003 moved CAP-B-ORDERS,
-CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS from VERIFIED (proxy) to VERIFIED.)
+**Tally:** 19 VERIFIED · 10 VERIFIED (proxy) · 6 GAP.
+(PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
+VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
+the eSIM management journey closed through the audit's designed flip
+mechanism: the pinned absence probe became a VERIFIED probe in the web
+suite, the structural guard flipped from absence to presence, and this row
+flipped with them.)
 
 ---
 
@@ -141,6 +146,9 @@ Every finding below is pinned as current observable behavior in the suites, so t
 eventual fixes flip explicit assertions.
 
 ### RL-115-F1 — eSIM profile management has no UX path (CAP-X-ESIM-MANAGE)
+
+**STATUS: CLOSED by PA-001** (the eSIM management journey work order). The
+original record is preserved below; the flip evidence follows it.
 
 - **Where:** the §7 device capability matrix's only UX carriers — the mobile capability
   truth table (`apps/mobile/src/views.ts capabilityMatrixScreen`) and the web device
@@ -162,6 +170,30 @@ eventual fixes flip explicit assertions.
 - **Candidate remediation (orchestrator disposition):** a guided eSIM management journey
   (profile list + gated install/remove/enable actions riding the existing desired-state
   command envelope), reachable from the device detail page.
+
+**Flip record (PA-001):** the candidate remediation was implemented exactly as bounded —
+
+- the customer web app gained a SIM & Profiles journey at `/devices/{deviceId}/sim`
+  (`apps/web/src/pages/sim-profiles-page.ts`), linked from the device detail page's new
+  SIM & Profiles section (Devices -> Device -> SIM & Profiles);
+- the journey renders the three closed eSIM capability names as a truth table (status,
+  evidence class, freshness, gate preview), the profile inventory with per-profile
+  state + evidence/freshness (a requested install is never rendered as an installed
+  profile), the activation-code install flow where the platform contract requires it,
+  remove/enable/disable where the gate allows, and the CLOSED manual-guidance map for
+  every blocked action (never a disabled mystery);
+- every mutation rides the existing command envelope: additive app-kit routes
+  (`/v1/devices/{id}/sim` read + the three gated commands), client mutations with the
+  full header set, the fake's capability-gated admission (typed `CAPABILITY_GATE_BLOCKED`
+  rejection before any state is touched), the four-stage pipeline rendered per-stage,
+  and the contextual support escape on failure (RL-103);
+- the pinned assertions FLIPPED: the web suite's GAP probe became the VERIFIED probe
+  (`apps/web/test/rl115-capability-discoverability.test.ts`), the structural guard
+  flipped from absence to required presence
+  (`tests/architecture/test/wave8-b-capability-guards.test.ts`), the inventory row
+  flipped GAP -> VERIFIED with its four §15 surfaces, and this matrix row flipped
+  with them. The MOBILE matrix is intentionally untouched (a separate work order owns
+  the mobile journey; its pinned status-only probe stays green).
 
 ### RL-115-F2 — the §11 SLO dashboard has no entry point from any surface (CAP-SLO)
 
@@ -288,7 +320,8 @@ eventual fixes flip explicit assertions.
 The dispatch named three candidates; each was verified, not assumed:
 
 1. **eSIM profile management** — confirmed GAP (RL-115-F1), with the nuance that status
-   visibility IS verified on the mobile matrix: the gap is the management journey.
+   visibility IS verified on the mobile matrix: the gap was the management journey.
+   **Closed by PA-001** (see the flip record on the finding above).
 2. **SLO dashboard entry from the admin console** — confirmed GAP (RL-115-F2): the view
    is real (host-side, honest), the entry is missing everywhere.
 3. **Enterprise connector enrollment discoverability** — confirmed GAP (RL-115-F3):

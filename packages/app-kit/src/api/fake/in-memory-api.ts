@@ -288,6 +288,15 @@ export interface InMemoryApiControls {
   }): void;
   /** Marks an invoice reconciled and progresses payment commands to billable-final. */
   reconcileInvoice(invoiceId: string): boolean;
+  /**
+   * Confirms the pending eSIM profile change with platform evidence
+   * (RL-115-F1): install-requested -> installed+enabled, remove-requested ->
+   * removed from the inventory, pending enable/disable -> the flipped
+   * confirmed state. The confirmation is PLATFORM evidence (OBSERVED,
+   * fresh) - it never edits the command pipeline, whose stages stay the
+   * honest RoamLink-side record.
+   */
+  confirmEsimProfile(input: { readonly deviceId: string; readonly profileId: string }): boolean;
   /** Frozen introspection of stored commands (assertions in tests). */
   commands(): readonly StoredCommand[];
 }
@@ -426,7 +435,8 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
     readonly idempotencyKey: string;
     readonly subjectType?: string;
     readonly subjectId?: string;
-    readonly apply: () => { readonly resource?: { readonly type: string; readonly id: string; readonly version?: number } };
+    /** Receives the command id so apply-time records can reference it. */
+    readonly apply: (commandId: string) => { readonly resource?: { readonly type: string; readonly id: string; readonly version?: number } };
   }): HttpResponse {
     const idempotencyIndexKey = `${input.tenantId}|${input.idempotencyKey}`;
     const replayedCommandId = state.idempotency.get(idempotencyIndexKey);
@@ -448,7 +458,7 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       ...(input.subjectType !== undefined ? { subjectType: input.subjectType } : {}),
       ...(input.subjectId !== undefined ? { subjectId: input.subjectId } : {}),
     };
-    const applied = input.apply();
+    const applied = input.apply(commandId);
     command.executedAt = now();
     if (applied.resource !== undefined) {
       command.resource = applied.resource;
@@ -553,6 +563,187 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
           : evaluateFresh(device.capabilityFreshness, now()),
       contextFreshness:
         device.contextFreshness === null ? null : evaluateFresh(device.contextFreshness, now()),
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Device SIM & eSIM state (RL-115-F1 remediation, PA-001)
+  //
+  // The fake's per-device eSIM state mirrors the READ contract (capability
+  // evidence rows + profile inventory) and implements the same gate truth
+  // table the edge capability gate owns (status/evidence/freshness -> allow/
+  // deny/degrade with the closed reason vocabulary). It is contract-level
+  // behavior: nothing is admitted without a passing gate, a commanded state
+  // is never a confirmed state, and absent evidence is unknown - never
+  // assumed (RL-LOCK-011).
+  // --------------------------------------------------------------------------
+
+  interface StoredEsimCapability {
+    readonly capability: string;
+    readonly status: string;
+    readonly evidenceClass: string | null;
+    readonly freshness: { observedAt: string | null; receivedAt: string | null; freshUntil: string | null } | null;
+  }
+
+  interface StoredEsimPending {
+    readonly kind: "install" | "remove" | "enable" | "disable";
+    readonly commandId: string;
+    readonly requestedAt: string;
+  }
+
+  interface StoredEsimProfile {
+    readonly profileId: string;
+    readonly label: string;
+    state: "install-requested" | "enabled" | "disabled" | "remove-requested";
+    evidenceClass: string | null;
+    freshness: { observedAt: string | null; receivedAt: string | null; freshUntil: string | null } | null;
+    installedAt: string | null;
+    pending: StoredEsimPending | null;
+  }
+
+  interface StoredDeviceEsim {
+    readonly deviceId: string;
+    readonly capabilities: StoredEsimCapability[];
+    readonly installRequiresActivationCode: boolean;
+    profiles: StoredEsimProfile[];
+  }
+
+  const esimStates = new Map<string, StoredDeviceEsim>();
+  for (const [seedTenantId, seedTenant] of state.tenants) {
+    for (const seedDevice of seedTenant.devices) {
+      if (seedDevice.esim === undefined) continue;
+      esimStates.set(`${seedTenantId}|${seedDevice.deviceId}`, {
+        deviceId: seedDevice.deviceId,
+        capabilities: seedDevice.esim.capabilities.map((capability) => ({
+          ...capability,
+          freshness:
+            capability.freshness === null ? null : { ...capability.freshness },
+        })),
+        installRequiresActivationCode: seedDevice.esim.installRequiresActivationCode,
+        profiles: seedDevice.esim.profiles.map((profile) => ({
+          ...profile,
+          freshness: profile.freshness === null ? null : { ...profile.freshness },
+          pending: null,
+        })),
+      });
+    }
+  }
+
+  /**
+   * The device's stored eSIM state, synthesizing the honest UNKNOWN world
+   * (no evidence rows, no profiles) for devices that never reported any -
+   * capability questions without evidence stay unknown, never assumed
+   * (RL-LOCK-011).
+   */
+  function esimOf(tenantId: string, deviceId: string): StoredDeviceEsim {
+    const key = `${tenantId}|${deviceId}`;
+    const existing = esimStates.get(key);
+    if (existing !== undefined) return existing;
+    const synthesized: StoredDeviceEsim = {
+      deviceId,
+      capabilities: ["esim_profile_install", "esim_profile_remove", "esim_profile_enable"].map(
+        (capability) => ({ capability, status: "unknown", evidenceClass: null, freshness: null }),
+      ),
+      // Meaningful only once the install gate allows (an ungated install
+      // never renders a form to ask for a code in the first place).
+      installRequiresActivationCode: false,
+      profiles: [],
+    };
+    esimStates.set(key, synthesized);
+    return synthesized;
+  }
+
+  function esimCapabilityRow(
+    esim: StoredDeviceEsim,
+    capability: string,
+  ): StoredEsimCapability | undefined {
+    return esim.capabilities.find((row) => row.capability === capability);
+  }
+
+  /** Evidence-class gating rank (the eSIM capabilities' minimum is OBSERVED). */
+  const ESIM_EVIDENCE_CLASS_RANKS: Readonly<Record<string, number>> = Object.freeze({
+    AUTHENTICATED: 4,
+    OBSERVED: 3,
+    REPORTED: 2,
+    DERIVED: 1,
+    INFERRED: 0,
+    STALE: 0,
+    UNKNOWN: 0,
+  });
+
+  /**
+   * The contract-level capability gate for eSIM commands (the same truth
+   * table the edge gate owns): available + sufficient evidence + fresh ->
+   * allow; unavailable/unknown -> deny; requires-permission -> degrade;
+   * weak or stale evidence -> deny. Pure over its inputs.
+   */
+  function esimGateFor(
+    row: StoredEsimCapability | undefined,
+  ): { decision: "allow" | "deny" | "degrade"; reason: string | null } {
+    if (row === undefined) {
+      return { decision: "deny", reason: "capability-unknown" };
+    }
+    switch (row.status) {
+      case "unavailable":
+        return { decision: "deny", reason: "capability-unavailable" };
+      case "unknown":
+        return { decision: "deny", reason: "capability-unknown" };
+      case "requires-permission":
+        return { decision: "degrade", reason: "capability-requires-permission" };
+      case "available": {
+        if ((ESIM_EVIDENCE_CLASS_RANKS[row.evidenceClass ?? "UNKNOWN"] ?? 0) < 3) {
+          return { decision: "deny", reason: "evidence-class-insufficient" };
+        }
+        const freshness = evaluateFresh(row.freshness, now());
+        if (freshness.freshnessState !== "FRESH") {
+          return { decision: "deny", reason: "evidence-stale" };
+        }
+        return { decision: "allow", reason: null };
+      }
+      default:
+        return { decision: "deny", reason: "capability-unknown" };
+    }
+  }
+
+  /** The typed rejection for a gate-blocked eSIM command (never an effect). */
+  function esimGateBlocked(gate: { decision: string; reason: string | null }): never {
+    fail(
+      errorResponse(
+        HTTP_STATUS.conflict,
+        "domain",
+        "CAPABILITY_GATE_BLOCKED",
+        `the device action was blocked by the capability gate before any state was touched (decision: ${gate.decision}, reason: ${gate.reason ?? "capability-unknown"})`,
+        false,
+      ),
+    );
+  }
+
+  function esimCapabilityResource(row: StoredEsimCapability): Record<string, unknown> {
+    return {
+      capability: row.capability,
+      status: row.status,
+      evidenceClass: row.evidenceClass,
+      freshness: row.freshness === null ? null : evaluateFresh(row.freshness, now()),
+      gate: esimGateFor(row),
+    };
+  }
+
+  function esimProfileResource(profile: StoredEsimProfile): Record<string, unknown> {
+    return {
+      profileId: profile.profileId,
+      label: profile.label,
+      state: profile.state,
+      evidenceClass: profile.evidenceClass,
+      freshness: profile.freshness === null ? null : evaluateFresh(profile.freshness, now()),
+      installedAt: profile.installedAt,
+      pending:
+        profile.pending === null
+          ? null
+          : {
+              kind: profile.pending.kind,
+              commandId: profile.pending.commandId,
+              requestedAt: profile.pending.requestedAt,
+            },
     };
   }
 
@@ -874,6 +1065,203 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
             device.status = "retired";
             device.revision += 1;
             return { resource: { type: "device", id: deviceId, version: device.revision } };
+          },
+        });
+      }
+
+      // -- SIM & eSIM profiles (RL-115-F1 remediation) ------------------------
+      // The read: capability truth rows (gate preview computed at this
+      // instant) + the profile inventory. The three commands: capability-
+      // gated admission first (a blocked gate is a typed rejection, never an
+      // effect), then the honest commanded states - install/remove requests
+      // and pending enable/disable - which only platform confirmation
+      // (controls.confirmEsimProfile) flips to evidenced confirmed states.
+      if (method === "GET" && segments.length === 4 && segments[3] === "sim") {
+        const esim = esimOf(tenantId, deviceId);
+        return ok({
+          deviceId,
+          capabilities: esim.capabilities.map(esimCapabilityResource),
+          installRequiresActivationCode: esim.installRequiresActivationCode,
+          profiles: esim.profiles.map(esimProfileResource),
+        });
+      }
+      if (method === "POST" && segments.length === 5 && segments[3] === "sim" && segments[4] === "install") {
+        const body = parseBody(request);
+        const activationCode =
+          typeof body["activationCode"] === "string" ? body["activationCode"] : undefined;
+        const esim = esimOf(tenantId, deviceId);
+        if (
+          esim.installRequiresActivationCode &&
+          (activationCode === undefined || activationCode.length === 0)
+        ) {
+          fail(
+            badRequest(
+              "ESIM_ACTIVATION_CODE_REQUIRED",
+              "installing a profile on this device requires the activation code from your carrier or provider",
+            ),
+          );
+        }
+        return runCommand({
+          kind: "esim.install",
+          actorId: actorHeader,
+          tenantId,
+          correlationId: mutationEnvelope?.correlationId ?? "",
+          idempotencyKey: mutationEnvelope?.idempotencyKey ?? "",
+          subjectType: "device",
+          subjectId: deviceId,
+          apply: (commandId) => {
+            const gate = esimGateFor(esimCapabilityRow(esim, "esim_profile_install"));
+            if (gate.decision !== "allow") {
+              appendAudit(tenantId, {
+                category: "authority-decision",
+                action: "esim.install",
+                outcome: "denied",
+                actorId: actorHeader,
+                correlationId: mutationEnvelope?.correlationId ?? "",
+                target: `device:${deviceId}`,
+                detail: `gate ${gate.decision}: ${gate.reason ?? "capability-unknown"}`,
+              });
+              esimGateBlocked(gate);
+            }
+            const profileId = nextId();
+            esim.profiles.push({
+              profileId,
+              label: "New eSIM profile",
+              state: "install-requested",
+              evidenceClass: null,
+              freshness: null,
+              installedAt: null,
+              pending: { kind: "install", commandId, requestedAt: now() },
+            });
+            appendAudit(tenantId, {
+              category: "authority-decision",
+              action: "esim.install",
+              outcome: "allowed",
+              actorId: actorHeader,
+              correlationId: mutationEnvelope?.correlationId ?? "",
+              commandId,
+              target: `device:${deviceId}`,
+            });
+            return { resource: { type: "esim_profile", id: profileId } };
+          },
+        });
+      }
+      if (
+        method === "POST" &&
+        segments.length === 7 &&
+        segments[3] === "sim" &&
+        segments[4] === "profiles" &&
+        segments[6] === "remove"
+      ) {
+        const profileId = segments[5] ?? "";
+        const esim = esimOf(tenantId, deviceId);
+        const profile = esim.profiles.find((p) => p.profileId === profileId);
+        if (profile === undefined) {
+          fail(notFound("the requested eSIM profile does not exist on this device"));
+        }
+        return runCommand({
+          kind: "esim.remove",
+          actorId: actorHeader,
+          tenantId,
+          correlationId: mutationEnvelope?.correlationId ?? "",
+          idempotencyKey: mutationEnvelope?.idempotencyKey ?? "",
+          subjectType: "esim_profile",
+          subjectId: profileId,
+          apply: (commandId) => {
+            const gate = esimGateFor(esimCapabilityRow(esim, "esim_profile_remove"));
+            if (gate.decision !== "allow") {
+              appendAudit(tenantId, {
+                category: "authority-decision",
+                action: "esim.remove",
+                outcome: "denied",
+                actorId: actorHeader,
+                correlationId: mutationEnvelope?.correlationId ?? "",
+                target: `device:${deviceId}`,
+                detail: `gate ${gate.decision}: ${gate.reason ?? "capability-unknown"}`,
+              });
+              esimGateBlocked(gate);
+            }
+            if (profile.state === "remove-requested") {
+              fail(conflict("ESIM_PROFILE_REMOVAL_ALREADY_REQUESTED", "the profile removal is already requested and awaiting the device's confirmation"));
+            }
+            profile.state = "remove-requested";
+            profile.pending = { kind: "remove", commandId, requestedAt: now() };
+            appendAudit(tenantId, {
+              category: "authority-decision",
+              action: "esim.remove",
+              outcome: "allowed",
+              actorId: actorHeader,
+              correlationId: mutationEnvelope?.correlationId ?? "",
+              commandId,
+              target: `device:${deviceId}`,
+            });
+            return { resource: { type: "esim_profile", id: profileId } };
+          },
+        });
+      }
+      if (
+        method === "POST" &&
+        segments.length === 7 &&
+        segments[3] === "sim" &&
+        segments[4] === "profiles" &&
+        segments[6] === "enable"
+      ) {
+        const profileId = segments[5] ?? "";
+        const body = parseBody(request);
+        const enabled = body["enabled"];
+        const esim = esimOf(tenantId, deviceId);
+        const profile = esim.profiles.find((p) => p.profileId === profileId);
+        if (profile === undefined) {
+          fail(notFound("the requested eSIM profile does not exist on this device"));
+        }
+        if (typeof enabled !== "boolean") {
+          fail(badRequest("ESIM_ENABLED_FLAG_REQUIRED", "the enable command requires the desired state (enabled: true or false)"));
+        }
+        return runCommand({
+          kind: "esim.enable",
+          actorId: actorHeader,
+          tenantId,
+          correlationId: mutationEnvelope?.correlationId ?? "",
+          idempotencyKey: mutationEnvelope?.idempotencyKey ?? "",
+          subjectType: "esim_profile",
+          subjectId: profileId,
+          apply: (commandId) => {
+            const gate = esimGateFor(esimCapabilityRow(esim, "esim_profile_enable"));
+            if (gate.decision !== "allow") {
+              appendAudit(tenantId, {
+                category: "authority-decision",
+                action: "esim.enable",
+                outcome: "denied",
+                actorId: actorHeader,
+                correlationId: mutationEnvelope?.correlationId ?? "",
+                target: `device:${deviceId}`,
+                detail: `gate ${gate.decision}: ${gate.reason ?? "capability-unknown"}`,
+              });
+              esimGateBlocked(gate);
+            }
+            if (profile.state !== "enabled" && profile.state !== "disabled") {
+              fail(
+                conflict(
+                  "ESIM_PROFILE_NOT_CONFIRMED",
+                  "only a device-confirmed profile can be enabled or disabled (a requested install is not an installed profile)",
+                ),
+              );
+            }
+            const desired = enabled ? "enable" : "disable";
+            if (profile.pending !== null) {
+              fail(conflict("ESIM_CHANGE_ALREADY_REQUESTED", "a change for this profile is already requested and awaiting the device's confirmation"));
+            }
+            profile.pending = { kind: desired, commandId, requestedAt: now() };
+            appendAudit(tenantId, {
+              category: "authority-decision",
+              action: "esim.enable",
+              outcome: "allowed",
+              actorId: actorHeader,
+              correlationId: mutationEnvelope?.correlationId ?? "",
+              commandId,
+              target: `device:${deviceId}`,
+            });
+            return { resource: { type: "esim_profile", id: profileId } };
           },
         });
       }
@@ -1967,6 +2355,38 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
             command.billableFinalAt = now();
           }
         }
+        return true;
+      }
+      return false;
+    },
+    confirmEsimProfile(input: { deviceId: string; profileId: string }): boolean {
+      for (const esim of esimStates.values()) {
+        if (esim.deviceId !== input.deviceId) continue;
+        const index = esim.profiles.findIndex((p) => p.profileId === input.profileId);
+        if (index === -1) continue;
+        const profile = esim.profiles[index];
+        if (profile === undefined || profile.pending === null) return false;
+        const freshUntil = new Date(Date.parse(now()) + 3_600_000).toISOString();
+        switch (profile.pending.kind) {
+          case "remove":
+            // The platform confirmed the removal: the record leaves the
+            // inventory (its absence is the honest confirmed state).
+            esim.profiles.splice(index, 1);
+            return true;
+          case "install":
+            profile.state = "enabled";
+            profile.installedAt = now();
+            break;
+          case "enable":
+            profile.state = "enabled";
+            break;
+          case "disable":
+            profile.state = "disabled";
+            break;
+        }
+        profile.pending = null;
+        profile.evidenceClass = "OBSERVED";
+        profile.freshness = { observedAt: now(), receivedAt: now(), freshUntil };
         return true;
       }
       return false;

@@ -52,6 +52,47 @@ export interface FakeDeviceSeed {
   readonly revision: number;
   readonly capabilityFreshness: FakeFreshnessSeed | null;
   readonly contextFreshness: FakeFreshnessSeed | null;
+  /**
+   * Optional per-device eSIM facts (RL-115-F1 remediation, additive): the
+   * three capability-evidence rows, the platform's install contract and the
+   * profile inventory. Absent renders as the honest unknown rows (nothing
+   * is assumed — RL-LOCK-011).
+   */
+  readonly esim?: FakeDeviceEsimSeed;
+}
+
+/**
+ * One eSIM capability evidence row (fake-internal; the wire shape is the
+ * EsimCapabilityRowResource in the resources module). Status mirrors the
+ * edge capability-snapshot vocabulary members that reach this surface.
+ */
+export interface FakeEsimCapabilitySeed {
+  readonly capability: "esim_profile_install" | "esim_profile_remove" | "esim_profile_enable";
+  readonly status: "available" | "requires-permission" | "unavailable" | "unknown";
+  readonly evidenceClass: string | null;
+  readonly freshness: FakeFreshnessSeed | null;
+}
+
+/**
+ * One eSIM profile record. `evidenceClass`/`freshness` back the CONFIRMED
+ * states only; a commanded state (`install-requested`, `remove-requested` or
+ * a pending enable/disable) carries them as the last platform confirmation,
+ * or null when none exists.
+ */
+export interface FakeEsimProfileSeed {
+  readonly profileId: string;
+  readonly label: string;
+  readonly state: "install-requested" | "enabled" | "disabled" | "remove-requested";
+  readonly evidenceClass: string | null;
+  readonly freshness: FakeFreshnessSeed | null;
+  readonly installedAt: string | null;
+}
+
+/** The per-device eSIM seed composition. */
+export interface FakeDeviceEsimSeed {
+  readonly capabilities: readonly FakeEsimCapabilitySeed[];
+  readonly installRequiresActivationCode: boolean;
+  readonly profiles: readonly FakeEsimProfileSeed[];
 }
 
 export interface FakeIntentVersionSeed {
@@ -444,6 +485,70 @@ export function fakeApiSeed(): FakeApiSeed {
               receivedAt: T0,
               freshUntil: FAKE_SEED_CLOCK.freshUntil,
             },
+            // RL-115-F1 remediation: the iOS device carries eSIM capability
+            // EVIDENCE (available, OBSERVED, fresh) and one platform-confirmed
+            // enabled profile — the honest happy-path journey world.
+            esim: {
+              capabilities: [
+                {
+                  capability: "esim_profile_install",
+                  status: "available",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+                {
+                  capability: "esim_profile_remove",
+                  status: "available",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+                {
+                  capability: "esim_profile_enable",
+                  status: "available",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+              ],
+              installRequiresActivationCode: true,
+              profiles: [
+                {
+                  profileId: "1a2b3c4d-0000-4000-8000-000000000001",
+                  label: "Primary line",
+                  state: "enabled",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                  installedAt: "2024-12-01T10:00:00.000Z",
+                },
+                {
+                  profileId: "1a2b3c4d-0000-4000-8000-000000000002",
+                  label: "Travel data plan",
+                  state: "disabled",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                  installedAt: "2024-11-18T16:30:00.000Z",
+                },
+              ],
+            },
           },
           {
             deviceId: "dddddddd-0000-4000-8000-000000000002",
@@ -458,6 +563,45 @@ export function fakeApiSeed(): FakeApiSeed {
               freshUntil: FAKE_SEED_CLOCK.staleFreshUntil,
             },
             contextFreshness: null,
+            // The macOS device's platform reports the eSIM capabilities as
+            // UNAVAILABLE (the capability is not defined on this platform
+            // family — the honest blocked world: manual guidance, no actions).
+            esim: {
+              capabilities: [
+                {
+                  capability: "esim_profile_install",
+                  status: "unavailable",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+                {
+                  capability: "esim_profile_remove",
+                  status: "unavailable",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+                {
+                  capability: "esim_profile_enable",
+                  status: "unavailable",
+                  evidenceClass: "OBSERVED",
+                  freshness: {
+                    observedAt: T0,
+                    receivedAt: T0,
+                    freshUntil: FAKE_SEED_CLOCK.freshUntil,
+                  },
+                },
+              ],
+              installRequiresActivationCode: false,
+              profiles: [],
+            },
           },
         ],
         intents: [
