@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { tenantIdFromUser } from "@roamlink/contracts";
+import { parseActorSessionResource } from "@roamlink/app-kit";
 
 import { PASSWORD_A, T0, createTestWorld, mutationHeaders, userIdFromSeed } from "./helpers.js";
 
@@ -171,10 +172,16 @@ describe("GET /v1/users/me (the principal view)", () => {
     const body = JSON.parse(me.body as string);
     expect(body["userId"]).toBe(userId);
     expect(body["actorId"]).toBe(`usr:${userId}`);
-    expect(body["personalTenantId"]).toBe(tenantIdFromUser(userId));
-    expect(body["sessionExpiresAt"]).toBe("2026-01-15T16:30:00.000Z");
-    // The additive ActorSessionResource fields (app-kit's fail-closed admin
-    // gate parses this shape): the session is personal-tenant scoped, so the
+    // The response IS the contracted ActorSessionResource - no invented
+    // fields. The strict app-kit parser (unknown fields rejected) accepting
+    // the body is the drift guard: a response that invents extra fields is a
+    // contract violation on every fail-closed consumer (the apps' clients,
+    // the host's ops surface).
+    expect(() => parseActorSessionResource(body)).not.toThrow();
+    expect(body["personalTenantId"]).toBeUndefined();
+    expect(body["sessionExpiresAt"]).toBeUndefined();
+    // The ActorSessionResource fields (app-kit's fail-closed admin gate
+    // parses this shape): the session is personal-tenant scoped, so the
     // boundary's own personal-tenant answers are served - nothing invented.
     expect(body["tenantId"]).toBe(tenantIdFromUser(userId));
     expect(body["scope"]).toBe("user");
