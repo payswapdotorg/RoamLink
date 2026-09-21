@@ -31,10 +31,13 @@
  *    but NOT the generic in-content action links (home fact-card links,
  *    goal/device card links, journey "Open ..." links) nor the shell
  *    indicator's "Connectivity details" link.
- *  RL-114-F4 — the /notifications page is reachable by URL only: no nav
- *    destination, More-sheet entry or in-page link points at it (the
- *    dedicated route is a compatibility surface per spec §8; recorded here
- *    because it is also a discoverability fact).
+ *  RL-114-F4 — RESOLVED by PA-003 (orchestrator decision, Option B): the
+ *    /notifications page is deliberately compatibility-only. Zero inbound
+ *    links (no nav destination, More-sheet entry or in-page link) is now
+ *    the DESIGNED contract, pinned below as expected behavior, and the
+ *    page carries a visible compatibility-role note naming Activity as
+ *    the live narrative (spec §8: notifications are represented in
+ *    Activity; the dedicated route is kept for compatibility).
  *
  * The per-journey mobile-variant document contract lives in
  * apps/mobile/test/rl114-mobile-document-contract.test.ts.
@@ -352,11 +355,13 @@ describe("RL-114 loading/error/empty states for every primary surface (§14)", (
     }
   });
 
-  it("FINDING RL-114-F4 (pinned): the /notifications page has no inbound link from any navigation or journey surface", async () => {
-    // spec/ux-architecture.md §8: notifications are represented in Activity;
-    // the dedicated route is kept for compatibility. Pinned fact: NOTHING
-    // renders a link to /notifications, so the page is URL-only. A future
-    // link (or a deliberate deprecation note) flips this assertion.
+  it("RESOLVED RL-114-F4 (PA-003, Option B): /notifications is deliberately compatibility-only — zero inbound links is the designed contract, and the page states its role", async () => {
+    // The orchestrator decision (PA-003, Option B): Activity is the SOLE
+    // user-facing notification surface; /notifications is EXPLICITLY
+    // compatibility-only. What was pinned as a finding (nothing renders a
+    // link to /notifications) is now pinned as the DESIGNED contract —
+    // by design, not by omission. Removing the compatibility route or
+    // adding an inbound link both flip this test.
     const { app } = buildApp();
     for (const renderCase of RENDER_CASES) {
       const document = await app.renderDocument(renderCase.request);
@@ -364,6 +369,13 @@ describe("RL-114 loading/error/empty states for every primary surface (§14)", (
         'href="/notifications"',
       );
     }
+    // The compatibility surface carries the visible compatibility-role
+    // note (plain language) and links the live narrative.
+    const page = await app.renderDocument({ page: "notifications" });
+    expect(page).toContain('data-compatibility-role="true"');
+    expect(page).toContain("this page is a compatibility surface");
+    expect(page).toContain("Activity is the live narrative");
+    expect(page).toContain('href="/activity"');
   });
 });
 
@@ -374,6 +386,7 @@ describe("RL-114 loading/error/empty states for every primary surface (§14)", (
 /** Classes carried by `<a>` elements (their floor rule names the class). */
 const ANCHOR_ELEMENT_CLASSES: ReadonlySet<string> = new Set([
   ".more-item-link",
+  ".order-link",
   ".shell-indicator-link",
   ".shell-skip-link",
   ".shell-title",
@@ -417,10 +430,13 @@ describe("RL-114 touch-target coverage on all interactive elements (§14)", () =
     // app layer floors exactly the card-style link families below — nothing
     // else (the shell layer additionally floors its two nav families). A new
     // floor (the fix for this finding) changes this set and flips the assert.
+    // PA-003 (RL-115-F8) added the `.order-link` family (the Orders-table
+    // journey links) to this set; the finding itself STANDS: the generic
+    // in-content action links named above still have no floor.
     const anchorFloors = selectorsWith44px(WEB_APP_STYLES).filter((s) =>
       s.includes(" a") || ANCHOR_ELEMENT_CLASSES.has(s),
     );
-    expect(anchorFloors).toEqual([".more-item-link", ".support-escape a"]);
+    expect(anchorFloors).toEqual([".more-item-link", ".order-link", ".support-escape a"]);
     expect(WEB_APP_STYLES).toContain(".home-fact-action a { font-weight: 600; }");
     expect(WEB_APP_STYLES).not.toContain(".home-fact-action a { font-weight: 600; min-height");
     expect(WEB_APP_STYLES).not.toContain(".goal-card a {");

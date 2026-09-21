@@ -8,6 +8,15 @@
  * horizontally scrollable region (narrow screens scroll, never overflow);
  * every column header carries scope; every form control is explicitly
  * labelled.
+ *
+ * PA-003 (RL-115-F8 closed): every Orders-table row links to its
+ * delivery-progress journey (`/orders/{orderId}`, composed through the
+ * route table) — the order journey is no longer URL-only. The anchor
+ * carries the repo's card-style action-link class (`.order-link`) with the
+ * 44px touch-target floor, so it is keyboard reachable (a real `href`
+ * anchor) and touch-safe. The host-composed post-payment redirect stays
+ * exactly as it was: the link is ADDITIVE discoverability, not a change
+ * to the purchase flow.
  */
 import {
   emptyState,
@@ -25,6 +34,7 @@ import {
 } from "@roamlink/app-kit";
 
 import { pageHeading, tableWrap } from "../app.js";
+import { pagePath } from "../routes.js";
 
 export function commercePage(input: {
   readonly products: readonly ProductResource[];
@@ -104,6 +114,7 @@ export function commercePage(input: {
                 el("th", { scope: "col" }, text("Status")),
                 el("th", { scope: "col" }, text("Total")),
                 el("th", { scope: "col" }, text("Revision")),
+                el("th", { scope: "col" }, text("Delivery progress")),
               ),
             ),
             el(
@@ -117,6 +128,26 @@ export function commercePage(input: {
                   el("td", {}, stateBadge(order.status)),
                   el("td", {}, moneyView(order.total)),
                   el("td", {}, text(order.revision)),
+                  // PA-003 (RL-115-F8): the row's contextual link to the
+                  // guided delivery-progress journey — a real anchor with a
+                  // real href (keyboard reachable), carrying the 44px-floor
+                  // action-link class. Buying never implies delivery; the
+                  // journey page keeps commercial and delivery chains
+                  // separate (RL-LOCK-008), so the label names the view,
+                  // never a promised outcome.
+                  el(
+                    "td",
+                    {},
+                    el(
+                      "a",
+                      {
+                        class: "order-link",
+                        href: pagePath("order", { orderId: order.orderId }),
+                        "data-order-journey-link": order.orderId,
+                      },
+                      text("Open delivery progress"),
+                    ),
+                  ),
                 ),
               ),
             ),

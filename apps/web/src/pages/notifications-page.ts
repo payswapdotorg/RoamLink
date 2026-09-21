@@ -2,6 +2,17 @@
  * The notifications page (RL-085 digest companion; route/API kept for
  * compatibility per spec/ux-architecture.md §8).
  *
+ * PA-003 (RL-114-F4 resolved — orchestrator decision, Option B): Activity
+ * is the SOLE user-facing notification surface; this page is EXPLICITLY
+ * compatibility-only. The page therefore carries a visible
+ * compatibility-role note (plain language: this page is a compatibility
+ * surface; Activity is the live narrative) that links the live narrative.
+ * Zero INBOUND links to /notifications is the designed contract — pinned
+ * as the expected behavior in apps/web/test/rl114-extended-a11y.test.ts
+ * and the wave8-b structural guard (no nav destination, no More-sheet
+ * entry, no in-page link points here; the route stays reachable by URL
+ * for existing links and integrations).
+ *
  * The digest groups the durable notifications honestly: what needs the
  * customer's review first, then what has been read, then everything else.
  * Each notification keeps its full traceability — the durable RoamLink
@@ -22,6 +33,23 @@ import {
 } from "@roamlink/app-kit";
 
 import { pageHeading } from "../app.js";
+import { pagePath } from "../routes.js";
+
+/** The visible compatibility-role note (PA-003, Option B). */
+function compatibilityRoleNote(): HtmlFragment {
+  return el(
+    "p",
+    { class: "muted", "data-compatibility-role": "true" },
+    fragment(
+      text(
+        "Compatibility view: this page is a compatibility surface kept so existing links keep working. "+
+          "Activity is the live narrative of what RoamLink did, why, and with what evidence. ",
+      ),
+      el("a", { href: pagePath("activity") }, text("Open Activity")),
+      text("."),
+    ),
+  );
+}
 
 export function notificationsPage(input: {
   readonly notifications: readonly NotificationResource[];
@@ -37,6 +65,10 @@ export function notificationsPage(input: {
       "Notifications",
       "Everything RoamLink has told you, emitted from its own recorded state changes — Activity is the full story.",
     ),
+    // The compatibility-role note renders unconditionally (PA-003, Option
+    // B): whether the world is empty or full, the page states its own
+    // role and points at the live narrative.
+    compatibilityRoleNote(),
     input.notifications.length === 0
       ? el(
           "p",
