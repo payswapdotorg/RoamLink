@@ -21,6 +21,7 @@ import {
   text,
   pageShell,
   RoamLinkApiClient,
+  type HtmlFragment,
   type HttpRequest,
   type RequestIdGenerator,
 } from "@roamlink/app-kit";
@@ -29,6 +30,7 @@ import { AdminConsoleApp, ADMIN_PAGE_ROUTES, type AdminPageName } from "@roamlin
 import type { ApiService } from "@roamlink/api-service";
 
 import { createSessionTransport } from "./session.js";
+import type { DemoAccountView } from "./demo-accounts.js";
 
 // ---------------------------------------------------------------------------
 // URL -> page-request resolution (the apps' own route tables)
@@ -184,8 +186,98 @@ export class SurfaceNotFoundError extends Error {
 // The host login page (the session layer's own document)
 // ---------------------------------------------------------------------------
 
-/** Renders the host login document. `error` is the API's typed message (safe by contract). */
-export function renderLoginDocument(error?: string): string {
+/**
+ * The quick-action styles for the demo accounts section of the login page
+ * (additive CSS appended after the app-kit base styles; no other page uses
+ * these classes, so the blast radius is the login document alone).
+ */
+const DEMO_LOGIN_STYLES = `
+.demo-accounts { display: grid; gap: 0.6rem; margin: 0.5rem 0 1rem; }
+.demo-account-form { margin: 0; }
+.demo-account-button {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  font: inherit; color: inherit; background: #fff;
+  border: 1px solid #e2e2e2; border-radius: 8px; padding: 0.7rem 0.9rem;
+}
+.demo-account-button:hover { border-color: #b7e4c0; background: #f7fcf8; }
+.demo-account-button:focus-visible { outline: 2px solid #14532d; outline-offset: 2px; }
+.demo-account-name { display: block; font-weight: 600; }
+.demo-account-summary { display: block; font-size: 0.85rem; color: #555; margin-top: 0.15rem; }
+.demo-account-email { display: block; font-size: 0.8rem; color: #777; margin-top: 0.25rem; }
+.login-divider {
+  display: flex; align-items: center; gap: 0.75rem; color: #999; font-size: 0.85rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.login-divider::before, .login-divider::after {
+  content: ""; flex: 1; border-top: 1px solid #e2e2e2;
+}
+`.trim();
+
+/** Renders one demo persona's one-click sign-in form (a plain POST of the
+ *  persona's public credentials - the same /auth/session binding the manual
+ *  form uses, no parallel auth path, no client-side script). */
+function demoAccountForm(account: DemoAccountView): HtmlFragment {
+  return el(
+    "form",
+    {
+      method: "POST",
+      action: "/auth/session",
+      class: "demo-account-form",
+      "data-demo-account": account.key,
+    },
+    fragment(
+      el("input", { type: "hidden", name: "email", value: account.email }),
+      el("input", { type: "hidden", name: "password", value: account.password }),
+      el(
+        "button",
+        { type: "submit", class: "demo-account-button" },
+        fragment(
+          el("span", { class: "demo-account-name" }, text(account.displayName)),
+          el("span", { class: "demo-account-summary" }, text(account.summary)),
+          el("span", { class: "demo-account-email" }, text(account.email)),
+        ),
+      ),
+    ),
+  );
+}
+
+/** The demo accounts section of the login document (quick action logins). */
+function demoAccountsSection(accounts: readonly DemoAccountView[]): HtmlFragment {
+  const [first] = accounts;
+  const password = first?.password ?? "";
+  return fragment(
+    el("h2", {}, text("Demo accounts")),
+    el(
+      "p",
+      { class: "muted" },
+      text(
+        "This is the public demo environment: one-click sign-in with a demo persona, or use the shared public password below with any demo email.",
+      ),
+    ),
+    el(
+      "div",
+      { class: "demo-accounts", "data-demo-accounts": "true" },
+      fragment(...accounts.map((account) => demoAccountForm(account))),
+    ),
+    el(
+      "p",
+      { class: "muted" },
+      fragment(
+        text("Shared demo password (a public fixture, not a secret): "),
+        el("code", {}, text(password)),
+      ),
+    ),
+  );
+}
+
+/** Renders the host login document. `error` is the API's typed message (safe by contract).
+ *  `demoAccounts` (the demo environment's public roster, when enabled) renders
+ *  the quick action sign-in forms above the manual credential form. */
+export function renderLoginDocument(
+  error?: string,
+  demoAccounts?: readonly DemoAccountView[],
+): string {
+  const hasDemoAccounts = demoAccounts !== undefined && demoAccounts.length > 0;
   return htmlDocument(
     "RoamLink - Sign in",
     fragment(
@@ -202,6 +294,10 @@ export function renderLoginDocument(error?: string): string {
             ),
           ),
           error === undefined ? fragment() : el("p", { class: "error", role: "alert" }, text(error)),
+          hasDemoAccounts ? demoAccountsSection(demoAccounts) : fragment(),
+          hasDemoAccounts
+            ? el("p", { class: "login-divider", "aria-hidden": "true" }, text("or sign in with credentials"))
+            : fragment(),
           el(
             "form",
             { method: "POST", action: "/auth/session" },
@@ -236,5 +332,6 @@ export function renderLoginDocument(error?: string): string {
           "RoamLink hosted runtime (RL-089): the host composes the surfaces and the authenticated API; it holds no authority of its own.",
       }),
     ),
+    { styles: [DEMO_LOGIN_STYLES] },
   ).html;
 }

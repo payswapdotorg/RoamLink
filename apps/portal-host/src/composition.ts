@@ -74,6 +74,7 @@ import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readin
 import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
 import { createMaintenanceReceiver, type MaintenanceReceiver } from "./maintenance-receiver.js";
 import { createHostSloBindings, type HostSloBindings } from "./slo.js";
+import { seedDemoAccounts, type DemoAccountView } from "./demo-accounts.js";
 
 import { ScryptPasswordHasher } from "./scrypt-password-hasher.js";
 
@@ -119,6 +120,14 @@ export interface PortalHostComposition {
    * The ops surface (see ops-slo-page.ts) renders their state read-only.
    */
   readonly slo: HostSloBindings;
+  /**
+   * The public demo accounts (quick action logins): the seeded roster view
+   * for the login document - EMPTY unless ROAMLINK_DEMO_ACCOUNTS explicitly
+   * enables the demo environment's public fixtures (see demo-accounts.ts).
+   * The accounts themselves live in the identity stores like any other
+   * account; this seam only exposes the public login view.
+   */
+  readonly demo: { readonly accounts: readonly DemoAccountView[] };
   /**
    * The identity stores of this process. Host-internal: exposed as the
    * honest seam until the identity persistence adapters land (ops tooling
@@ -211,6 +220,15 @@ export interface PortalHostEnv {
    * measured-only (never silently classified). See ./slo.ts.
    */
   readonly sloObjectivesRaw?: string | undefined;
+  /**
+   * ROAMLINK_DEMO_ACCOUNTS (the demo environment's public fixtures): "1" or
+   * "true" seeds the public demo roster (quick action logins on the login
+   * document) through the REAL auth boundary at composition time;
+   * unset/empty, "0" or "false" seeds NOTHING. Any other value refuses to
+   * boot (fail-closed: a typo'd gate must never silently disable - or
+   * half-enable - the demo surface).
+   */
+  readonly demoAccounts?: string | undefined;
 }
 
 /** Thrown when the composition refuses to boot (fail-closed policy). */
@@ -244,6 +262,21 @@ export function parseWebhookSigningKeys(
     keys[keyId] = secret;
   }
   return keys;
+}
+
+/**
+ * Parses `ROAMLINK_DEMO_ACCOUNTS`: "1"/"true" (case-insensitive) enables the
+ * public demo roster; unset/empty, "0"/"false" disables it; ANY other value
+ * refuses to boot (an ambiguous gate is never silently interpreted).
+ */
+export function parseDemoAccountsGate(raw: string | undefined): boolean {
+  if (raw === undefined || raw.trim().length === 0) return false;
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "1" || normalized === "true") return true;
+  if (normalized === "0" || normalized === "false") return false;
+  throw new CompositionError(
+    "ROAMLINK_DEMO_ACCOUNTS must be exactly \"1\"/\"true\" (enable the public demo accounts) or \"0\"/\"false\"/unset (disable them); the value is otherwise ambiguous and the host refuses to boot half-configured",
+  );
 }
 
 export function createPortalHostComposition(env: PortalHostEnv): Promise<PortalHostComposition> {
@@ -337,6 +370,16 @@ async function createPortalHostCompositionWithDriver(
   const organizations = new InMemoryOrganizationRepository();
   const ledger = new InMemoryIdempotencyLedger();
   const identity: HostIdentityStores = { users, directory, credentials, sessions, memberships, organizations, ledger, hasher };
+
+  // The public demo accounts (ROAMLINK_DEMO_ACCOUNTS, demo environment only):
+  // seeded ONCE per process through the REAL administration boundary - the
+  // fixed deterministic identities make every boot rebuild the identical
+  // roster, and a disabled gate seeds NOTHING (the login document then has
+  // no demo surface at all). A seed failure refuses the whole boot
+  // (fail-closed: a half-seeded demo environment is never served).
+  const demo = parseDemoAccountsGate(env.demoAccounts)
+    ? { accounts: await seedDemoAccounts({ users, directory, credentials, organizations, memberships, ledger, hasher, now }) }
+    : { accounts: [] as readonly DemoAccountView[] };
 
   // The webhook verifier: env-parsed key registry; NO keys -> EVERY delivery
   // is rejected (fail-closed; there is no default signing secret in code).
@@ -432,7 +475,7 @@ async function createPortalHostCompositionWithDriver(
     };
   };
 
-  return { api, driver, persistence, maintenance, slo, identity, readyCheck, dispose };
+  return { api, driver, persistence, maintenance, slo, demo, identity, readyCheck, dispose };
 }
 
 async function bindDriver(

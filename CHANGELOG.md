@@ -4,6 +4,42 @@ All notable changes to the RoamLink repository are documented here. The
 format follows Keep-a-Changelog; the project version is tracked in the
 repository tags.
 
+## [Unreleased] — Demo environment public accounts (quick action logins)
+
+### Added
+
+- **`ROAMLINK_DEMO_ACCOUNTS` gate + public demo roster
+  (`apps/portal-host/src/demo-accounts.ts`):** the demo environment's
+  public sign-in fixtures, disabled everywhere by default. `"1"`/`"true"`
+  (case-insensitive) seeds three personas — Demo Customer (personal
+  tenant), Demo Org Owner and Demo Org Member (the `RoamLink Demo
+  Cooperative` organization with owner/member memberships) — through the
+  REAL `@roamlink/auth` administration boundary (registerUser /
+  createOrganization / addMember; never a direct repository write) at
+  composition time. Every identity is deterministic (fixed UUIDs, fixed
+  idempotency keys, fixed envelope mint instant), so a re-seed over the
+  same stores is an idempotent replay and every cold boot rebuilds the
+  identical roster. Unset/`"0"`/`"false"` seeds nothing; any other value
+  REFUSES the host boot (fail-closed gate parsing,
+  `parseDemoAccountsGate`). The personas are public fixtures, not
+  secrets: emails use the reserved `.example` domain and the shared
+  password is rendered on the login page by design (RL-LOCK-016 governs
+  secret material; a displayed demo password is not secret material).
+- **Quick action logins on the host login document:** when the roster is
+  seeded, `/login` renders one-click sign-in forms (one per persona) that
+  POST the persona's public credentials to the SAME `/auth/session`
+  cookie binding the manual form uses — no parallel auth path, no
+  client-side script, the manual credential form stays. The composition
+  exposes the read-only roster view at `composition.demo.accounts`;
+  `handleLoginPage` renders the section only for a booted, demo-enabled
+  composition (a refused composition still serves the plain form).
+- **Test battery (`apps/portal-host/test/demo-accounts.test.ts`):** the
+  fail-closed gate table, the frozen identity allocation asserted
+  verbatim, the organization/membership wiring, the idempotent re-seed,
+  the full quick-login round trip per persona (form POST → httpOnly
+  cookie → `/v1/users/me` principal view) and the typed wrong-password
+  rejection.
+
 ## [Unreleased] — Post-gate productization, Wave 6 (Worker A)
 
 ### Added (RL-082, RL-083)
