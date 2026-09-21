@@ -6,6 +6,20 @@ repository tags.
 
 ## [Unreleased] — Demo environment public accounts (quick action logins)
 
+### Fixed
+
+- **`/v1/users/me` wire-shape reconciliation (the RL-113 recorded
+  cross-surface finding):** the real principal view carried two invented
+  fields (`personalTenantId`, `sessionExpiresAt`) beyond the contracted
+  `ActorSessionResource`, so every fail-closed consumer — the apps' typed
+  clients (Settings, Workspace pages) and the host's ops-surface session
+  resolution — rejected it with `RESPONSE_CONTRACT_VIOLATION` (the ops
+  surface was unreachable for every session). The response now carries
+  EXACTLY the contracted fields; the services/api test asserts the strict
+  app-kit parser accepts the body (the drift guard), and the RL-113 e2e
+  entry journey asserts `getActorSession()` succeeds over the real
+  composition.
+
 ### Added
 
 - **`ROAMLINK_DEMO_ACCOUNTS` gate + public demo roster

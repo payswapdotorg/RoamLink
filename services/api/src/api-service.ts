@@ -379,16 +379,17 @@ function createInnerService(options: ApiServiceOptions): ApiService {
         );
 
         if (request.method === "GET" && path === ME_PATH) {
-          // The principal view doubles as the app-kit ActorSessionResource
-          // (the shape the admin console's fail-closed gate parses): the
-          // session is personal-tenant scoped, so scope/role/permissions are
-          // the auth boundary's OWN personal-tenant answers - nothing is
-          // invented here and no organization authority is claimed.
+          // The principal view IS the app-kit ActorSessionResource - exactly
+          // the contracted fields (actorId, userId, tenantId, scope, role,
+          // permissions), because the apps' fail-closed parsers reject unknown
+          // fields (app-kit resources.ts): a response that invents extra
+          // fields is a contract violation on every consumer. The session is
+          // personal-tenant scoped, so scope/role/permissions are the auth
+          // boundary's OWN personal-tenant answers - nothing is invented here
+          // and no organization authority is claimed.
           return jsonResponse(200, {
             actorId: principal.actorId,
             userId: principal.session.userId,
-            personalTenantId: principal.session.tenantId,
-            sessionExpiresAt: principal.session.expiresAt,
             tenantId: principal.session.tenantId,
             scope: "user",
             role: null,

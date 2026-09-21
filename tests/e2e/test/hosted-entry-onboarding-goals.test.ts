@@ -83,24 +83,21 @@ describe("RL-113 hosted journey: entry (land -> sign in -> Home)", () => {
       expect(principal["tenantId"]).toBe(journey.identity.tenantId);
       expect(principal["scope"]).toBe("user");
 
-      // CROSS-SURFACE FINDING (RL-113, recorded — never silently passed):
-      // the typed app-kit client CANNOT parse the real principal view. The
-      // real /v1/users/me body carries personalTenantId + sessionExpiresAt,
-      // and the app-kit fail-closed parser (parseActorSessionResource)
-      // rejects unknown fields — so getActorSession() over the real runtime
-      // fails closed with the typed contract-violation error. The host's
-      // own surface session resolution is unaffected (it hand-parses only
-      // actorId/tenantId); any app surface that calls getActorSession()
-      // (e.g. Settings, Workspace) fails closed on this runtime until the
-      // wire shape or the parser is reconciled (owner: services/api x
-      // app-kit — both frozen for this work item).
-      let sessionError: unknown;
-      try {
-        await journey.app.client().getActorSession();
-      } catch (caught) {
-        sessionError = caught;
-      }
-      expect(sessionError).toMatchObject({ kind: "unknown-state", reason: "RESPONSE_CONTRACT_VIOLATION" });
+      // CROSS-SURFACE FINDING (RL-113) — RESOLVED by the wire-shape
+      // reconciliation: the real /v1/users/me body now carries EXACTLY the
+      // contracted ActorSessionResource fields (the invented
+      // personalTenantId + sessionExpiresAt were removed from services/api),
+      // so the app-kit fail-closed parser (parseActorSessionResource)
+      // accepts it and the typed client reads succeed on the real runtime.
+      // App surfaces that call getActorSession() (Settings, Workspace) now
+      // render their real session view instead of the typed
+      // contract-violation panel.
+      const session = await journey.app.client().getActorSession();
+      expect(session.actorId).toBe(journey.identity.actorId);
+      expect(session.tenantId).toBe(journey.identity.tenantId);
+      expect(session.scope).toBe("user");
+      expect(session.role).toBeNull();
+      expect(Array.isArray(session.permissions)).toBe(true);
 
       const html = await journey.app.renderDocument({ page: "home" });
       expectShellChrome(html);
