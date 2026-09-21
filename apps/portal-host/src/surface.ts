@@ -211,6 +211,10 @@ const DEMO_LOGIN_STYLES = `
 .login-divider::before, .login-divider::after {
   content: ""; flex: 1; border-top: 1px solid #e2e2e2;
 }
+/* Touch-target sizing for the manual credential form's submit button (the
+   app-kit base styles leave native buttons at their default size; the shell
+   styles that normally enforce >=44px targets do not load on this page). */
+form button[type="submit"] { min-height: 44px; min-width: 44px; padding: 0.5rem 1.25rem; }
 `.trim();
 
 /** Renders one demo persona's one-click sign-in form (a plain POST of the
