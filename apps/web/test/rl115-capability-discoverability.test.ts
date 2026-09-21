@@ -50,12 +50,34 @@ import { WEB_PAGE_ROUTES } from "../src/routes.js";
 
 const TENANT = "org:11111111-2222-4333-8444-555555555555";
 const MEMBER_ACTOR = "usr:aaaaaaaa-0000-4000-8000-000000000003";
+const OWNER_ACTOR = "usr:aaaaaaaa-0000-4000-8000-000000000001";
 const PHONE_ID = "dddddddd-0000-4000-8000-000000000001";
 const SEED_ORDER_ID = "66666666-0000-4000-8000-000000000001";
 const SEEDED_INTENT_ID = "cccccccc-0000-4000-8000-000000000001";
 const CASE_ID = "cafecafe-0000-4000-8000-000000000001";
 
-function buildApp(options?: { readonly seed?: FakeApiSeed }) {
+/**
+ * The pre-connector world (PA-06): the organization's enrollment journey is
+ * complete (active) but no connector exists yet — the world where the
+ * guided connector enrollment is the next action.
+ */
+function connectorAbsentSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(tenant.enterprise?.enrollment !== undefined
+        ? { enrollment: tenant.enterprise.enrollment }
+        : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+function buildApp(options?: { readonly seed?: FakeApiSeed; readonly actor?: string }) {
   const clock = new DeterministicClock("2025-01-06T09:45:00.000Z");
   const fakeIds = new DeterministicUuidGenerator(10_000);
   const fake = createInMemoryApi(options?.seed ?? fakeApiSeed(), {
@@ -64,7 +86,7 @@ function buildApp(options?: { readonly seed?: FakeApiSeed }) {
   });
   const client = new RoamLinkApiClient({
     transport: fake.transport,
-    actor: { actorId: MEMBER_ACTOR, tenantId: TENANT },
+    actor: { actorId: options?.actor ?? MEMBER_ACTOR, tenantId: TENANT },
     ids: new DeterministicUuidGenerator(40_000),
   });
   return { app: new CustomerWebApp({ client }), client, fake, clock };
@@ -449,9 +471,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-E-CONNECTOR-ENROLLMENT",
     capability: "Optional enterprise connector (enrollment/provisioning as a user task)",
     spec: "spec/architecture.md §8; spec/ux-architecture.md §12 (connector/enrollment status)",
-    verdict: "GAP",
+    verdict: "VERIFIED",
+    entry: { page: "workspace", mustRender: ['data-connector-enrollment="true"', "Connector enrollment", "Not started", "Provisioning", "Verification", "Provisioned"] },
+    contextualLink: { from: "workspace", href: "#connector-enrollment", labelContains: "connector enrollment" },
+    explanatoryView: { page: "workspace", mustRender: ['data-connector-flow-stage="provisioning"', 'data-connector-flow-stage="verification"', "Verification passed", "record is provisioned"] },
+    recovery: { page: "workspace", mustRender: ['data-connector-support-reachability="true"'] },
     gapNote:
-      "the workspace renders connector STATUS ('No connector has been set up yet.', journey step 'Not started') but offers NO action to enroll/provision one — the enterprise package's API machinery has no user-facing entry point (RL-115-F3)",
+      "was RL-115-F3 (GAP: status but no action); closed by PA-06 — the connector journey step is now the guided enrollment action (start command form, honest provisioning/verification/provisioned stages, failure reason vocabulary with retry, support escape); the start affordance is capability-gated on the verified/active enrollment + the org:manage permission the API enforces (the gated worlds render the honest explanation instead of a dead action)",
   },
   {
     id: "CAP-E-SSO-SCIM-MDM",
@@ -685,25 +711,52 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
   // (CAP-X-ESIM-MANAGE / RL-115-F1 lived here as a pinned absence until
   // PA-001 flipped it into the VERIFIED probe above.)
 
-  it("GAP CAP-E-CONNECTOR-ENROLLMENT (RL-115-F3): connector status renders but no enrollment action does", async () => {
-    // A workspace WITHOUT enterprise fixtures (the honest pre-enrollment world).
-    const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
-    const tenant = seed.tenants[TENANT];
-    if (tenant === undefined) throw new Error("missing tenant in seed");
-    const { enterprise: _stripped, ...rest } = tenant;
-    const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants, [TENANT]: rest };
-    const { app } = buildApp({ seed: { ...seed, tenants } });
+  it("VERIFIED CAP-E-CONNECTOR-ENROLLMENT (RL-115-F3, closed by PA-06): the connector journey step is the guided enrollment action", async () => {
+    // The actionable world: the organization's enrollment journey is
+    // complete (active) and no connector exists yet; the acting owner
+    // holds org:manage - the permission the provision command enforces.
+    const seed = connectorAbsentSeed();
+    const { app } = buildApp({ seed, actor: OWNER_ACTOR });
     const workspace = await app.renderDocument({ page: "workspace" });
-    // The status IS rendered (honest absent state)...
+    // The honest absent status still renders...
     expect(workspace).toContain('data-connector-absent="true"');
     expect(workspace).toContain("No connector has been set up yet.");
-    // ...and the journey step says Not started...
-    expect(workspace).toContain('data-workspace-step="connector"');
-    expect(workspace).toMatch(/data-workspace-step="connector"[^>]*>[\s\S]{0,400}?Not started/);
-    // ...but NO anchor offers connector enrollment/provisioning.
-    const anchors = [...workspace.matchAll(/<a [^>]*>[\s\S]*?<\/a>/g)].map((m) => m[0]);
-    const enrollAnchors = anchors.filter((a) => /connector|provision|enroll/i.test(a.replace(/<[^>]+>/g, " ")));
-    expect(enrollAnchors, "no connector-enrollment affordance exists").toEqual([]);
+    // ...the journey step is now ACTION-NEEDED (was Not started)...
+    expect(workspace).toMatch(/data-workspace-step="connector"[^>]*>[\s\S]{0,400}?Action needed/);
+    // ...and the step's contextual anchor links the guided flow.
+    expect(workspace).toMatch(
+      /<a [^>]*href="#connector-enrollment"[^>]*>[\s\S]{0,200}?Start connector enrollment/,
+    );
+    // The guided flow renders all four stages of the enrollment journey.
+    expect(workspace).toContain('data-connector-enrollment="true"');
+    for (const stage of ["not-started", "provisioning", "verification", "provisioned"]) {
+      expect(workspace).toContain(`data-connector-flow-stage="${stage}"`);
+    }
+    // The start command form EXISTS (the exact affordance the GAP probe
+    // denied): a wired /flows/provision-connector POST with the bounded
+    // connector label input.
+    expect(workspace).toContain('data-flow="provision-connector"');
+    expect(workspace).toContain('action="/flows/provision-connector"');
+    expect(workspace).toContain("Start enrollment");
+
+    // The gated world (a workspace WITHOUT enterprise fixtures - the
+    // original probe's world): the honest not-started render, NO start
+    // command. The gates render their explanation instead of a dead action.
+    const gatedSeed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+    const gatedTenant = gatedSeed.tenants[TENANT];
+    if (gatedTenant === undefined) throw new Error("missing tenant in seed");
+    const { enterprise: _stripped, ...rest } = gatedTenant;
+    const gatedTenants: Record<string, FakeTenantSeed> = {
+      ...gatedSeed.tenants,
+      [TENANT]: rest,
+    };
+    const gated = buildApp({ seed: { ...gatedSeed, tenants: gatedTenants } });
+    const gatedWorkspace = await gated.app.renderDocument({ page: "workspace" });
+    expect(gatedWorkspace).toContain('data-connector-absent="true"');
+    expect(gatedWorkspace).toMatch(/data-workspace-step="connector"[^>]*>[\s\S]{0,400}?Not started/);
+    expect(gatedWorkspace).not.toContain('data-flow="provision-connector"');
+    expect(gatedWorkspace).toContain('data-connector-gate="enrollment"');
+    expect(gatedWorkspace).toContain("Organization verification comes first");
   });
 
   it("GAP CAP-SLO (RL-115-F2): no surface links to the /ops/slo dashboard and no nav names SLO health", async () => {

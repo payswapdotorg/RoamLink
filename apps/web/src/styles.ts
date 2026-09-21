@@ -129,6 +129,21 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 /* RL-087 device capability */
 .fallback-list { padding-left: 1.2rem; line-height: 1.65; }
 .fallback-list li { margin: 0.25rem 0; }
+/* PA-06 connector enrollment flow (the guided action on the workspace) */
+.journey-action { margin: 0.35rem 0 0; }
+.journey-action a { font-weight: 600; }
+.journey-stage[data-stage-state="complete"] { border-left-color: #7fae8f; }
+.journey-stage[data-stage-state="complete"] .journey-state { color: #1e5e3a; }
+.journey-stage[data-stage-state="current"] { border-left-color: #d9b45c; }
+.journey-stage[data-stage-state="current"] .journey-state { color: #7a5b12; }
+.journey-stage[data-stage-state="action-needed"] { border-left-color: #d9b45c; }
+.journey-stage[data-stage-state="action-needed"] .journey-state { color: #7a5b12; }
+.journey-stage[data-stage-state="failed"] { border-left-color: #d98c7f; }
+.journey-stage[data-stage-state="failed"] .journey-state { color: #7d3221; }
+.journey-stage[data-stage-state="revoked"] { border-left-color: #cfc6ba; }
+.journey-stage[data-stage-state="revoked"] .journey-state { color: #6f665e; }
+.journey-stage[data-stage-state="upcoming"] { border-left-color: #cfc6ba; }
+.journey-stage[data-stage-state="upcoming"] .journey-state { color: #6f665e; }
 /* RL-088 responsive + accessibility refinements */
 .table-wrap { overflow-x: auto; margin: 0.5rem 0 1rem; -webkit-overflow-scrolling: touch; }
 .table-wrap table { margin: 0; }

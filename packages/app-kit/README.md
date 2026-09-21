@@ -44,7 +44,10 @@ the domain modules, and the conformance suite guards the boundary.
   checked against the API contract"). Additive routes are allowed
   (RL-LOCK-017): `/v1/commands/{id}` (stage polling), `/v1/users/me` (actor
   session), `/v1/support-cases`, `/v1/audit-events`,
-  `/v1/reconciliation-jobs`, `/v1/projection-health`.
+  `/v1/reconciliation-jobs`, `/v1/projection-health`,
+  `/v1/enterprise/workspace` (the RL-104 workspace read),
+  `/v1/enterprise/workspace/connector/provision` (the PA-06 connector
+  provisioning command).
 - `src/api/client.ts` - `RoamLinkApiClient`: reads return parsed resources;
   every mutation carries the full command header set; optimistic-version
   conflicts surface as typed `conflict` errors.
@@ -56,6 +59,12 @@ the domain modules, and the conformance suite guards the boundary.
   query instant, tenant scoping fail-closed (404 without an existence
   oracle), admin authorization fail-closed, the SHA-256 audit digest chain,
   and the one sanctioned suspended-organization escape (reactivation).
+  The enterprise connector provisioning (PA-06) follows the same discipline:
+  the command creates the record in the honest in-flight `provisioning`
+  state and NEVER invents the completion - the test controls
+  (`progressConnectorToProvisioned` / `failConnectorProvisioning`) mirror
+  the owning domain's transition machinery
+  (`packages/enterprise/src/connectors.ts` legal map).
 - `src/ui/` - the typed, XSS-safe HTML core (`html.ts`: text is escaped by
   construction, there is NO raw-HTML escape hatch) and the shared components
   (`components.ts`: freshness badges, the four-stage mutation pipeline,

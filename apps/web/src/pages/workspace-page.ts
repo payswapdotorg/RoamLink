@@ -15,6 +15,21 @@
  * the shared shell derivation (a presentation explanation, not an
  * authority).
  *
+ * PA-06 (RL-115-F3): the connector journey step is now the GUIDED ACTION.
+ * The connector enrollment flow section composes the customer command
+ * (provision-connector through @roamlink/app-kit's mirrored contract) and
+ * renders every stage FROM THE READ MODEL ONLY:
+ *
+ *   Not started -> [Start enrollment] (command; capability-gated) ->
+ *   Provisioning (honest in-flight) -> Verification -> Provisioned
+ *
+ * with the failure path (failure reason vocabulary, honest) -> [Retry] /
+ * Support escape. The page holds NO enrollment state machine: the
+ * enterprise package's transition machinery owns every state change
+ * (composed through the command envelope + the workspace read, never
+ * copied - the step/flow derivations below are pure functions over the
+ * parsed reads).
+ *
  * Honest-by-construction:
  *  - every journey step renders one of the closed states (complete /
  *    waiting / action-needed / blocked / not-started / not-available);
@@ -36,6 +51,7 @@ import {
   deriveShellConnectivityState,
   SHELL_CONNECTIVITY_LANGUAGE,
   freshnessBadge,
+  mutationStages,
   stateBadge,
   el,
   fragment,
@@ -43,9 +59,11 @@ import {
   type ActorSessionResource,
   type ConnectivityOverviewResource,
   type DeviceResource,
+  type EnterpriseConnectorFailureResourceReason,
   type EnterpriseWorkspaceResource,
   type ExperienceIntentResource,
   type HtmlFragment,
+  type MutationAcknowledgement,
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
@@ -58,6 +76,12 @@ export interface WorkspacePageInput {
   readonly devices: readonly DeviceResource[];
   readonly intents: readonly ExperienceIntentResource[];
   readonly connectivity: ConnectivityOverviewResource;
+  /**
+   * PA-06: the provision-connector command acknowledgement (the polling
+   * status read via the `commandId` page param). Absent renders no
+   * pipeline - the flow never fabricates a command record from reads.
+   */
+  readonly command?: MutationAcknowledgement;
 }
 
 /** The closed guided-journey step keys (the frozen chain, in order). */
@@ -136,6 +160,33 @@ export interface WorkspaceJourneyStepView {
   readonly step: WorkspaceJourneyStep;
   readonly state: WorkspaceJourneyStepState;
   readonly fact: string;
+  /**
+   * PA-06: the step's contextual action affordance (rendered as an
+   * in-page anchor). The connector step carries the link to the guided
+   * connector enrollment flow below - the §15 contextual link from the
+   * journey where the capability becomes relevant.
+   */
+  readonly action?: { readonly href: string; readonly label: string };
+}
+
+/**
+ * PA-06: the connector-start gates, derived ONLY from the read models.
+ *
+ * The command's server-side preconditions made visible honestly: the
+ * provisioning belongs to the enterprise ENROLLMENT journey (a verified or
+ * active organization), and it is an organization-admin action (the
+ * org:manage permission the API enforces). When a gate fails, the step
+ * renders the honest explanation - never a dead action.
+ */
+export function connectorStartGates(input: {
+  readonly session: ActorSessionResource;
+  readonly workspace: EnterpriseWorkspaceResource;
+}): { readonly enrollmentVerified: boolean; readonly actorCanManage: boolean } {
+  const enrollment = input.workspace.enrollment;
+  const enrollmentVerified =
+    enrollment !== null && (enrollment.state === "verified" || enrollment.state === "active");
+  const actorCanManage = input.session.permissions.includes("org:manage");
+  return { enrollmentVerified, actorCanManage };
 }
 
 /**
@@ -152,6 +203,8 @@ export function deriveWorkspaceJourney(input: {
 }): readonly WorkspaceJourneyStepView[] {
   const enrollment = input.workspace.enrollment;
   const connector = input.workspace.connector;
+  const gates = connectorStartGates(input);
+  const connectorGatesPass = gates.enrollmentVerified && gates.actorCanManage;
 
   const enrollmentState: WorkspaceJourneyStepState =
     enrollment === null
@@ -166,7 +219,9 @@ export function deriveWorkspaceJourney(input: {
 
   const connectorState: WorkspaceJourneyStepState =
     connector === null
-      ? "not-started"
+      ? connectorGatesPass
+        ? "action-needed"
+        : "not-started"
       : connector.state === "provisioned"
         ? "complete"
         : connector.state === "provisioning"
@@ -231,7 +286,9 @@ export function deriveWorkspaceJourney(input: {
       state: connectorState,
       fact:
         connector === null
-          ? "No connector has been set up for this workspace yet."
+          ? connectorGatesPass
+            ? "No connector has been set up for this workspace yet. Start the connector enrollment below."
+            : "No connector has been set up for this workspace yet. Organization verification comes first."
           : connector.state === "provisioned"
             ? `Connector provisioned${connector.provisionedAt === undefined ? "" : ` on ${connector.provisionedAt}`}.`
             : connector.state === "provisioning"
@@ -239,6 +296,15 @@ export function deriveWorkspaceJourney(input: {
               : connector.state === "failed"
                 ? `Connector provisioning failed${connector.failureReason === undefined ? "" : ` (${connector.failureReason})`}.`
                 : "The connector was revoked.",
+      action: {
+        href: "#connector-enrollment",
+        label:
+          connector === null
+            ? connectorGatesPass
+              ? "Start connector enrollment"
+              : "Review the connector steps"
+            : "Review the connector enrollment",
+      },
     },
     {
       step: "devices",
@@ -350,9 +416,420 @@ function journeySection(steps: readonly WorkspaceJourneyStepView[]): HtmlFragmen
               ),
               el("p", { class: "muted" }, text(STEP_LANGUAGE[step.step].explanation)),
               el("p", { class: "journey-fact" }, text(step.fact)),
+              step.action === undefined
+                ? fragment()
+                : el(
+                    "p",
+                    { class: "journey-action" },
+                    el("a", { href: step.action.href }, text(step.action.label)),
+                  ),
             ),
           ),
         ),
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// PA-06: the guided connector enrollment flow (RL-115-F3 — "status but no
+// action" closed). The journey step points here; every stage below is a PURE
+// DERIVATION over the same workspace read — the page holds no enrollment
+// state machine, and the only writer is the provision-connector command
+// through the app contract (the enterprise package's transition machinery
+// owns every state change).
+// ---------------------------------------------------------------------------------
+
+/** The closed guided connector-enrollment flow stages, in journey order. */
+export const CONNECTOR_ENROLLMENT_FLOW_STAGES = [
+  "not-started",
+  "provisioning",
+  "verification",
+  "provisioned",
+] as const;
+
+export type ConnectorEnrollmentFlowStage =
+  (typeof CONNECTOR_ENROLLMENT_FLOW_STAGES)[number];
+
+/** The closed per-stage render states (honest; never a guessed success). */
+export const CONNECTOR_FLOW_STAGE_STATES = [
+  "complete",
+  "current",
+  "upcoming",
+  "action-needed",
+  "failed",
+  "revoked",
+] as const;
+
+export type ConnectorFlowStageState = (typeof CONNECTOR_FLOW_STAGE_STATES)[number];
+
+const CONNECTOR_FLOW_STAGE_LANGUAGE: Readonly<
+  Record<ConnectorEnrollmentFlowStage, { readonly label: string; readonly explanation: string }>
+> = Object.freeze({
+  "not-started": {
+    label: "Not started",
+    explanation: "No connector is set up for this workspace yet.",
+  },
+  provisioning: {
+    label: "Provisioning",
+    explanation:
+      "RoamLink prepares the connector; the live record drives this page, never a guess.",
+  },
+  verification: {
+    label: "Verification",
+    explanation:
+      "RoamLink verifies the provisioned connector against your verified organization before the record may say it is ready.",
+  },
+  provisioned: {
+    label: "Provisioned",
+    explanation: "The connector is set up and ready to bring your organization's devices in.",
+  },
+});
+
+const CONNECTOR_FLOW_STAGE_STATE_LANGUAGE: Readonly<Record<ConnectorFlowStageState, string>> =
+  Object.freeze({
+    complete: "Complete",
+    current: "In progress",
+    upcoming: "Not yet",
+    "action-needed": "Action needed",
+    failed: "Failed",
+    revoked: "Revoked",
+  });
+
+/** The closed failure-reason vocabulary, explained honestly (spec §14: never a bare code). */
+const CONNECTOR_FAILURE_LANGUAGE: Readonly<
+  Record<string, { readonly sentence: string }>
+> = Object.freeze({
+  "connector-unavailable": {
+    sentence: "the connector service was not available to take the enrollment",
+  },
+  "capability-negotiation-empty": {
+    sentence: "no capability could be negotiated for this connector",
+  },
+  "configuration-delivery-failed": {
+    sentence: "the connector's configuration could not be delivered",
+  },
+});
+
+export interface ConnectorEnrollmentStageView {
+  readonly stage: ConnectorEnrollmentFlowStage;
+  readonly state: ConnectorFlowStageState;
+  readonly fact: string;
+}
+
+/**
+ * Derives the guided connector-enrollment flow from the read models.
+ * Pure + total; no step invents a success the reads do not assert:
+ *  - `not-started` is action-needed ONLY when both start gates pass
+ *    (verified/active enrollment + the org:manage permission the API
+ *    enforces) — otherwise it renders the honest gate explanation;
+ *  - `provisioning` is current only while the record says provisioning
+ *    (the honest in-flight state — nothing is claimed as ready);
+ *  - `verification` renders the organization verification the enrollment
+ *    rides on (the enrollment's own verified state + instant — the read
+ *    model's verification facts, never an invented connector sub-state);
+ *  - `provisioned` is complete only when the record says provisioned.
+ */
+export function deriveConnectorEnrollmentFlow(input: {
+  readonly session: ActorSessionResource;
+  readonly workspace: EnterpriseWorkspaceResource;
+}): readonly ConnectorEnrollmentStageView[] {
+  const connector = input.workspace.connector;
+  const enrollment = input.workspace.enrollment;
+  const gates = connectorStartGates(input);
+  const gatesPass = gates.enrollmentVerified && gates.actorCanManage;
+
+  const notStartedFact = gatesPass
+    ? "No connector is set up yet. Start the enrollment below — you name the connector, and RoamLink records every step as it happens."
+    : !gates.enrollmentVerified
+      ? "Organization verification comes first — the connector enrollment rides on a verified organization."
+      : "Connector enrollment is an organization-admin action — an owner or admin of your organization starts it.";
+
+  return [
+    {
+      stage: "not-started",
+      state: connector === null ? (gatesPass ? "action-needed" : "current") : "complete",
+      fact: notStartedFact,
+    },
+    {
+      stage: "provisioning",
+      state:
+        connector === null
+          ? "upcoming"
+          : connector.state === "provisioning"
+            ? "current"
+            : connector.state === "failed"
+              ? "failed"
+              : "complete",
+      fact:
+        connector === null
+          ? "Provisioning starts when you start the enrollment."
+          : connector.state === "provisioning"
+            ? "The connector is provisioning. Nothing is claimed as ready before the record says so."
+            : connector.state === "failed"
+              ? `Provisioning failed${connector.failureReason === undefined ? "" : ` — ${connector.failureReason}`}.`
+              : connector.state === "revoked"
+                ? connector.provisionedAt === undefined
+                  ? "The provisioning was revoked before it completed."
+                  : "The connector was provisioned and later revoked."
+                : "Provisioning finished.",
+    },
+    {
+      stage: "verification",
+      state:
+        connector === null || connector.state === "failed"
+          ? "upcoming"
+          : connector.state === "provisioning"
+            ? "current"
+            : connector.state === "revoked" && connector.provisionedAt === undefined
+              ? "upcoming"
+              : "complete",
+      fact:
+        connector !== null && connector.state === "provisioned"
+          ? `Verification passed — the record is provisioned${
+              enrollment?.verifiedAt === undefined ? "" : ` against your organization's verification (recorded ${enrollment.verifiedAt})`
+            }.`
+          : connector !== null && connector.state === "provisioning"
+            ? `RoamLink is verifying the provisioned connector against your organization${
+                enrollment?.verifiedAt === undefined ? "" : ` (verification recorded ${enrollment.verifiedAt})`
+              }.`
+            : "Verification happens between provisioning and the ready record — the connector rides on your organization's verification.",
+    },
+    {
+      stage: "provisioned",
+      state:
+        connector === null
+          ? "upcoming"
+          : connector.state === "provisioned"
+            ? "complete"
+            : connector.state === "revoked"
+              ? "revoked"
+              : "upcoming",
+      fact:
+        connector !== null && connector.state === "provisioned"
+          ? `The connector is set up and ready${connector.provisionedAt === undefined ? "" : ` (recorded ${connector.provisionedAt})`}.`
+          : connector !== null && connector.state === "revoked"
+            ? "The connector was revoked — there is no active connector for this workspace."
+            : "The connector is ready once verification passes and the record says provisioned.",
+    },
+  ];
+}
+
+/** The [Start enrollment] / [Retry enrollment] command form (the ONLY writer). */
+function connectorStartForm(input: { readonly label: string }): HtmlFragment {
+  return el(
+    "form",
+    {
+      method: "post",
+      action: "/flows/provision-connector",
+      "data-flow": "provision-connector",
+    },
+    el("label", { for: "connector-label" }, text("Name this connector")),
+    el("input", {
+      type: "text",
+      name: "connectorId",
+      id: "connector-label",
+      required: true,
+      pattern: "[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}",
+      "aria-describedby": "connector-label-hint",
+    }),
+    el(
+      "p",
+      { class: "muted", id: "connector-label-hint" },
+      text("A short label for your own reference — letters, numbers, dots, dashes. Never a password or key."),
+    ),
+    el("button", { type: "submit" }, text(input.label)),
+  );
+}
+
+/** The failure explanation: the closed reason vocabulary, honest, plus retry + support. */
+function connectorFailurePanel(input: {
+  readonly provisioningId: string;
+  readonly failureReason: EnterpriseConnectorFailureResourceReason | undefined;
+}): HtmlFragment {
+  const reason = input.failureReason;
+  const language = reason === undefined ? undefined : CONNECTOR_FAILURE_LANGUAGE[reason];
+  return el(
+    "div",
+    { class: "panel error", "data-connector-failure": "true" },
+    fragment(
+      el("h3", {}, text("Connector enrollment failed")),
+      el(
+        "p",
+        {},
+        fragment(
+          text("Reason recorded: "),
+          reason === undefined ? fragment() : fragment(stateBadge(reason), text(" — ")),
+          text(
+            reason === undefined
+              ? "not recorded — the failure carried no recorded reason."
+              : `${language?.sentence ?? "the failure carried a recorded reason from the closed vocabulary"}.`,
+          ),
+        ),
+      ),
+      el(
+        "p",
+        { class: "muted" },
+        text("A failed attempt is kept as a record. Starting again creates a new attempt — nothing is carried over silently."),
+      ),
+      connectorStartForm({ label: "Retry enrollment" }),
+      supportEscape({
+        context: {
+          subject: "Our organization's connector enrollment failed and we need help.",
+          detail: `Provisioning ${input.provisioningId} failed${
+            reason === undefined ? "" : ` with the recorded reason ${reason}`
+          }. We would like help getting the connector enrolled.`,
+          refs: [],
+        },
+      }),
+    ),
+  );
+}
+
+function connectorEnrollmentSection(
+  session: ActorSessionResource,
+  workspace: EnterpriseWorkspaceResource,
+  command: MutationAcknowledgement | undefined,
+): HtmlFragment {
+  const connector = workspace.connector;
+  const gates = connectorStartGates({ session, workspace });
+  const gatesPass = gates.enrollmentVerified && gates.actorCanManage;
+  const stages = deriveConnectorEnrollmentFlow({ session, workspace });
+  return el(
+    "section",
+    { id: "connector-enrollment", "data-connector-enrollment": "true" },
+    fragment(
+      pageHeading(
+        "Connector enrollment",
+        "Bring your organization's devices into RoamLink through a connector. Each step below confirms from the live record — never from a guess.",
+      ),
+      el(
+        "ol",
+        { class: "journey", "aria-label": "The connector enrollment flow, step by step" },
+        ...stages.map((stage) =>
+          el(
+            "li",
+            {
+              class: "journey-stage",
+              "data-connector-flow-stage": stage.stage,
+              "data-stage-state": stage.state,
+            },
+            fragment(
+              el(
+                "p",
+                { class: "journey-headline" },
+                fragment(
+                  el("strong", {}, text(CONNECTOR_FLOW_STAGE_LANGUAGE[stage.stage].label)),
+                  text(" — "),
+                  el(
+                    "span",
+                    { class: "journey-state", "data-stage-word": stage.state },
+                    text(CONNECTOR_FLOW_STAGE_STATE_LANGUAGE[stage.state]),
+                  ),
+                ),
+              ),
+              el(
+                "p",
+                { class: "muted" },
+                text(CONNECTOR_FLOW_STAGE_LANGUAGE[stage.stage].explanation),
+              ),
+              el("p", { class: "journey-fact" }, text(stage.fact)),
+            ),
+          ),
+        ),
+      ),
+      // The command affordance: ONLY when no connector exists AND both
+      // start gates pass (the API re-checks both fail-closed; the UI gate
+      // is honest UX, never the authority).
+      connector === null && gatesPass
+        ? el(
+            "div",
+            { class: "panel", "data-connector-start": "true" },
+            connectorStartForm({ label: "Start enrollment" }),
+          )
+        : fragment(),
+      // The honest gate renders (why no start action exists here).
+      connector === null && !gates.enrollmentVerified
+        ? el(
+            "p",
+            { class: "muted", "data-connector-gate": "enrollment" },
+            text("No start action is offered yet: the connector enrollment rides on a verified organization, and this workspace's verification journey has not reached that state."),
+          )
+        : fragment(),
+      connector === null && gates.enrollmentVerified && !gates.actorCanManage
+        ? el(
+            "p",
+            { class: "muted", "data-connector-gate": "permission" },
+            text("Connector enrollment is an organization-admin action. An owner or admin of your organization starts it — the steps above show exactly what will happen."),
+          )
+        : fragment(),
+      // The honest in-flight state + the polling affordances (the re-read
+      // link, and the command pipeline when the host forwards commandId).
+      connector !== null && connector.state === "provisioning"
+        ? el(
+            "div",
+            { class: "panel", "data-connector-inflight": "true" },
+            fragment(
+              el("p", {}, text("The connector is provisioning.")),
+              el(
+                "p",
+                { class: "muted" },
+                text("This page reads the live record — nothing is claimed as ready before the record says provisioned."),
+              ),
+              el("p", {}, el("a", { href: pagePath("workspace") }, text("Refresh the connector state"))),
+            ),
+          )
+        : fragment(),
+      // The failure path: explanation + retry + support escape.
+      connector !== null && connector.state === "failed"
+        ? connectorFailurePanel({
+            provisioningId: connector.provisioningId,
+            failureReason: connector.failureReason,
+          })
+        : fragment(),
+      // The revoked path: the honest terminal record + support escape.
+      connector !== null && connector.state === "revoked"
+        ? el(
+            "div",
+            { class: "panel", "data-connector-revoked": "true" },
+            fragment(
+              el("h3", {}, text("The connector was revoked")),
+              el(
+                "p",
+                { class: "muted" },
+                text("The workspace has no active connector. Support can help figure out what happened and what comes next."),
+              ),
+              supportEscape({
+                context: {
+                  subject: "Our organization's connector was revoked and we need help.",
+                  detail: `Provisioning ${connector.provisioningId} is revoked. We would like help understanding what happened.`,
+                  refs: [],
+                },
+              }),
+            ),
+          )
+        : fragment(),
+      // The command-status pipeline (the polling states' acknowledgement
+      // read — rendered only when the host forwards the flow's commandId).
+      command === undefined
+        ? fragment()
+        : el(
+            "div",
+            { class: "panel", "data-connector-command": "true", "data-command-id": command.commandId },
+            fragment(
+              el("h3", {}, text("Your enrollment command")),
+              el(
+                "p",
+                { class: "muted" },
+                text("The four stages stay separate on purpose — accepted is not executed, and this command is a setup action, not a delivery claim."),
+              ),
+              mutationStages(command),
+            ),
+          ),
+      el(
+        "p",
+        { class: "muted", "data-connector-support-reachability": "true" },
+        text("If the connector enrollment runs into trouble, Support is reachable from this page and the connector facts travel with the case."),
       ),
     ),
   );
@@ -576,6 +1053,10 @@ export function workspacePage(input: WorkspacePageInput): HtmlFragment {
     ),
     workspaceSwitcherSection(input.session, input.workspace),
     journeySection(steps),
+    // PA-06: the guided connector enrollment (the connector journey step's
+    // action surface - every stage renders from the read model; the only
+    // writer is the provision-connector command through the app contract).
+    connectorEnrollmentSection(input.session, input.workspace, input.command),
     orgConnectivitySection(input.connectivity),
     policySummarySection(),
     deviceFleetSection(input.devices),

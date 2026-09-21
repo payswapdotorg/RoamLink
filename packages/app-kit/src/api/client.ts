@@ -32,6 +32,7 @@ import {
   enrollDeviceBody,
   installEsimProfileBody,
   placeOrderBody,
+  provisionConnectorBody,
   recordPaymentBody,
   supersedeExperienceIntentBody,
   triggerReconciliationBody,
@@ -51,6 +52,7 @@ import {
   type EnrollDeviceRequest,
   type InstallEsimProfileRequest,
   type PlaceOrderRequest,
+  type ProvisionConnectorRequest,
   type RecordPaymentRequest,
   type RemoveEsimProfileRequest,
   type SupersedeExperienceIntentRequest,
@@ -206,6 +208,23 @@ export class RoamLinkApiClient {
    */
   async getEnterpriseWorkspace() {
     return this.#get(route("enterpriseWorkspace"), parseEnterpriseWorkspaceResource);
+  }
+
+  /**
+   * PA-06 / RL-115-F3: starts (or retries) the workspace connector
+   * provisioning through the full command envelope. The customer payload
+   * carries only the bounded connector label; the enrollment reference and
+   * the capability negotiation inputs are resolved server-side against the
+   * acting tenant's enterprise journey (the enterprise package's machinery
+   * is the authority - this client never decides outcomes). The returned
+   * acknowledgement is the command record; /v1/commands/{commandId} and the
+   * workspace read are the polling states. Retrying with the SAME
+   * idempotency key replays the original acknowledgement (RL-LOCK-014);
+   * retrying a FAILED attempt with a NEW key starts a new provisioning
+   * (the domain's failed state is terminal - a retry is a new attempt).
+   */
+  async provisionConnector(request: ProvisionConnectorRequest, options?: MutationRequestOptions) {
+    return this.#mutate("enterpriseConnectorProvision", provisionConnectorBody(request), options);
   }
 
   // ---------------------------------------------------------------------------
