@@ -95,14 +95,15 @@ machine exists.
 | More (`/more`) | The mobile More sheet: Goals, Plans & Billing, Support, Settings |
 | Settings (`/settings`) | Account (actor session identity/scope/role), preferences pointer to Goals, accessibility statement |
 | Overview (`/overview`) | The legacy RL-060 aggregate view (moved off `/` when Home became the landing surface; still fully reachable) |
+| Workspace (`/workspace`) | The RL-104 guided enterprise journey + live org overview, and the PA-06 guided **connector enrollment** (start → provisioning → verification → provisioned, with the honest failure path: reason vocabulary + retry + support escape) |
 
 ## How mutations work
 
 Flow methods on `CustomerWebApp` (`enrollDeviceFlow`, `createIntentFlow`,
 `activateIntentFlow`, `supersedeIntentFlow`, `completeOnboardingFlow`,
-`placeOrderFlow`, `recordPaymentFlow`, `cancelOrderFlow`,
-`markNotificationReadFlow`, `createSupportCaseFlow`, ...) wrap one client
-mutation and return a `MutationFlowResult`:
+`provisionConnectorFlow`, `placeOrderFlow`, `recordPaymentFlow`,
+`cancelOrderFlow`, `markNotificationReadFlow`, `createSupportCaseFlow`, ...)
+wrap one client mutation and return a `MutationFlowResult`:
 
 - on success, pages render the **four-stage pipeline** (`accepted`,
   `executed`, `delivered`, `billable-final`) as separate rows — the app never
@@ -138,9 +139,12 @@ The app is a library (like every workspace package here): a host composes
 production, the deterministic in-memory fake in tests), renders
 `renderDocument({ page, params, lastResult })`, and wires the rendered
 form actions (`/flows/*`, `data-flow` attributes — including the onboarding
-`/flows/onboarding-enroll-device` and `/flows/onboarding-finish`) to the
+`/flows/onboarding-enroll-device` and `/flows/onboarding-finish`, and the
+workspace connector enrollment `/flows/provision-connector`) to the
 matching flow methods. The host owns sessions/CSRF; the app never sees
-credentials (RL-LOCK-016).
+credentials (RL-LOCK-016). After a connector-enrollment command the host
+redirects to `/workspace?commandId=<ack.commandId>` so the page renders the
+command's four-stage pipeline from the status read (the polling states).
 
 ## Tests
 

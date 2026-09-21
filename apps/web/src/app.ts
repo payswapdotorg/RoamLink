@@ -370,16 +370,28 @@ export class CustomerWebApp {
         // connectivity facts render through the SAME connectivity read
         // model (no second authority); the enterprise journey state comes
         // from the app-kit mirrored read contract. Any failed read fails
-        // closed like every page.
+        // closed like every page. PA-06: an optional `commandId` param
+        // adds the provision-connector command's four-stage pipeline (the
+        // polling status read - never fabricated from reads).
         return this.#withReads("your workspace", async () => {
-          const [session, workspace, devices, intents, connectivity] = await Promise.all([
+          const [session, workspace, devices, intents, connectivity, command] = await Promise.all([
             this.#client.getActorSession(),
             this.#client.getEnterpriseWorkspace(),
             this.#client.listDevices(),
             this.#client.listExperienceIntents(),
             this.#client.getConnectivityOverview(),
+            request.params?.commandId === undefined
+              ? Promise.resolve(undefined)
+              : this.#client.getCommandStatus(request.params.commandId),
           ]);
-          return workspacePage({ session, workspace, devices, intents, connectivity });
+          return workspacePage({
+            session,
+            workspace,
+            devices,
+            intents,
+            connectivity,
+            ...(command !== undefined ? { command } : {}),
+          });
         });
       case "onboarding":
         return await this.#renderOnboarding(request);
@@ -606,6 +618,23 @@ export class CustomerWebApp {
         },
       );
     });
+  }
+
+  /**
+   * PA-06 (RL-115-F3): starts (or retries) the workspace connector
+   * enrollment through the full command envelope. The app never decides
+   * outcomes: the acknowledgement (or typed failure) is what the workspace
+   * renders; the polling states are the acknowledgement/status reads and
+   * the workspace read. Retrying with the same idempotency key replays the
+   * original acknowledgement; a retry of a FAILED attempt uses a fresh key
+   * (the enterprise domain's failed state is terminal - a retry is a new
+   * provisioning attempt with a new id).
+   */
+  async provisionConnectorFlow(
+    input: { readonly connectorId: string },
+    options?: { readonly idempotencyKey?: string; readonly correlationId?: string },
+  ): Promise<MutationFlowResult> {
+    return this.#runMutation(() => this.#client.provisionConnector(input, options));
   }
 
   /** Places an order (cart lines -> placed order + pending subscription). */

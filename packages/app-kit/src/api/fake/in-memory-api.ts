@@ -297,6 +297,24 @@ export interface InMemoryApiControls {
    * honest RoamLink-side record.
    */
   confirmEsimProfile(input: { readonly deviceId: string; readonly profileId: string }): boolean;
+  /**
+   * PA-06: completes a connector provisioning (provisioning -> provisioned).
+   * Mirrors the owning domain's transition machinery
+   * (packages/enterprise/src/connectors.ts applyConnectorProvisioningTransition
+   * legal map: provisioning may move to provisioned/failed/revoked): the
+   * fake NEVER invents the completion inside the command - tests drive it.
+   * Returns false when no in-flight provisioning with that id exists.
+   */
+  progressConnectorToProvisioned(provisioningId: string): boolean;
+  /**
+   * PA-06: fails a connector provisioning (provisioning -> failed with a
+   * closed-vocabulary reason - the domain's failure vocabulary, mirrored).
+   * Returns false when no in-flight provisioning with that id exists.
+   */
+  failConnectorProvisioning(
+    provisioningId: string,
+    reason: "connector-unavailable" | "capability-negotiation-empty" | "configuration-delivery-failed",
+  ): boolean;
   /** Frozen introspection of stored commands (assertions in tests). */
   commands(): readonly StoredCommand[];
 }
@@ -1653,10 +1671,12 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       requireOrgScope(actor);
       const tenant = tenantOf(tenantId);
       const organization = tenant.organization;
-      // The journey fixtures ride with the SEED (frozen): the fake never
-      // mutates enterprise journey state here - this is a read-only
-      // composition, mirroring the domain-owned journey state.
-      const enterprise = seed.tenants[tenantId]?.enterprise;
+      // The journey fixtures ride with the tenant's enterprise STATE (the
+      // seed's enterprise section, cloned mutable at creation): the read is
+      // still a read-only composition mirroring the domain-owned journey
+      // state - the ONLY writer is the provision-connector command below
+      // (and the test controls that mirror the domain's transition map).
+      const enterprise = tenant.enterprise;
       return ok({
         presentedAt: now(),
         organization:
@@ -1676,6 +1696,113 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
           enterprise?.connector === undefined || enterprise.connector === null
             ? null
             : { ...enterprise.connector },
+      });
+    }
+
+    // -- Enterprise connector provisioning (PA-06, RL-115-F3) ----------------------
+    // The customer-facing command behind the guided connector enrollment.
+    // Contract-level behavior only (the fake is not the domain authority):
+    //  - org scope + org:manage permission (an organization-admin action);
+    //  - the ENROLLMENT GATE: provisioning belongs to the enterprise
+    //    enrollment journey, so the acting tenant's enrollment must be
+    //    verified or active (mirrors packages/enterprise's precondition that
+    //    a provisioning record references an owning enrollment);
+    //  - one ACTIVE provisioning per workspace: a provisioning|provisioned
+    //    record blocks a new attempt (typed conflict); a failed|revoked
+    //    attempt is terminal in the domain's lifecycle, so a retry with a
+    //    fresh idempotency key starts a NEW provisioning (new id);
+    //  - the record is created in the honest in-flight `provisioning` state
+    //    (the domain's lifecycle vocabulary); the fake NEVER invents the
+    //    completion - the transition to provisioned/failed happens only
+    //    through the test controls that mirror the domain's legal map.
+    if (
+      method === "POST" &&
+      segments.length === 5 &&
+      segments[0] === "v1" &&
+      segments[1] === "enterprise" &&
+      segments[2] === "workspace" &&
+      segments[3] === "connector" &&
+      segments[4] === "provision"
+    ) {
+      requireOrgScope(actor);
+      requirePermission(actor, "org:manage");
+      const tenant = tenantOf(tenantId);
+      const body = parseBody(request);
+      const connectorId = typeof body["connectorId"] === "string" ? body["connectorId"] : undefined;
+      if (connectorId === undefined || !/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$/.test(connectorId)) {
+        fail(
+          badRequest(
+            "CONNECTOR_LABEL_INVALID",
+            "the connector label must be a bounded, printable label (never a secret)",
+          ),
+        );
+      }
+      const enterprise = tenant.enterprise;
+      const enrollment = enterprise?.enrollment;
+      if (
+        enrollment === undefined ||
+        enrollment === null ||
+        (enrollment.state !== "verified" && enrollment.state !== "active")
+      ) {
+        fail(
+          conflict(
+            "CONNECTOR_ENROLLMENT_GATE",
+            "connector provisioning requires a verified or active organization enrollment (the provisioning belongs to the enrollment journey)",
+          ),
+        );
+      }
+      const provisioningId = nextId();
+      return runCommand({
+        kind: "connector.provision",
+        actorId: actorHeader,
+        tenantId,
+        correlationId: mutationEnvelope?.correlationId ?? "",
+        idempotencyKey: mutationEnvelope?.idempotencyKey ?? "",
+        subjectType: "connector_provisioning",
+        subjectId: provisioningId,
+        apply: () => {
+          // The one-active-attempt guard lives INSIDE the command (like the
+          // org-suspend status guard): an idempotent REPLAY of the same key
+          // short-circuits above with the original acknowledgement and never
+          // reaches this check - only a genuinely new attempt can trip it.
+          const current = tenant.enterprise?.connector;
+          if (
+            current !== undefined &&
+            current !== null &&
+            (current.state === "provisioning" || current.state === "provisioned")
+          ) {
+            fail(
+              conflict(
+                "CONNECTOR_PROVISIONING_EXISTS",
+                "a connector provisioning already exists for this workspace; a new attempt is possible only after a failed or revoked one",
+              ),
+            );
+          }
+          if (tenant.enterprise === undefined) {
+            // The seed carried no enterprise section; the provisioning
+            // journey starts here (the enrollment gate above already
+            // failed-closed for a world without a verified enrollment, so
+            // this branch is unreachable in practice - kept total anyway).
+            tenant.enterprise = {};
+          }
+          // The honest in-flight start state; completion NEVER happens here.
+          tenant.enterprise.connector = {
+            provisioningId,
+            state: "provisioning",
+            createdAt: now(),
+            updatedAt: now(),
+          };
+          appendAudit(tenantId, {
+            category: "authority-decision",
+            action: "connector.provision",
+            outcome: "allowed",
+            actorId: actorHeader,
+            correlationId: mutationEnvelope?.correlationId ?? "",
+            target: `connector_provisioning:${provisioningId}`,
+            detail: `label ${connectorId}`,
+          });
+          return { resource: { type: "connector_provisioning", id: provisioningId, version: 1 } };
+        },
       });
     }
 
@@ -2393,6 +2520,43 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
     },
     commands(): readonly StoredCommand[] {
       return Object.freeze([...state.commands.values()].map((c) => Object.freeze({ ...c })));
+    },
+    progressConnectorToProvisioned(provisioningId: string): boolean {
+      // Mirrors the domain's legal map: ONLY an in-flight provisioning may
+      // reach provisioned (failed/revoked are terminal there).
+      for (const tenant of state.tenants.values()) {
+        const connector = tenant.enterprise?.connector;
+        if (connector === undefined || connector === null) continue;
+        if (connector.provisioningId !== provisioningId || connector.state !== "provisioning") {
+          continue;
+        }
+        connector.state = "provisioned";
+        connector.updatedAt = now();
+        connector.provisionedAt = now();
+        delete connector.failureReason;
+        return true;
+      }
+      return false;
+    },
+    failConnectorProvisioning(
+      provisioningId: string,
+      reason: "connector-unavailable" | "capability-negotiation-empty" | "configuration-delivery-failed",
+    ): boolean {
+      // Mirrors the domain's legal map: ONLY an in-flight provisioning may
+      // fail, and a failed record carries its closed-vocabulary reason.
+      for (const tenant of state.tenants.values()) {
+        const connector = tenant.enterprise?.connector;
+        if (connector === undefined || connector === null) continue;
+        if (connector.provisioningId !== provisioningId || connector.state !== "provisioning") {
+          continue;
+        }
+        connector.state = "failed";
+        connector.updatedAt = now();
+        connector.failureReason = reason;
+        delete connector.provisionedAt;
+        return true;
+      }
+      return false;
     },
   };
 

@@ -114,7 +114,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 | CAP-E-WORKSPACE | Workspace model (switcher note, org connectivity, fleet, goals, audit note, support) | Workspace (`/workspace`) | Settings → "Open your workspace" | Guided journey + live org overview (same read model) | Workspace support escape | **VERIFIED** |
 | CAP-E-ONBOARDING | Guided enterprise onboarding journey (the frozen 8-step chain) | Workspace journey | More → Workspace | Per-step states (complete/waiting/action-needed/blocked/not-started/not-available) | Workspace support section | **VERIFIED** |
 | CAP-E-POLICY | Organization-level policies + policy summary | NONE (the page renders its own honest "Not available yet") | NONE | NONE | NONE | **GAP** — finding RL-115-F7 |
-| CAP-E-CONNECTOR-ENROLLMENT | Enterprise connector (enrollment/provisioning as a user task) | STATUS ONLY ("No connector has been set up yet.") | NONE — no action exists | Journey step facts only | Support | **GAP** — finding RL-115-F3 |
+| CAP-E-CONNECTOR-ENROLLMENT | Enterprise connector (enrollment/provisioning as a user task) | Workspace connector-enrollment flow (`/workspace#connector-enrollment`) — the [Start enrollment] command form (`data-flow="provision-connector"`), capability-gated | Connector journey step → "Start connector enrollment" (in-page anchor to the flow) | The four-stage guided flow (Not started → Provisioning → Verification → Provisioned; closed failure-reason vocabulary explained; command pipeline on the `commandId` polling read) | Failure panel: [Retry enrollment] + support escape pre-carrying the connector facts | **VERIFIED** — was RL-115-F3 (GAP); closed by PA-06 |
 | CAP-E-SSO-SCIM-MDM | SSO/SCIM/MDM integrations | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F5 |
 | CAP-E-AUDIT | Organization audit trail | Admin console Audit page (structural guard) | Workspace names the admin ops surface | Admin audit view | Support | **VERIFIED (proxy)** |
 
@@ -130,13 +130,14 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | URL-only: `/ops/slo` (portal-host, session-gated) | NONE — no surface links it | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **GAP** — finding RL-115-F2 |
 
-**Tally:** 19 VERIFIED · 10 VERIFIED (proxy) · 6 GAP.
+**Tally:** 20 VERIFIED · 10 VERIFIED (proxy) · 5 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
 mechanism: the pinned absence probe became a VERIFIED probe in the web
 suite, the structural guard flipped from absence to presence, and this row
-flipped with them.)
+flipped with them. PA-06: RL-115-F3 closed — CAP-E-CONNECTOR-ENROLLMENT
+moved GAP -> VERIFIED via the guided connector enrollment action.)
 
 ---
 
@@ -211,20 +212,45 @@ original record is preserved below; the flip evidence follows it.
 - **Candidate remediation:** an admin-console nav entry (or ops-surface link) to the
   session-gated dashboard.
 
-### RL-115-F3 — enterprise connector enrollment has no action path (CAP-E-CONNECTOR-ENROLLMENT)
+### RL-115-F3 — enterprise connector enrollment has no action path (CAP-E-CONNECTOR-ENROLLMENT) — CLOSED by PA-06
 
 - **Where:** `apps/web/src/pages/workspace-page.ts` (connector status + journey step) vs
   the enterprise package's API machinery (RL-104 read contract only).
-- **What:** the workspace honestly renders connector STATUS ("No connector has been set
-  up yet.", journey step "Not started", provisioning states when present) but offers NO
-  affordance to start provisioning: the web app composes no connector flow, no command
-  path, no route. The capability's §15 entry point is a status readout, not an action.
-- **Minimal reproducer:** the RL-115 GAP probe renders a workspace WITHOUT enterprise
-  fixtures and asserts `data-connector-absent="true"` + the "Not started" step + zero
-  anchors whose text matches connector/provision/enroll; the structural guard asserts no
-  `provisionConnector`/`enrollConnector`/`flows/*connector*` exists in the web sources.
-- **Candidate remediation:** a guided connector-setup action on the connector journey
-  step (provision → poll → verify), riding the command envelope.
+- **What (the recorded finding):** the workspace honestly rendered connector STATUS
+  ("No connector has been set up yet.", journey step "Not started", provisioning
+  states when present) but offered NO affordance to start provisioning: the web app
+  composed no connector flow, no command path, no route. The capability's §15 entry
+  point was a status readout, not an action.
+- **Original minimal reproducer:** the RL-115 GAP probe rendered a workspace WITHOUT
+  enterprise fixtures and asserted `data-connector-absent="true"` + the "Not
+  started" step + zero anchors whose text matches connector/provision/enroll; the
+  structural guard asserted no `provisionConnector`/`enrollConnector`/`flows/*connector*`
+  exists in the web sources.
+- **Closure (PA-06, verified with evidence):** the connector journey step is now the
+  guided action. The workspace composes a connector-enrollment flow section
+  (`data-connector-enrollment="true"`) whose four stages — Not started →
+  [Start enrollment] → Provisioning (honest in-flight) → Verification → Provisioned —
+  derive PURELY from the workspace read; the only writer is the
+  `provision-connector` command through the app-kit contract route
+  `/v1/enterprise/workspace/connector/provision` (the enterprise package's transition
+  machinery remains the authority — the fake's progression controls mirror its legal
+  map; the web app imports no enterprise machinery, pinned by the flipped structural
+  guard). The failure path renders the closed failure-reason vocabulary honestly with
+  [Retry enrollment] (a NEW provisioning — the domain's failed state is terminal) and
+  a support escape pre-carrying the connector facts. The start affordance is
+  capability-gated on the verified/active enrollment + the `org:manage` permission the
+  API enforces; the gated worlds render the honest explanation instead of a dead
+  action. **Flipped assertions:** the suite's F3 probe now asserts the start anchor +
+  the guided flow + the command form in the actionable world AND the honest gated
+  render in the pre-enrollment world; the structural guard now pins the presence
+  (composed through the app contract, no enterprise domain machinery in the web app).
+  Evidence: `apps/web/test/rl115-capability-discoverability.test.ts` (the flipped
+  probe + the VERIFIED inventory row),
+  `apps/web/test/connector-enrollment-journey.test.ts` (the end-to-end journey:
+  not-started render, start → provisioning → verification → provisioned, failure →
+  explanation → retry → provisioned, idempotent replay, one-active-attempt conflict,
+  server-side gates, support escape),
+  `tests/architecture/test/wave8-b-capability-guards.test.ts` (the flipped guard).
 
 ### RL-115-F4 — refunds have no customer surface (CAP-B-REFUNDS)
 
@@ -325,7 +351,9 @@ The dispatch named three candidates; each was verified, not assumed:
 2. **SLO dashboard entry from the admin console** — confirmed GAP (RL-115-F2): the view
    is real (host-side, honest), the entry is missing everywhere.
 3. **Enterprise connector enrollment discoverability** — confirmed GAP (RL-115-F3):
-   status is discoverable on the workspace; the enrollment ACTION is not.
+   status was discoverable on the workspace; the enrollment ACTION was not.
+   **Closed by PA-06** (the connector journey step is now the guided action — see the
+   F3 record below).
 
 Three further gaps were found by the audit and recorded above: refunds (F4),
 SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit

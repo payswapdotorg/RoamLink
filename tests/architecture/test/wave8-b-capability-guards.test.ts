@@ -13,18 +13,20 @@
  *  - every capability row and every GAP finding stays in sync with the doc;
  *  - the §7 device-capability vocabulary the matrix rows cite stays closed;
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
- *  - the recorded ABSENCES (SLO entry point, connector enrollment action,
- *    refund surface, SSO/SCIM/MDM surface, compatibility health surface,
- *    /notifications inbound links) stay truthful — if one of these tests
- *    FAILS because a surface changed, the inventory + doc MUST be updated
- *    in the same change;
+ *  - the recorded ABSENCES (SLO entry point, refund surface, SSO/SCIM/MDM
+ *    surface, compatibility health surface, /notifications inbound links)
+ *    stay truthful — if one of these tests FAILS because a surface
+ *    changed, the inventory + doc MUST be updated in the same change;
  *  - FLIPPED ABSENCES: PA-001 requires the eSIM management vocabulary on
  *    the customer web surface (the flipped presence guard below — the
  *    mobile surface stays status-only until its own work order); PA-003
  *    requires the Orders-table journey composition (through the route
  *    table) and resolves /notifications as the designed Option B contract
  *    (compatibility-only: zero inbound links BY DESIGN, plus the visible
- *    compatibility-role note on the page itself).
+ *    compatibility-role note on the page itself); PA-06 requires the
+ *    connector-enrollment guided action to stay composed through the app
+ *    contract and never through enterprise domain machinery imported into
+ *    the web app.
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -163,7 +165,10 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
     const gapIds = [...testSource.matchAll(/\{\s*\n\s*id: "(CAP-[A-Z0-9-]+)",[\s\S]{0,600}?verdict: "GAP"/g)].map(
       (m) => m[1] ?? "",
     );
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(6);
+    // PA-06 closed RL-115-F3 (CAP-E-CONNECTOR-ENROLLMENT): the GAP count
+    // went 6 -> 5 (the remaining gaps: refunds F4, SLO F2, SSO/SCIM/MDM F5,
+    // compatibility F6, org policy F7 - F8 stays VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(5);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -232,17 +237,27 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     expect(mobileViews).not.toMatch(/install[a-z]* button|activate profile|activation code/i);
   });
 
-  it("the workspace renders connector STATUS but the app sources compose no connector-enrollment flow (RL-115-F3)", () => {
+  it("the workspace composes the guided connector-enrollment flow through the app contract (RL-115-F3, closed by PA-06)", () => {
     const joined = readDirJoined("apps/web/src");
-    // The honest status marker exists...
+    // The honest status marker still exists...
     expect(joined).toContain('data-connector-absent');
-    // ...and no flow/route offers connector provisioning.
-    expect(joined, "no connector enrollment flow in the web app").not.toMatch(
-      /flows\/[a-z-]*connector[a-z-]*/,
+    // ...and the guided action now EXISTS: the connector journey step links
+    // the flow, the flow renders its stages from the read model, and the
+    // ONLY writer is the wired /flows/provision-connector command form
+    // (the host binds it to the app's provisionConnectorFlow).
+    expect(joined).toContain('"data-connector-enrollment"');
+    expect(joined).toContain('"data-flow": "provision-connector"');
+    expect(joined).toContain("/flows/provision-connector");
+    expect(joined).toContain("provisionConnectorFlow");
+    // THE AUTHORITY FENCE (PA-06 MUST NOT): the web app composes NO
+    // enrollment state machine of its own - no enterprise domain
+    // machinery is imported or re-implemented (the enterprise package's
+    // transition machinery owns every state change; the page derives its
+    // step/flow views purely from the app-kit mirrored reads).
+    expect(joined, "no enterprise domain machinery in the web app").not.toMatch(
+      /applyConnectorProvisioningTransition|negotiateConnectorProvisioning|CONNECTOR_PROVISIONING_STATES/,
     );
-    expect(joined, "no provisionConnector command in the web app").not.toMatch(
-      /provisionConnector|enrollConnector/,
-    );
+    expect(joined, "no direct enterprise package import").not.toContain('from "@roamlink/enterprise"');
   });
 
   it("no commerce surface source composes a refund view or flow (CAP-B-REFUNDS, RL-115-F4)", () => {

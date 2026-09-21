@@ -117,6 +117,20 @@ export interface TriggerReconciliationRequest {
   readonly trigger: "scheduled" | "startup" | "manual" | "crash-recovery";
 }
 
+/**
+ * The customer-facing connector provisioning request (PA-06, RL-115-F3).
+ *
+ * The connector label mirrors the owning domain's bounded printable-label
+ * rule (packages/enterprise/src/connectors.ts CONNECTOR_LABEL_PATTERN: a
+ * diagnostics label, never a secret). The enrollment reference, the tenant
+ * and the capability negotiation inputs are RESOLVED SERVER-SIDE against
+ * the acting tenant's enterprise journey - the customer command never
+ * carries them (the UI is not the enrollment authority).
+ */
+export interface ProvisionConnectorRequest {
+  readonly connectorId: string;
+}
+
 function invalid(label: string, issue: string): never {
   throw new ValidationError(`request payload rejected: ${label} - ${issue}`, {
     reason: "REQUEST_PAYLOAD_INVALID",
@@ -372,4 +386,21 @@ export function triggerReconciliationBody(request: TriggerReconciliationRequest)
       request?.trigger,
     ),
   });
+}
+
+/**
+ * Validates + serializes a provision-connector payload. The label rule is
+ * the owning domain's bounded printable-label pattern (a diagnostics label,
+ * never a secret); client validation is UX only - the server re-validates
+ * fail-closed.
+ */
+export function provisionConnectorBody(request: ProvisionConnectorRequest): string {
+  const connectorId = requireString("ProvisionConnectorRequest.connectorId", request?.connectorId);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$/.test(connectorId)) {
+    invalid(
+      "ProvisionConnectorRequest.connectorId",
+      "must be a bounded, printable connector label (letters, numbers, dots, underscores, colons, at-signs or dashes; never a secret)",
+    );
+  }
+  return JSON.stringify({ connectorId });
 }

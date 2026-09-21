@@ -49,6 +49,13 @@ export const API_ROUTE_TEMPLATES = Object.freeze({
   // owned by packages/enterprise's own api-surface; this app-contract route
   // is the read-only workspace composition the customer surface renders.
   enterpriseWorkspace: "/v1/enterprise/workspace",
+  // PA-06 / RL-115-F3 (additive, RL-LOCK-017): the customer-facing connector
+  // provisioning COMMAND on the workspace surface. It is the app-contract
+  // action behind the guided connector enrollment (the enterprise package's
+  // provisioning machinery remains the authority - this route carries the
+  // command envelope, never state); the four-stage acknowledgement is the
+  // outcome and /v1/commands/{commandId} is the polling status read.
+  enterpriseConnectorProvision: "/v1/enterprise/workspace/connector/provision",
 } as const);
 
 export type ApiRouteName = keyof typeof API_ROUTE_TEMPLATES;
