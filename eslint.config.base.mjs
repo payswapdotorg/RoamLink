@@ -24,7 +24,7 @@ import globals from "globals";
 export function roamlinkEslintBase() {
   return [
     {
-      ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**"],
+      ignores: ["**/node_modules/**", "**/dist/**", "**/build/**", "**/coverage/**", "**/.next/**"],
     },
     js.configs.recommended,
     {
