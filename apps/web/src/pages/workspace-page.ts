@@ -33,12 +33,20 @@
  * Honest-by-construction:
  *  - every journey step renders one of the closed states (complete /
  *    waiting / action-needed / blocked / not-started / not-available);
- *  - the enterprise read contract (enrollment/connector) arrives through
- *    @roamlink/app-kit's mirrored vocabularies - never a direct
+ *  - the enterprise read contract (enrollment/connector/policy) arrives
+ *    through @roamlink/app-kit's mirrored vocabularies - never a direct
  *    enterprise dependency, never a redefined state;
- *  - sections the API does not yet expose (org policy read; cross-
- *    workspace switching; the audit trail surface) render the honest
- *    not-yet-available state instead of invented content;
+ *  - PA-007 (closes RL-115-F7): the policy journey step and the policy
+ *    summary section render from the READ MODEL - the current policy
+ *    record (source, version, freshness) or the EXPLICIT absence states
+ *    (not-configured / unknown / not-available). The absence is a contract
+ *    state now, never a UI shrug; and the page stays READ-ONLY: policy is
+ *    organization-level configuration managed upstream, so the section's
+ *    user action names where management lives, it never offers a policy
+ *    editor (RoamLink creates no second policy authority);
+ *  - sections the API does not yet expose (cross-workspace switching; the
+ *    audit trail surface) render the honest not-yet-available state
+ *    instead of invented content;
  *  - admin/diagnostics stay out (spec §13): the page links to the
  *    customer Activity narrative, never to raw audit/protocol surfaces;
  *  - support is reachable (the escape pre-carries the workspace
@@ -60,6 +68,7 @@ import {
   type ConnectivityOverviewResource,
   type DeviceResource,
   type EnterpriseConnectorFailureResourceReason,
+  type EnterprisePolicyView,
   type EnterpriseWorkspaceResource,
   type ExperienceIntentResource,
   type HtmlFragment,
@@ -190,6 +199,94 @@ export function connectorStartGates(input: {
 }
 
 /**
+ * PA-007 (closes RL-115-F7): the closed policy-summary render states. The
+ * three record states (configured / not-configured / unknown) mirror the
+ * app-kit policy vocabulary verbatim; `not-available` is the honest null
+ * section (this workspace composes no policy read). The absence states
+ * stay SEPARATE - never collapsed, never a guess.
+ */
+export const POLICY_SUMMARY_RENDER_STATES = [
+  "configured",
+  "not-configured",
+  "unknown",
+  "not-available",
+] as const;
+
+export type PolicySummaryRenderState = (typeof POLICY_SUMMARY_RENDER_STATES)[number];
+
+/** The policy summary derivation (the step + the section share it). */
+export interface PolicySummaryView {
+  readonly state: PolicySummaryRenderState;
+  /** The journey step state this policy state derives to (honest). */
+  readonly stepState: WorkspaceJourneyStepState;
+  readonly fact: string;
+  readonly policy: EnterprisePolicyView | null;
+}
+
+/**
+ * Derives the policy summary from the workspace read's policy section.
+ * Pure + total over every shape-legal wire world; no world invents a
+ * policy, and the freshness is carried (never collapsed):
+ *  - `configured` + FRESH -> complete (the policy, its source, version and
+ *    freshness all render);
+ *  - `configured`/`not-configured` + STALE -> waiting (the assertion
+ *    renders FROM the last verified read, paired with its stale freshness
+ *    - the same evidence-freshness language the live-overview step uses);
+ *  - `not-configured` + FRESH -> action-needed (the action lives upstream:
+ *    the organization's administration configures policy, never RoamLink);
+ *  - `unknown` (or an evidence-less record) -> waiting on the first
+ *    verified observation (absence of evidence, never a guess);
+ *  - null section -> not-available (the workspace composes no policy read).
+ */
+export function derivePolicySummary(policy: EnterprisePolicyView | null): PolicySummaryView {
+  if (policy === null) {
+    return {
+      state: "not-available",
+      stepState: "not-available",
+      fact: "An organization policy read is not available for this workspace yet. RoamLink will surface the summary here once the workspace exposes it.",
+      policy,
+    };
+  }
+  const freshness = policy.freshness.freshnessState;
+  if (policy.state === "configured") {
+    const statement =
+      policy.summary === undefined ? "the current policy" : `"${policy.summary}"`;
+    const version =
+      policy.policyVersion === undefined ? "" : ` (version ${policy.policyVersion})`;
+    return {
+      state: "configured",
+      stepState: freshness === "FRESH" ? "complete" : "waiting",
+      fact:
+        freshness === "FRESH"
+          ? `Organization policy in effect: ${statement}${version}.`
+          : freshness === "STALE"
+            ? `Organization policy in effect as of the last verified read: ${statement}${version} — the read is stale.`
+            : "A policy statement exists but no verified policy observation backs it yet.",
+      policy,
+    };
+  }
+  if (policy.state === "not-configured") {
+    return {
+      state: "not-configured",
+      stepState: freshness === "FRESH" ? "action-needed" : "waiting",
+      fact:
+        freshness === "FRESH"
+          ? "No organization policy is configured yet — your organization's administrators set its connectivity rules upstream."
+          : freshness === "STALE"
+            ? "No organization policy was configured as of the last verified read — the read is stale."
+            : "No verified policy observation exists yet — whether a policy is configured is unknown.",
+      policy,
+    };
+  }
+  return {
+    state: "unknown",
+    stepState: "waiting",
+    fact: "No verified policy observation exists yet — whether a policy is configured is unknown.",
+    policy,
+  };
+}
+
+/**
  * Derives the guided journey from the parsed read models. Pure + total.
  * Commercial, connectivity and journey vocabularies stay separate; no
  * step invents a success the reads do not assert.
@@ -205,6 +302,7 @@ export function deriveWorkspaceJourney(input: {
   const connector = input.workspace.connector;
   const gates = connectorStartGates(input);
   const connectorGatesPass = gates.enrollmentVerified && gates.actorCanManage;
+  const policySummary = derivePolicySummary(input.workspace.policy);
 
   const enrollmentState: WorkspaceJourneyStepState =
     enrollment === null
@@ -274,12 +372,15 @@ export function deriveWorkspaceJourney(input: {
                     : "The organization verification journey was cancelled.",
     },
     {
-      // HONEST GAP: no org-policy read model exists in the application
-      // contract yet. The page renders the not-yet-available state and
-      // lists the gap - it never invents a policy summary.
+      // PA-007 (closes RL-115-F7): the policy step renders from the read
+      // model - the current policy record with its freshness, or one of
+      // the EXPLICIT absence states (not-configured / unknown /
+      // not-available). The absence is a contract state now, never a UI
+      // shrug; the section below carries the full summary.
       step: "policy",
-      state: "not-available",
-      fact: "A organization policy summary is not available yet. RoamLink will surface it here once the workspace exposes it.",
+      state: policySummary.stepState,
+      fact: policySummary.fact,
+      action: { href: "#policy-summary", label: "Review the policy summary" },
     },
     {
       step: "connector",
@@ -865,18 +966,104 @@ function orgConnectivitySection(connectivity: ConnectivityOverviewResource): Htm
   );
 }
 
-function policySummarySection(): HtmlFragment {
+function policySummarySection(policy: EnterprisePolicyView | null): HtmlFragment {
+  const view = derivePolicySummary(policy);
+  const policyRecord = view.policy;
   return el(
     "section",
-    { class: "panel", "data-policy-summary": "not-available" },
+    { class: "panel", id: "policy-summary", "data-policy-summary": view.state },
     fragment(
       el("h3", {}, text("Policy summary")),
+      // The state-dependent body: every world renders from the read model
+      // only - the absence states are explicit contract states, never a
+      // collapsed shrug (PA-007, closes RL-115-F7).
+      view.state === "configured"
+        ? el(
+            "p",
+            { "data-policy-statement": "true" },
+            text(policyRecord?.summary ?? "The current organization policy."),
+          )
+        : fragment(),
+      view.state === "configured"
+        ? el(
+            "p",
+            {},
+            fragment(
+              text("Source: "),
+              el(
+                "span",
+                { "data-policy-source": "true" },
+                text(policyRecord?.source ?? ""),
+              ),
+              text(" — Version: "),
+              el(
+                "span",
+                { "data-policy-version": "true" },
+                text(policyRecord?.policyVersion ?? ""),
+              ),
+              text(
+                policyRecord?.effectiveAt === undefined
+                  ? ""
+                  : ` — Effective: ${policyRecord.effectiveAt}`,
+              ),
+            ),
+          )
+        : fragment(),
+      view.state === "not-configured"
+        ? el(
+            "p",
+            { class: "muted", "data-policy-absent": "true" },
+            text(
+              "No organization policy is configured yet. Your organization's administrators set its connectivity rules upstream — none are in effect yet.",
+            ),
+          )
+        : fragment(),
+      view.state === "unknown"
+        ? el(
+            "p",
+            { class: "muted", "data-policy-unknown": "true" },
+            text(
+              "The policy state is unknown — no verified policy observation exists yet. RoamLink renders nothing it cannot verify.",
+            ),
+          )
+        : fragment(),
+      view.state === "not-available"
+        ? el(
+            "p",
+            { class: "muted", "data-policy-absent": "true" },
+            text(
+              "Not available yet: this workspace does not expose an organization policy read. When it does, the summary appears here — nothing is invented in the meantime.",
+            ),
+          )
+        : fragment(),
+      // The freshness pairing (§14: fresh/stale/unknown as text + visual
+      // treatment): every present record carries its freshness beside the
+      // statement - a stale read renders its content PAIRED with the stale
+      // badge, never hidden, never silently trusted.
+      policyRecord !== null
+        ? el(
+            "p",
+            {},
+            fragment(text("Policy read: "), freshnessBadge(policyRecord.freshness)),
+          )
+        : fragment(),
+      // The authority note (the available user action, honestly bounded):
+      // policy management lives UPSTREAM, in the organization's own
+      // administration. RoamLink surfaces the record read-only - this
+      // section offers no policy editor, because editing policy here would
+      // create a second policy authority (the hard law this page obeys).
       el(
         "p",
-        { class: "muted", "data-policy-gap": "true" },
+        { class: "muted", "data-policy-authority": "true" },
         text(
-          "Not available yet: the workspace does not expose an organization policy read yet. When it does, the summary appears here — nothing is invented in the meantime.",
+          "Organization policy is managed by your organization's administrators upstream. RoamLink surfaces it here read-only — it never edits or enforces policy.",
         ),
+      ),
+      // The recovery path (§15): Support is reachable for policy questions.
+      el(
+        "p",
+        { class: "muted", "data-policy-support-reachability": "true" },
+        text("If the policy summary looks wrong or stale, Support is reachable from this workspace's Support section below."),
       ),
     ),
   );
@@ -1058,7 +1245,7 @@ export function workspacePage(input: WorkspacePageInput): HtmlFragment {
     // writer is the provision-connector command through the app contract).
     connectorEnrollmentSection(input.session, input.workspace, input.command),
     orgConnectivitySection(input.connectivity),
-    policySummarySection(),
+    policySummarySection(input.workspace.policy),
     deviceFleetSection(input.devices),
     activeGoalsSection(input.intents),
     enrollmentSection(input.workspace),

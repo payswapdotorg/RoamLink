@@ -1676,7 +1676,11 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       // still a read-only composition mirroring the domain-owned journey
       // state - the ONLY writer is the provision-connector command below
       // (and the test controls that mirror the domain's transition map).
+      // PA-007: the policy section composes the same way - READ-ONLY, with
+      // the freshness STATE evaluated at the query instant (the fake never
+      // invents a policy, never invents an observation).
       const enterprise = tenant.enterprise;
+      const policySeed = enterprise?.policy;
       return ok({
         presentedAt: now(),
         organization:
@@ -1696,6 +1700,18 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
           enterprise?.connector === undefined || enterprise.connector === null
             ? null
             : { ...enterprise.connector },
+        policy:
+          policySeed === undefined || policySeed === null
+            ? null
+            : {
+                policyId: policySeed.policyId,
+                state: policySeed.state,
+                source: policySeed.source,
+                ...(policySeed.policyVersion !== undefined ? { policyVersion: policySeed.policyVersion } : {}),
+                ...(policySeed.summary !== undefined ? { summary: policySeed.summary } : {}),
+                ...(policySeed.effectiveAt !== undefined ? { effectiveAt: policySeed.effectiveAt } : {}),
+                freshness: evaluateFresh(policySeed.freshness, now()),
+              },
       });
     }
 
