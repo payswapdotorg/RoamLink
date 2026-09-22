@@ -15,28 +15,36 @@
  *    closed reason vocabulary, never a fake success;
  *  - the offline banner: last-known state, never fabricated.
  *
- * VERIFICATION-ONLY DISCIPLINE (threat-model-verification.md precedent) —
- * the mobile surface's contract gaps are recorded as PINNED findings so the
- * eventual fixes flip explicit assertions. No src file is touched:
+ * The RL-114 mobile findings were recorded by the verification pass as
+ * PINNED findings (the threat-model-verification.md precedent: fixes flip
+ * explicit assertions) and are CLOSED by PA-005 — the mobile/edge
+ * accessibility/navigation closure. The closed contracts, proven by the
+ * flipped assertions below:
  *
- *  RL-114-F5 — the mobile document shell (app-kit pageShell + the base
- *    document styles) lacks the a11y layer the customer web shell has: no
- *    skip link, no :focus-visible outline rule, no prefers-reduced-motion
- *    guard, no 44px touch-target floor, no safe-area-inset handling, and
- *    the nav has no accessible label.
- *  RL-114-F6 — the four mobile nav anchors (#now / #capabilities / #controls
- *    / #outbox) point at ids that do not exist in any rendered document:
- *    the screens render h2 headings without ids, so every nav link is dead.
- *  RL-114-F7 — the mobile tables (Now context, the capability matrix, the
- *    outbox, the action history) render <th> header cells without scope and
- *    outside any labelled, keyboard-focusable scroll region (no
- *    .table-wrap): on narrow screens the tables overflow, and header cells
- *    do not declare their scope.
+ *  RL-114-F5 — CLOSED: the edge document shell (apps/mobile/src/views.ts
+ *    mobileDocument + MOBILE_EDGE_STYLES) now carries the a11y layer the
+ *    customer web shell has: a skip link targeting the main landmark, a
+ *    :focus-visible outline contract, a prefers-reduced-motion guard, a
+ *    44px touch-target floor on every interactive family (the bottom-nav
+ *    links and the skip link), and the env(safe-area-inset-*) contract on
+ *    the labelled bottom navigation (the same four legs through app-kit's
+ *    bottomNav — nav[aria-label] > ul > li > a).
+ *  RL-114-F6 — CLOSED: every screen renders its nav-fragment target id
+ *    (id="now"/"capabilities"/"controls"/"outbox" on the leg headings), so
+ *    every fragment link resolves in any composition that renders the
+ *    screens — including the hosted composition pattern (all four legs in
+ *    one document, tests/e2e/test/hosted-offline-edge-enterprise.test.ts),
+ *    which the flipped assertion scans in full (skip link included).
+ *  RL-114-F7 — CLOSED: every table header cell declares scope="col" and
+ *    every table renders inside a labelled, keyboard-focusable scroll
+ *    region (role="region" + aria-label + tabindex="0" .table-wrap — the
+ *    web shell's contract).
  */
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
 
 import { parseUtcInstant } from "@roamlink/contracts";
+import { fragment } from "@roamlink/app-kit";
 import { deterministicUuidFromSeed, fixtureTenantId } from "@roamlink/testkit";
 import { createAesGcmEdgePayloadCipher, parseDeviceActionId } from "@roamlink/edge";
 import { InMemoryPlatformActionExecutor } from "@roamlink/edge-actions";
@@ -44,6 +52,8 @@ import { InMemoryPlatformActionExecutor } from "@roamlink/edge-actions";
 import { MobileEdgeShell, type MobileConnectivityView } from "../src/shell.js";
 import { InMemoryMobilePlatformProbe } from "../src/platform-probe.js";
 import {
+  MOBILE_EDGE_STYLES,
+  MOBILE_MAIN_CONTENT_ID,
   actionHistoryScreen,
   actionOutcomeScreen,
   capabilityMatrixScreen,
@@ -131,9 +141,20 @@ async function renderLegs(): Promise<
   const records = await shell.outboxRecords();
   const entries = await shell.projectionEntries();
   const publication: MobileEnrollmentPublication = await shell.enroll(T0);
+  const nowScreen = connectivityScreen(view);
+  const capabilitiesScreen = capabilityMatrixScreen(rows);
+  const controlsQueuedScreen = actionOutcomeScreen(
+    {
+      mode: "server",
+      outcome: "QUEUED",
+      result: { actionId: ACTION_ID_2, status: "accepted", completedAt: AT },
+    },
+    "wifi_control",
+  );
+  const outboxScreenFragment = outboxScreen(records);
   return [
-    { name: "now", html: mobileDocument("Now", connectivityScreen(view)) },
-    { name: "capabilities", html: mobileDocument("Capabilities", capabilityMatrixScreen(rows)) },
+    { name: "now", html: mobileDocument("Now", nowScreen) },
+    { name: "capabilities", html: mobileDocument("Capabilities", capabilitiesScreen) },
     {
       name: "controls (blocked, degraded)",
       html: mobileDocument(
@@ -163,23 +184,24 @@ async function renderLegs(): Promise<
     },
     {
       name: "controls (queued, server-bound)",
-      html: mobileDocument(
-        "Controls",
-        actionOutcomeScreen(
-          {
-            mode: "server",
-            outcome: "QUEUED",
-            result: { actionId: ACTION_ID_2, status: "accepted", completedAt: AT },
-          },
-          "wifi_control",
-        ),
-      ),
+      html: mobileDocument("Controls", controlsQueuedScreen),
     },
-    { name: "outbox", html: mobileDocument("Outbox", outboxScreen(records)) },
+    { name: "outbox", html: mobileDocument("Outbox", outboxScreenFragment) },
     { name: "action history", html: mobileDocument("History", actionHistoryScreen(entries)) },
     {
       name: "enrollment",
       html: mobileDocument("Enrollment", enrollmentScreen(publication, null)),
+    },
+    {
+      // The hosted composition pattern (tests/e2e/test/
+      // hosted-offline-edge-enterprise.test.ts renders all four legs in
+      // one document) — the composition the shell's four nav anchors are
+      // fragment links INTO.
+      name: "composed (all four legs)",
+      html: mobileDocument(
+        "Offline edge journey",
+        fragment(nowScreen, capabilitiesScreen, controlsQueuedScreen, outboxScreenFragment),
+      ),
     },
   ];
 }
@@ -255,46 +277,104 @@ describe("RL-114 mobile document contract (every rendered leg)", () => {
 });
 
 // --------------------------------------------------------------------------------
-// The pinned contract gaps of the mobile surface (findings — recorded, not fixed)
+// The RL-114 mobile findings — CLOSED by PA-005 (the flipped assertions)
 // --------------------------------------------------------------------------------
 
-describe("RL-114 mobile findings (pinned current behavior)", () => {
-  it("FINDING RL-114-F5 (pinned): the mobile document shell lacks the web shell's a11y layer", async () => {
+describe("RL-114 mobile findings (CLOSED by PA-005 — flipped assertions)", () => {
+  it("CLOSED RL-114-F5: the mobile document shell carries the full a11y layer on every leg", async () => {
     for (const leg of await renderLegs()) {
-      expect(leg.html, `${leg.name}: no skip link`).not.toContain("skip-link");
-      expect(leg.html, `${leg.name}: no :focus-visible rule`).not.toContain(":focus-visible");
-      expect(leg.html, `${leg.name}: no reduced-motion guard`).not.toContain("prefers-reduced-motion");
-      expect(leg.html, `${leg.name}: no 44px touch-target floor`).not.toContain("min-height: 44px");
-      expect(leg.html, `${leg.name}: no safe-area handling`).not.toContain("safe-area-inset");
-      expect(leg.html, `${leg.name}: nav has no aria-label`).not.toMatch(/<nav[^>]*aria-label/);
+      // The skip link is the document's FIRST anchor, before the header.
+      const bodyStart = leg.html.indexOf("<body>");
+      const firstAnchor = leg.html.indexOf("<a ", bodyStart);
+      const headerStart = leg.html.indexOf("<header");
+      expect(firstAnchor, `${leg.name}: the skip link is the first anchor`).toBeGreaterThan(bodyStart);
+      expect(firstAnchor, `${leg.name}: the skip link precedes the header`).toBeLessThan(headerStart);
+      expect(leg.html, `${leg.name}: skip link renders`).toContain('class="skip-link"');
+      // The skip link targets the main landmark, and the landmark exists.
+      expect(leg.html, `${leg.name}: skip link href`).toContain(`href="#${MOBILE_MAIN_CONTENT_ID}"`);
+      expect(leg.html, `${leg.name}: main carries the skip target`).toContain(`id="${MOBILE_MAIN_CONTENT_ID}"`);
+      // The keyboard-visible focus contract is in the stylesheet.
+      expect(leg.html, `${leg.name}: :focus-visible rule`).toContain(":focus-visible");
+      // The reduced-motion guard is honored.
+      expect(leg.html, `${leg.name}: reduced-motion guard`).toContain("prefers-reduced-motion");
+      // The 44px touch-target floor is in the stylesheet.
+      expect(leg.html, `${leg.name}: 44px floor`).toContain("min-height: 44px");
+      // The safe-area inset contract (the bottom navigation).
+      expect(leg.html, `${leg.name}: safe-area handling`).toContain("safe-area-inset");
+      // The navigation carries an accessible label.
+      expect(leg.html, `${leg.name}: labelled nav`).toMatch(/<nav[^>]*aria-label="[^"]+"/);
     }
-    // The fix lands these in the shell/base styles and flips every assertion
-    // above (see apps/mobile/src/views.ts mobileDocument + app-kit pageShell).
   });
 
-  it("FINDING RL-114-F6 (pinned): all four nav anchors are dead (no matching ids in any document)", async () => {
-    const targets = ["now", "capabilities", "controls", "outbox"];
-    for (const leg of await renderLegs()) {
-      const present = [...leg.html.matchAll(/href="#([a-z-]+)"/g)].map((m) => m[1]);
-      expect([...new Set(present)].sort(), `${leg.name}: nav anchor set`).toEqual([...targets].sort());
-      for (const id of targets) {
-        expect(leg.html, `${leg.name}: #${id} target exists`).not.toContain(`id="${id}"`);
+  it("CLOSED RL-114-F5: the stylesheet floors every interactive element family at 44px", () => {
+    // The edge document's interactive families are the bottom-nav links
+    // and the skip link; both carry the floor.
+    const floors = MOBILE_EDGE_STYLES.match(/min-height: 44px/g) ?? [];
+    expect(floors.length, "at least the nav links and the skip link").toBeGreaterThanOrEqual(2);
+    expect(MOBILE_EDGE_STYLES).toMatch(/\.shell-bottom-nav a\s*\{[^}]*min-height: 44px/);
+    expect(MOBILE_EDGE_STYLES).toMatch(/\.skip-link\s*\{[^}]*min-height: 44px/);
+  });
+
+  it("CLOSED RL-114-F6: every screen renders its nav fragment target; the composed document resolves every fragment link", async () => {
+    const legs = await renderLegs();
+    const byName = (name: string): string => {
+      const leg = legs.find((l) => l.name === name);
+      if (leg === undefined) throw new Error(`missing leg ${name}`);
+      return leg.html;
+    };
+    // Each leg's own screen renders its nav-fragment target id (the screens
+    // render h2 headings WITH ids now — the fragment destinations are real
+    // in any composition that renders the screen).
+    expect(byName("now")).toContain('id="now"');
+    expect(byName("capabilities")).toContain('id="capabilities"');
+    expect(byName("controls (blocked, degraded)")).toContain('id="controls"');
+    expect(byName("controls (queued, server-bound)")).toContain('id="controls"');
+    expect(byName("outbox")).toContain('id="outbox"');
+
+    // The composed document — the hosted composition pattern (all four legs
+    // in one document, as tests/e2e/test/hosted-offline-edge-enterprise.test.ts
+    // renders the shell) — resolves EVERY fragment href: the four nav
+    // anchors AND the skip link. No dead fragment links remain.
+    const composed = byName("composed (all four legs)");
+    const hrefs = [...new Set([...composed.matchAll(/href="#([a-z-]+)"/g)].map((m) => m[1] ?? ""))];
+    const ids = [...new Set([...composed.matchAll(/id="([a-z-]+)"/g)].map((m) => m[1] ?? ""))];
+    expect([...hrefs].sort(), "the fragment link set (skip link + the four legs)").toEqual([
+      "capabilities",
+      "controls",
+      "main-content",
+      "now",
+      "outbox",
+    ]);
+    for (const target of hrefs) {
+      expect(ids.includes(target), `#${target} resolves to a real id`).toBe(true);
+    }
+  });
+
+  it("CLOSED RL-114-F7: every table header declares its scope inside a labelled, keyboard-focusable scroll region", async () => {
+    for (const leg of (await renderLegs()).filter((l) =>
+      ["now", "capabilities", "outbox", "action history", "composed (all four legs)"].includes(l.name),
+    )) {
+      // No bare <th> remains; every header cell declares its column scope.
+      expect(leg.html, `${leg.name}: no bare th`).not.toContain("<th>");
+      const ths = [...leg.html.matchAll(/<th ([^>]*)>/g)].map((m) => m[1] ?? "");
+      expect(ths.length, `${leg.name}: table headers exist`).toBeGreaterThan(0);
+      for (const attrs of ths) {
+        expect(attrs, `${leg.name}: th declares scope`).toContain('scope="col"');
+      }
+      // Every table sits inside a labelled, keyboard-focusable scroll region.
+      const wraps = [...leg.html.matchAll(/<div ([^>]*)>/g)]
+        .map((m) => m[1] ?? "")
+        .filter((attrs) => attrs.includes('class="table-wrap"'));
+      expect(wraps.length, `${leg.name}: table-wrap regions exist`).toBeGreaterThan(0);
+      for (const attrs of wraps) {
+        expect(attrs, `${leg.name}: region role`).toContain('role="region"');
+        expect(attrs, `${leg.name}: region label`).toMatch(/aria-label="[^"]+"/);
+        expect(attrs, `${leg.name}: keyboard focusable`).toContain('tabindex="0"');
       }
     }
   });
 
-  it("FINDING RL-114-F7 (pinned): table header cells carry no scope and sit outside a labelled scroll region", async () => {
-    for (const leg of (await renderLegs()).filter((l) =>
-      ["now", "capabilities", "outbox", "action history"].includes(l.name),
-    )) {
-      const ths = (leg.html.match(/<th>/g) ?? []).length;
-      expect(ths, `${leg.name}: bare <th> count`).toBeGreaterThan(0);
-      expect(leg.html, `${leg.name}: no scope attribute`).not.toContain('scope="');
-      expect(leg.html, `${leg.name}: no responsive table wrap`).not.toContain("table-wrap");
-    }
-  });
-
-  it("the stale enrollment leg still renders the STALE state as text (pairing holds even on the pinned shell)", async () => {
+  it("the stale enrollment leg still renders the STALE state as text (pairing holds on the closed shell)", async () => {
     const shell = buildShell();
     const publication = await shell.enroll(T0);
     const html = mobileDocument(

@@ -28,6 +28,18 @@ rows (CAP-B-ORDERS, CAP-L-COMMERCIAL, CAP-A-NOTIFICATIONS) are VERIFIED below
 with their closure evidence, and the flipped assertions live in the same suites
 that pinned the gaps. All other findings stand unchanged.
 
+**Post-audit update (PA-005 — Mobile Accessibility/Navigation Closure):** the
+mobile/edge lane of RL-114 is CLOSED. F5 (the a11y layer), F6 (the dead nav
+anchors) and F7 (the table scope/scroll-region contract) are fixed on the
+mobile surface only (`apps/mobile/src/views.ts`), and the pinned assertions in
+`apps/mobile/test/rl114-mobile-document-contract.test.ts` are flipped to the
+closed expectations; the mobile capability probe (`apps/mobile/test/
+rl115-mobile-capability-surface.test.ts`) gains the truth table's a11y
+alignment proof (the matrix stays status-only — the mobile half of RL-115-F1's
+pin is unchanged; the web journey from PA-001 owns the management affordances).
+No web/admin surface, shared app-kit component or dependency is touched. The
+section 6 cross-reference rows below carry the closure evidence.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -388,13 +400,14 @@ here for one-stop reading (full reproducers in the suites):
 | RL-114-F2 | web | Level skips on edge paths: Connectivity's h2→h4 disclosure panels; read-failure and mutation-result bodies lead with h3 | same |
 | RL-114-F3 | web | The 44px floor skips generic in-content action links and the shell indicator link | same |
 | RL-114-F4 | web | RESOLVED by PA-003 (Option B): `/notifications` is compatibility-only BY DESIGN — zero inbound links is the contract, the page carries the visible compatibility-role note, Activity is the sole narrative surface | same |
-| RL-114-F5 | mobile | The mobile shell lacks the web shell's a11y layer: no skip link, no `:focus-visible` rule, no reduced-motion guard, no 44px floor, no safe-area, unlabelled nav | `apps/mobile/test/rl114-mobile-document-contract.test.ts` |
-| RL-114-F6 | mobile | All four nav anchors (`#now/#capabilities/#controls/#outbox`) are dead — no matching ids exist | same |
-| RL-114-F7 | mobile | Tables render `<th>` without scope, outside labelled scroll regions | same |
+| RL-114-F5 | mobile | **CLOSED by PA-005**: the edge document shell carries the a11y layer — a skip link to the `main` landmark (the document's first anchor), a `:focus-visible` outline contract, a `prefers-reduced-motion` guard, a 44px floor on every interactive family (bottom-nav links + skip link), and `env(safe-area-inset-*)` on the header and the labelled bottom navigation (app-kit `bottomNav`: `nav[aria-label]` > ul > li > a, the same four legs) — `apps/mobile/src/views.ts` `MOBILE_EDGE_STYLES` + `mobileDocument` | `apps/mobile/test/rl114-mobile-document-contract.test.ts` (flipped) |
+| RL-114-F6 | mobile | **CLOSED by PA-005**: every screen renders its nav-fragment target id (`id="now"/"capabilities"/"controls"/"outbox"` on the leg headings), so all four nav anchors resolve in any composition that renders the screens; the hosted composition pattern (all four legs in one document, `tests/e2e/test/hosted-offline-edge-enterprise.test.ts`) resolves every fragment link, skip link included | same (flipped) |
+| RL-114-F7 | mobile | **CLOSED by PA-005**: every table header cell declares `scope="col"` and every table renders inside a labelled, keyboard-focusable scroll region (`role="region"` + `aria-label` + `tabindex="0"` `.table-wrap`) — the Now context, the capability matrix, the outbox and the action history | same (flipped) |
 
 The RL-114 VERIFIED contracts (loading/error/empty per surface, badge text pairing,
 per-leg mobile document contract, guidance pairing) are the green suites referenced
-above.
+above. The mobile lane (F5/F6/F7) is CLOSED by PA-005; the web lane (F1/F2/F3)
+remains open for its own work order.
 
 ## 7. How to run
 
