@@ -32,7 +32,11 @@
  * a visible role note; CAP-A-NOTIFICATIONS is VERIFIED). RL-115-F1 is
  * CLOSED (the eSIM management journey — CAP-X-ESIM-MANAGE flipped GAP ->
  * VERIFIED: the pinned absence probe became the VERIFIED probe, the doc
- * matrix row flipped with it). The closure probes below carry the flipped
+ * matrix row flipped with it). RL-115-F2 is CLOSED (PA-009 — the admin
+ * console nav now carries the "SLO health" entry to /ops/slo; CAP-SLO
+ * flipped GAP -> VERIFIED(proxy), proven by the admin suite's render tests
+ * and the flipped structural guard — the customer surface stays SLO-free
+ * BY DESIGN, §13). The closure probes below carry the flipped
  * expectations; the remaining GAP probes still pin the open findings.
  */
 import { describe, expect, it } from "vitest";
@@ -516,9 +520,10 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-SLO",
     capability: "SLO health: the nine §11 product SLOs",
     spec: "spec/architecture.md §11; spec/ux-architecture.md §13 (SLO health)",
-    verdict: "GAP",
+    verdict: "VERIFIED(proxy)",
+    entry: { page: "workspace", mustRender: ["admin operations surface"] },
     gapNote:
-      "the host-side ops dashboard at /ops/slo renders all nine §11 rows (real recorder state, RL-109), but NO surface links to it: the admin console nav has no SLO entry and the URL is the only path — discoverable only by knowing it (RL-115-F2)",
+      "closed (PA-009 — RL-115-F2): the admin console nav carries the 'SLO health' entry → /ops/slo (the session-gated host ops surface, RL-109 — real recorder state); the customer web surface intentionally carries zero SLO vocabulary (§13: admin and diagnostics are not customer navigation — the workspace names the admin operations surface where the entry lives)",
   },
 ];
 
@@ -759,18 +764,29 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     expect(gatedWorkspace).toContain("Organization verification comes first");
   });
 
-  it("GAP CAP-SLO (RL-115-F2): no surface links to the /ops/slo dashboard and no nav names SLO health", async () => {
+  it("VERIFIED CAP-SLO (RL-115-F2, closed by PA-009): the entry is the admin console's SLO health nav item; the customer surface stays SLO-free by design", async () => {
     const { app } = buildApp();
+    // The closure added NO customer-surface links (PA-009 MUST NOT: admin/ops
+    // only): the customer pages keep zero /ops/slo references and zero SLO
+    // vocabulary — BY DESIGN now (spec/ux-architecture.md §13: admin and
+    // diagnostics are not customer navigation), the same designed-absence
+    // discipline as the /notifications Option B contract.
     for (const page of ["home", "settings", "more", "workspace", "connectivity"] as const) {
       const html = await app.renderDocument({ page });
-      expect(html, `${page}: no /ops/slo link`).not.toContain("/ops/slo");
+      expect(html, `${page}: no /ops/slo link (customer surfaces never link ops)`).not.toContain("/ops/slo");
       expect(html, `${page}: no SLO nav vocabulary`).not.toMatch(/SLO/i);
     }
-    // The frozen navigation vocabularies carry no SLO destination.
+    // The frozen customer navigation vocabularies carry no SLO destination.
     for (const nav of [...DESKTOP_NAV, ...MOBILE_NAV]) {
       expect(nav.label).not.toMatch(/SLO/i);
       expect(nav.href).not.toContain("/ops");
     }
+    // The entry now EXISTS — on the ADMIN console (the §13 "SLO health"
+    // nav item → the host's /ops/slo): the render-level proof lives in
+    // apps/admin/test/admin-app.test.ts ("SLO health navigation entry"),
+    // and the structural presence guard in
+    // tests/architecture/test/wave8-b-capability-guards.test.ts pins both
+    // the path reference and the nav label in the admin sources.
   });
 
   it("GAP CAP-B-REFUNDS (RL-115-F4): the commerce surface renders no refund state anywhere", async () => {

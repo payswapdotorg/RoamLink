@@ -34,7 +34,7 @@ import { projectionHealthPage } from "./pages/projection-health-page.js";
 import { reconciliationPage } from "./pages/reconciliation-page.js";
 import { supportTriagePage } from "./pages/support-triage-page.js";
 import { tenantsPage } from "./pages/tenants-page.js";
-import { adminPagePath, type AdminPageName } from "./routes.js";
+import { adminPagePath, OPS_SLO_DASHBOARD_PATH, type AdminPageName } from "./routes.js";
 
 /**
  * The permission each surface requires (rendering gate). These mirror the
@@ -62,11 +62,21 @@ export interface AdminPageRequest {
   readonly auditCategory?: "auth" | "secret-access" | "authority-decision" | "admin-override";
 }
 
+/**
+ * The console navigation. The five console pages plus the §13 "SLO health"
+ * entry (PA-009, closes RL-115-F2): a plain link to the HOST's session-gated
+ * `/ops/slo` ops surface (RL-109) — not a console page, so it has no
+ * SURFACE_READ_PERMISSIONS row and fetches nothing here. The link renders on
+ * every console page (including denied renders — the nav is chrome); the
+ * TARGET keeps its own fail-closed session + `org:read` gate, exactly the
+ * discipline apps/portal-host enforces for the ops surface.
+ */
 const NAV = [
   { label: "Tenants", href: adminPagePath("tenants") },
   { label: "Audit & security", href: adminPagePath("audit") },
   { label: "Reconciliation", href: adminPagePath("reconciliation") },
   { label: "Projection health", href: adminPagePath("projectionHealth") },
+  { label: "SLO health", href: OPS_SLO_DASHBOARD_PATH },
   { label: "Support triage", href: adminPagePath("supportTriage") },
 ] as const;
 

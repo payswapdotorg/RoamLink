@@ -13,7 +13,7 @@
  *  - every capability row and every GAP finding stays in sync with the doc;
  *  - the §7 device-capability vocabulary the matrix rows cite stays closed;
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
- *  - the recorded ABSENCES (SLO entry point, refund surface, SSO/SCIM/MDM
+ *  - the recorded ABSENCES (refund surface, SSO/SCIM/MDM
  *    surface, compatibility health surface, /notifications inbound links)
  *    stay truthful — if one of these tests FAILS because a surface
  *    changed, the inventory + doc MUST be updated in the same change;
@@ -26,7 +26,10 @@
  *    compatibility-role note on the page itself); PA-06 requires the
  *    connector-enrollment guided action to stay composed through the app
  *    contract and never through enterprise domain machinery imported into
- *    the web app.
+ *    the web app; PA-009 requires the admin console's "SLO health" nav
+ *    entry to the host's session-gated /ops/slo surface (the customer
+ *    web/mobile surfaces stay SLO-free BY DESIGN — §13: admin and
+ *    diagnostics are not customer navigation).
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -166,9 +169,10 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
       (m) => m[1] ?? "",
     );
     // PA-06 closed RL-115-F3 (CAP-E-CONNECTOR-ENROLLMENT): the GAP count
-    // went 6 -> 5 (the remaining gaps: refunds F4, SLO F2, SSO/SCIM/MDM F5,
-    // compatibility F6, org policy F7 - F8 stays VERIFIED(proxy)).
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(5);
+    // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4 (the
+    // remaining gaps: refunds F4, SSO/SCIM/MDM F5, compatibility F6,
+    // org policy F7 - F8 stays VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(4);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -207,13 +211,23 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
 // --------------------------------------------------------------------------------
 
 describe("RL-115 guard: the recorded discoverability absences stay truthful", () => {
-  it("no customer/admin/mobile surface source links the /ops/slo dashboard or names an SLO nav entry (CAP-SLO, RL-115-F2)", () => {
-    for (const dir of ["apps/web/src", "apps/admin/src", "apps/mobile/src"]) {
+  it("the admin console links the /ops/slo dashboard and names the SLO health nav entry; the customer surfaces stay SLO-free (CAP-SLO, RL-115-F2 closed by PA-009)", () => {
+    // PA-009 closed RL-115-F2: the admin console nav carries the §13 "SLO
+    // health" entry pointing at the HOST's session-gated /ops/slo surface
+    // (RL-109 — the dashboard itself is unchanged). The customer surfaces
+    // (web + mobile) stay SLO-free BY DESIGN: §13 keeps admin and
+    // diagnostics out of customer navigation.
+    for (const dir of ["apps/web/src", "apps/mobile/src"]) {
       const joined = readDirJoined(dir);
       expect(joined, `${dir}: no /ops/slo reference`).not.toContain("/ops/slo");
       expect(joined, `${dir}: no SLO nav vocabulary`).not.toMatch(/label:\s*"[^"]*SLO[^"]*"/);
     }
-    // The ops surface itself still exists (the view is real; the entry is not).
+    // The admin console now carries BOTH the path reference (the named
+    // route constant in apps/admin/src/routes.ts) and the nav label.
+    const admin = readDirJoined("apps/admin/src");
+    expect(admin, "the admin nav links the ops route").toContain("/ops/slo");
+    expect(admin, "the admin nav names SLO health").toMatch(/label:\s*"[^"]*SLO[^"]*"/);
+    // The ops surface itself still exists (the view is real; the entry points at it).
     mustExist("apps/portal-host/src/ops-slo-page.ts");
     expect(read("apps/portal-host/src/ops-slo-page.ts")).toContain('"data-slo-dashboard": "true"');
   });
