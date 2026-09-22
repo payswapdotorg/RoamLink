@@ -377,6 +377,22 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/enterprise/src/connectors.ts",
       owner: "CONNECTOR_PROVISIONING_FAILURE_REASONS",
     },
+    // PA-007 (closes RL-115-F7): the READ-ONLY organization policy read
+    // mirror - state + source vocabularies, the same discipline.
+    {
+      label: "enterprise organization policy states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_POLICY_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/policy.ts",
+      owner: "ORGANIZATION_POLICY_STATES",
+    },
+    {
+      label: "enterprise organization policy sources",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_POLICY_RESOURCE_SOURCES",
+      ownerFile: "packages/enterprise/src/policy.ts",
+      owner: "ORGANIZATION_POLICY_SOURCES",
+    },
   ];
 
   it.each(MIRRORS)("the app contract's $label mirror matches the owning domain vocabulary", ({ mirrorFile, mirror, ownerFile, owner }) => {

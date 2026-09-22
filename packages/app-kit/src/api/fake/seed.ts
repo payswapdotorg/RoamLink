@@ -293,6 +293,15 @@ export interface FakeReconciliationJobSeed {
  * the connector record its provisioning vocabulary (drift-guarded by
  * tests/architecture). Absent sections render as the honest not-started
  * state on the workspace surface.
+ *
+ * PA-007 (closes RL-115-F7): the organization policy read mirrors
+ * packages/enterprise's policy read vocabulary (state + source,
+ * drift-guarded by tests/architecture) with its freshness FACTS (observed /
+ * received / fresh-until - the fake evaluates the freshness STATE at the
+ * query instant, exactly like the device observation freshness). Absent
+ * policy renders as the honest null section ("not available"); a seeded
+ * `not-configured`/`unknown` record renders those explicit absence states
+ * (never a guess, never a collapsed absence).
  */
 export interface FakeEnterpriseEnrollmentSeed {
   readonly enrollmentId: string;
@@ -321,9 +330,21 @@ export interface FakeEnterpriseConnectorSeed {
   readonly revokedAt?: string;
 }
 
+export interface FakeEnterprisePolicySeed {
+  readonly policyId: string;
+  readonly state: "configured" | "not-configured" | "unknown";
+  readonly source: "organization-administration";
+  readonly policyVersion?: string;
+  readonly summary?: string;
+  readonly effectiveAt?: string;
+  /** The observation facts; the fake evaluates the state at the query instant. */
+  readonly freshness?: FakeFreshnessSeed;
+}
+
 export interface FakeEnterpriseSeed {
   readonly enrollment?: FakeEnterpriseEnrollmentSeed;
   readonly connector?: FakeEnterpriseConnectorSeed;
+  readonly policy?: FakeEnterprisePolicySeed;
 }
 
 export interface FakeTenantSeed {
@@ -465,6 +486,25 @@ export function fakeApiSeed(): FakeApiSeed {
             createdAt: "2024-06-01T00:11:00.000Z",
             updatedAt: "2024-06-01T00:12:00.000Z",
             provisionedAt: "2024-06-01T00:12:00.000Z",
+          },
+          // PA-007 (closes RL-115-F7): the seeded org carries a PRESENT
+          // organization policy read - configured upstream by the
+          // organization's administration, with a version, a human summary
+          // and a fresh observation (the honest happy-path world; scenario
+          // seeds derive the absent/stale/unknown worlds by copy + override).
+          policy: {
+            policyId: "pppppppp-0000-4000-8000-000000000001",
+            state: "configured",
+            source: "organization-administration",
+            policyVersion: "2025-01",
+            summary:
+              "Roam on approved networks with a capped daily spend; privacy comes first and location is never tracked.",
+            effectiveAt: "2024-07-01T00:00:00.000Z",
+            freshness: {
+              observedAt: T0,
+              receivedAt: T0,
+              freshUntil: FAKE_SEED_CLOCK.freshUntil,
+            },
           },
         },
         devices: [

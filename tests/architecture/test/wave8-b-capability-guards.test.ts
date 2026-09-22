@@ -29,7 +29,11 @@
  *    the web app; PA-009 requires the admin console's "SLO health" nav
  *    entry to the host's session-gated /ops/slo surface (the customer
  *    web/mobile surfaces stay SLO-free BY DESIGN — §13: admin and
- *    diagnostics are not customer navigation).
+ *    diagnostics are not customer navigation); PA-007 requires the
+ *    workspace policy summary to stay composed from the app contract's
+ *    READ-ONLY organization policy read — the absence states stay explicit
+ *    contract states and the surface composes no policy write affordance
+ *    (policy is organization-level configuration managed upstream).
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -169,10 +173,11 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
       (m) => m[1] ?? "",
     );
     // PA-06 closed RL-115-F3 (CAP-E-CONNECTOR-ENROLLMENT): the GAP count
-    // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4 (the
-    // remaining gaps: refunds F4, SSO/SCIM/MDM F5, compatibility F6,
-    // org policy F7 - F8 stays VERIFIED(proxy)).
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(4);
+    // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4; PA-007
+    // closed RL-115-F7 (CAP-E-POLICY): 4 -> 3 (the remaining gaps:
+    // refunds F4, SSO/SCIM/MDM F5, compatibility F6 - F8 stays
+    // VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(3);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -296,6 +301,40 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     const adminPages = readDirJoined("apps/admin/src/pages");
     expect(adminPages.toLowerCase()).not.toContain("compat");
     expect(adminPages.toLowerCase()).not.toContain("integration health");
+  });
+
+  it("the workspace composes the policy summary from the app contract's READ-ONLY policy read (RL-115-F7, closed by PA-007)", () => {
+    // PA-007 closed RL-115-F7: the organization policy READ MODEL rides
+    // the app contract (the mirrored state/source vocabularies,
+    // drift-guarded in wave4-a) and the workspace page renders the
+    // promised summary section from it - with the EXPLICIT absence states
+    // (never a UI shrug) and the freshness pairing. THE AUTHORITY FENCE:
+    // the surface stays READ-ONLY - no policy command, editor or write
+    // vocabulary (policy is organization-level configuration managed
+    // upstream; the enterprise package's policy module owns parse +
+    // vocabularies ONLY).
+    const workspacePage = read("apps/web/src/pages/workspace-page.ts");
+    expect(workspacePage, "the summary section composes from the read model").toContain(
+      "derivePolicySummary",
+    );
+    expect(workspacePage, "the section renders its state marker").toContain("data-policy-summary");
+    expect(workspacePage, "the authority note names where management lives").toContain(
+      '"data-policy-authority": "true"',
+    );
+    expect(workspacePage, "the recovery note stays reachable").toContain(
+      '"data-policy-support-reachability": "true"',
+    );
+    // THE FLIP: the old gap marker (the page's own honest shrug) is gone
+    // from the page source - the summary is real now.
+    expect(workspacePage).not.toContain("data-policy-gap");
+    // READ-ONLY: no policy write affordance is composed anywhere on the
+    // web surface, and the web app still imports NO enterprise domain
+    // machinery (the same fence the connector flow guards).
+    const joined = readDirJoined("apps/web/src");
+    expect(joined, "no policy write affordance").not.toMatch(
+      /data-flow="(edit|update|set|create|delete)-policy"/,
+    );
+    expect(joined, "no direct enterprise package import").not.toContain('from "@roamlink/enterprise"');
   });
 
   it("the commerce Orders table composes its delivery-progress journey links through the route table (RL-115-F8, closed by PA-003)", () => {

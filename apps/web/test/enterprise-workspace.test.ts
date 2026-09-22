@@ -14,8 +14,12 @@
  *    - the org connectivity section renders from the SAME read model and
  *    the same derived state vocabulary as every other page, and no org-
  *    aggregated connectivity status is invented;
- *  - honest gaps: the policy summary and workspace switching render the
- *    not-available state (nothing invented);
+ *  - honest gaps: workspace switching renders the not-available state
+ *    (nothing invented); the organization policy summary renders from the
+ *    READ MODEL (PA-007, closes RL-115-F7) - the current policy record
+ *    (source, version, freshness) or one of the EXPLICIT absence states
+ *    (not-configured / unknown / not-available - never a UI shrug, never a
+ *    collapsed absence);
  *  - the mirrored enterprise vocabulary renders verbatim (drift-guarded
  *    in tests/architecture; apps/web imports ONLY app-kit);
  *  - fail-closed behavior: personal-scope tenants and failing reads
@@ -30,6 +34,7 @@ import {
   fakeApiSeed,
   RoamLinkApiClient,
   type FakeApiSeed,
+  type FakeEnterprisePolicySeed,
   type FakeTenantSeed,
   type HttpTransport,
   type HttpResponse,
@@ -94,14 +99,16 @@ describe("the guided enterprise journey renders the frozen chain", () => {
     // The completed steps of the seeded org.
     expect(page.html).toContain('data-workspace-step="workspace" data-workspace-step-state="complete"');
     expect(page.html).toContain('data-workspace-step="organization-verification" data-workspace-step-state="complete"');
+    // PA-007 (closes RL-115-F7): the policy step renders from the read
+    // model - the seeded org carries a configured, fresh policy (the
+    // honest happy-path world; the absence/stale worlds are derived below).
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="complete"');
+    expect(page.html).toContain('data-policy-summary="configured"');
     expect(page.html).toContain('data-workspace-step="connector" data-workspace-step-state="complete"');
     expect(page.html).toContain('data-workspace-step="devices" data-workspace-step-state="complete"');
     expect(page.html).toContain('data-workspace-step="capability-verification" data-workspace-step-state="complete"');
     expect(page.html).toContain('data-workspace-step="first-goal" data-workspace-step-state="complete"');
     expect(page.html).toContain('data-workspace-step="live-overview" data-workspace-step-state="complete"');
-    // The honest gap: policy is not available yet (never invented).
-    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="not-available"');
-    expect(page.html).toContain("A organization policy summary is not available yet.");
   });
 
   it("renders the mirrored enterprise states verbatim in the enrollment section", async () => {
@@ -137,6 +144,171 @@ describe("the guided enterprise journey renders the frozen chain", () => {
     expect(page.html).toContain('data-workspace-step="organization-verification" data-workspace-step-state="blocked"');
     expect(page.html).toContain("Organization verification was rejected (verification-failed).");
     expect(page.html).toContain('data-state="rejected"');
+  });
+});
+
+// --------------------------------------------------------------------------------
+// The organization policy summary renders from the read model
+// (PA-007, closes RL-115-F7): present-policy render, absent-policy honest
+// render, stale-freshness pairing - and the absence states stay explicit
+// contract states, never a UI shrug.
+// --------------------------------------------------------------------------------
+
+/** Derives a scenario seed by overriding the tenant's policy record. */
+function policySeed(policy: FakeEnterprisePolicySeed): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: { ...tenant.enterprise, policy },
+  };
+  return { ...seed, tenants };
+}
+
+/** Derives a scenario seed whose workspace composes NO policy section. */
+function policyNotAvailableSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { enrollment, connector } = tenant.enterprise ?? {};
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(enrollment !== undefined ? { enrollment } : {}),
+      ...(connector !== undefined ? { connector } : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+describe("the organization policy summary renders from the read model (PA-007, RL-115-F7)", () => {
+  it("a configured, fresh policy renders its summary, source, version, effective instant and freshness", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "workspace" });
+    // The section: the real summary from the read model.
+    expect(page.html).toContain('data-policy-summary="configured"');
+    expect(page.html).toContain('data-policy-statement="true"');
+    expect(page.html).toContain("Roam on approved networks with a capped daily spend");
+    // Source + version + effective instant (the current policy record's
+    // facts, rendered - never invented).
+    expect(page.html).toContain('data-policy-source="true"');
+    expect(page.html).toContain("organization-administration");
+    expect(page.html).toContain('data-policy-version="true"');
+    expect(page.html).toContain("2025-01");
+    expect(page.html).toContain("Effective: 2024-07-01T00:00:00.000Z");
+    // The freshness pairing (§14: text + visual treatment).
+    expect(page.html).toContain('data-freshness="FRESH"');
+    expect(page.html).toContain("Policy read: ");
+    // The journey step derives complete, with the contextual link to the
+    // section (the §15 contextual link from the journey where the
+    // capability becomes relevant).
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="complete"');
+    expect(page.html).toContain('href="#policy-summary"');
+    expect(page.html).toContain("Review the policy summary");
+    // The journey fact carries the policy statement (HTML-escaped quotes
+    // around the summary text).
+    expect(page.html).toContain("Organization policy in effect: &quot;Roam on approved networks");
+    expect(page.html).toContain("(version 2025-01).");
+  });
+
+  it("the honest absence renders as the EXPLICIT not-configured contract state (never a shrug)", async () => {
+    const { app } = buildApp({
+      seed: policySeed({
+        policyId: "pppppppp-0000-4000-8000-000000000002",
+        state: "not-configured",
+        source: "organization-administration",
+        freshness: {
+          observedAt: "2025-01-06T09:00:00.000Z",
+          receivedAt: "2025-01-06T09:00:00.000Z",
+          freshUntil: "2025-01-06T10:00:00.000Z",
+        },
+      }),
+    });
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-policy-summary="not-configured"');
+    expect(page.html).toContain('data-policy-absent="true"');
+    expect(page.html).toContain("No organization policy is configured yet.");
+    // The action-needed step names where the action lives: UPSTREAM (the
+    // organization's administrators) - RoamLink offers no policy editor.
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="action-needed"');
+    expect(page.html).toContain("your organization&#39;s administrators set its connectivity rules upstream");
+    // No invented policy content anywhere.
+    expect(page.html).not.toContain('data-policy-statement="true"');
+    expect(page.html).not.toContain("Roam on approved networks");
+  });
+
+  it("a workspace composing no policy section renders the honest not-available state", async () => {
+    const { app } = buildApp({ seed: policyNotAvailableSeed() });
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-policy-summary="not-available"');
+    expect(page.html).toContain('data-policy-absent="true"');
+    expect(page.html).toContain("this workspace does not expose an organization policy read");
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="not-available"');
+    expect(page.html).toContain("An organization policy read is not available for this workspace yet.");
+  });
+
+  it("the stale-freshness pairing: a stale read keeps its summary PAIRED with the stale badge (never hidden, never trusted)", async () => {
+    const { app } = buildApp({
+      seed: policySeed({
+        policyId: "pppppppp-0000-4000-8000-000000000003",
+        state: "configured",
+        source: "organization-administration",
+        policyVersion: "2024-12",
+        summary: "Roam on approved networks with a capped daily spend.",
+        effectiveAt: "2024-07-01T00:00:00.000Z",
+        freshness: {
+          observedAt: "2025-01-06T08:00:00.000Z",
+          receivedAt: "2025-01-06T08:00:00.000Z",
+          // Expired before the deterministic query instant (09:45).
+          freshUntil: "2025-01-06T09:30:00.000Z",
+        },
+      }),
+    });
+    const page = await app.renderPage({ page: "workspace" });
+    // The content still renders (from the last verified read)...
+    expect(page.html).toContain('data-policy-summary="configured"');
+    expect(page.html).toContain('data-policy-statement="true"');
+    // ...PAIRed with the stale freshness (the fake evaluates the state at
+    // the query instant; the guarantee expired at 09:30 < 09:45).
+    expect(page.html).toContain('data-freshness="STALE"');
+    expect(page.html).toContain("Policy read: ");
+    // The step waits on a fresh read - never claims a verified present.
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="waiting"');
+    expect(page.html).toContain("as of the last verified read");
+    expect(page.html).toContain("the read is stale");
+  });
+
+  it("an unknown policy record renders the honest unknown state (absence of evidence, never a guess)", async () => {
+    const { app } = buildApp({
+      seed: policySeed({
+        policyId: "pppppppp-0000-4000-8000-000000000004",
+        state: "unknown",
+        source: "organization-administration",
+      }),
+    });
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-policy-summary="unknown"');
+    expect(page.html).toContain('data-policy-unknown="true"');
+    expect(page.html).toContain("no verified policy observation exists yet");
+    expect(page.html).toContain('data-freshness="UNKNOWN"');
+    expect(page.html).toContain('data-workspace-step="policy" data-workspace-step-state="waiting"');
+    expect(page.html).not.toContain('data-policy-statement="true"');
+  });
+
+  it("the authority note names where policy management lives upstream, and support stays reachable (no policy editor)", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-policy-authority="true"');
+    expect(page.html).toContain(
+      "Organization policy is managed by your organization&#39;s administrators upstream. RoamLink surfaces it here read-only",
+    );
+    expect(page.html).toContain('data-policy-support-reachability="true"');
+    // READ-ONLY: the section offers no policy write affordance (a policy
+    // editor here would create a second policy authority).
+    expect(page.html).not.toMatch(/data-flow="(edit|update|set)-policy"|Configure policy|Edit policy|Set policy/);
   });
 });
 

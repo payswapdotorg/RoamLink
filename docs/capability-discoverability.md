@@ -48,6 +48,27 @@ same suites that pinned the gap, and the customer surfaces stay SLO-free BY
 DESIGN (§13: admin and diagnostics are not customer navigation). All other
 findings stand unchanged.
 
+**Post-audit update (PA-007 — Organization Policy Read Model):** RL-115-F7 is
+CLOSED by the same flip mechanism. The organization policy READ MODEL now
+exists: a read-only record owned by the enterprise domain
+(`packages/enterprise/src/policy.ts` — state/source vocabularies, freshness,
+fail-closed parse, NO write path) mirrored additively through the app
+contract's workspace read (`packages/app-kit/src/api/enterprise.ts` —
+`ENTERPRISE_POLICY_RESOURCE_STATES`/`SOURCES`, drift-guarded in wave4-a;
+an older payload without the section parses to the honest null section,
+RL-LOCK-017). The workspace page's promised policy summary section is real:
+the current policy record renders (summary, source, version, effective
+instant, freshness pairing) and the absence states stay EXPLICIT contract
+states — `not-configured` (an observation verified no policy upstream),
+`unknown` (no verified observation) and `not-available` (this workspace
+composes no policy section) — never a UI shrug, never collapsed. The section
+is READ-ONLY: policy is organization-level configuration managed upstream,
+so the available user action names where management lives (the authority
+note) and the surface composes no policy editor (RoamLink creates no second
+policy authority, RL-LOCK-003/004/005). CAP-E-POLICY is VERIFIED below with
+its closure evidence; the flipped assertions live in the same suites that
+pinned the gap. All other findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -133,7 +154,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-E-WORKSPACE | Workspace model (switcher note, org connectivity, fleet, goals, audit note, support) | Workspace (`/workspace`) | Settings → "Open your workspace" | Guided journey + live org overview (same read model) | Workspace support escape | **VERIFIED** |
 | CAP-E-ONBOARDING | Guided enterprise onboarding journey (the frozen 8-step chain) | Workspace journey | More → Workspace | Per-step states (complete/waiting/action-needed/blocked/not-started/not-available) | Workspace support section | **VERIFIED** |
-| CAP-E-POLICY | Organization-level policies + policy summary | NONE (the page renders its own honest "Not available yet") | NONE | NONE | NONE | **GAP** — finding RL-115-F7 |
+| CAP-E-POLICY | Organization-level policies + policy summary | Workspace policy summary section (`/workspace` `#policy-summary`) | Policy journey step → "Review the policy summary" (in-page anchor) | The summary section: current policy (statement, source, version, effective instant) with the freshness pairing; the explicit absence states (not-configured / unknown / not-available) | Policy support-reachability note + the workspace Support section | **VERIFIED** — was RL-115-F7 (GAP); closed by PA-007 (the org-policy read model + the real summary section; READ-ONLY — the authority note names where management lives upstream) |
 | CAP-E-CONNECTOR-ENROLLMENT | Enterprise connector (enrollment/provisioning as a user task) | Workspace connector-enrollment flow (`/workspace#connector-enrollment`) — the [Start enrollment] command form (`data-flow="provision-connector"`), capability-gated | Connector journey step → "Start connector enrollment" (in-page anchor to the flow) | The four-stage guided flow (Not started → Provisioning → Verification → Provisioned; closed failure-reason vocabulary explained; command pipeline on the `commandId` polling read) | Failure panel: [Retry enrollment] + support escape pre-carrying the connector facts | **VERIFIED** — was RL-115-F3 (GAP); closed by PA-06 |
 | CAP-E-SSO-SCIM-MDM | SSO/SCIM/MDM integrations | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F5 |
 | CAP-E-AUDIT | Organization audit trail | Admin console Audit page (structural guard) | Workspace names the admin ops surface | Admin audit view | Support | **VERIFIED (proxy)** |
@@ -150,7 +171,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | Admin console nav "SLO health" → `/ops/slo` (the session-gated host ops surface, RL-109) | The admin nav entry renders on every console page (denied renders included — the nav is chrome; the target holds the gate) | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **VERIFIED (proxy)** — RL-115-F2 closed by PA-009: the admin nav entry (render-level proof in `apps/admin/test/admin-app.test.ts`, structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the customer surfaces stay SLO-free by design (§13) |
 
-**Tally:** 20 VERIFIED · 11 VERIFIED (proxy) · 4 GAP.
+**Tally:** 21 VERIFIED · 11 VERIFIED (proxy) · 3 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
@@ -159,7 +180,9 @@ suite, the structural guard flipped from absence to presence, and this row
 flipped with them. PA-06: RL-115-F3 closed — CAP-E-CONNECTOR-ENROLLMENT
 moved GAP -> VERIFIED via the guided connector enrollment action. PA-009:
 RL-115-F2 closed — CAP-SLO moved GAP -> VERIFIED (proxy) via the admin
-console's "SLO health" nav entry to the host ops route.)
+console's "SLO health" nav entry to the host ops route. PA-007: RL-115-F7
+closed — CAP-E-POLICY moved GAP -> VERIFIED via the organization policy
+read model + the real policy summary section.)
 
 ---
 
@@ -351,17 +374,73 @@ implemented exactly as bounded —
 - **Candidate remediation:** an admin integration-health surface fed by the probe's
   fail-closed state (compatible/incompatible/not-configured with timestamps).
 
-### RL-115-F7 — organization policies render only their own absence (CAP-E-POLICY)
+### RL-115-F7 — organization policies render only their own absence (CAP-E-POLICY) — **CLOSED by PA-007**
 
 - **Where:** `apps/web/src/pages/workspace-page.ts policySummarySection` + the `policy`
   journey step.
-- **What:** the workspace page HONESTLY renders "Not available yet" (`data-policy-gap`,
-  step state `not-available`) because no org-policy read model exists. §15-wise the
-  capability has no entry/view; the page's own recorded honest state is the finding.
-- **Minimal reproducer:** the RL-115 GAP probe asserts `data-policy-gap="true"` and the
-  step's "Not available yet" state render.
-- **Candidate remediation:** an org-policy read model in the application contract, then
-  the summary section the page already promises.
+- **What (the recorded gap):** the workspace page HONESTLY rendered "Not available
+  yet" (`data-policy-gap`, step state `not-available`) because no org-policy read
+  model existed. §15-wise the capability had no entry/view; the page's own recorded
+  honest state was the finding.
+- **Original minimal reproducer (the pin, now flipped):** the RL-115 GAP probe
+  asserted `data-policy-gap="true"`, the "Not available yet" render and the step's
+  `not-available` state on the seeded world.
+- **CLOSURE (PA-007, VERIFIED):** the organization policy READ MODEL exists and the
+  promised summary section is real. The owning record is the enterprise domain's
+  read-only `OrganizationPolicyRecord` (`packages/enterprise/src/policy.ts`): the
+  closed `ORGANIZATION_POLICY_STATES` (configured / not-configured / unknown) and
+  `ORGANIZATION_POLICY_SOURCES` (organization-administration) vocabularies,
+  first-class freshness (used DIRECTLY from @roamlink/contracts, never redefined),
+  a fail-closed parse with honest-absence invariants (a `configured` assertion
+  carries its facts; absence states carry no policy content; an assertion rests on
+  a complete observation — an incomplete one forces the honest `unknown` state),
+  and NO write path (the module owns parse + vocabularies only; the authority
+  fence is pinned by its own test). The record is mirrored additively through the
+  app contract's workspace read (`packages/app-kit/src/api/enterprise.ts`:
+  `EnterprisePolicyView` — `policyId`, `state`, `source`, optional
+  `policyVersion`/`summary`/`effectiveAt`, the shared `FreshnessView` pairing),
+  drift-guarded by the wave4-a mirrors; an older payload without the section
+  parses to the honest null section (RL-LOCK-017). The deterministic fake seeds
+  the present world by default (configured + fresh, with version/summary/
+  effective instant) and scenario seeds derive the not-configured / unknown /
+  stale / not-available worlds. The page's `derivePolicySummary` renders the step
+  and the section from the read only: the current policy with its freshness
+  pairing (a stale read keeps its summary PAIRED with the stale badge — the
+  §14 discipline), the explicit absence states as CONTRACT states, the authority
+  note naming where management lives upstream, and the support-reachability
+  note (§15 recovery). No policy editor exists anywhere: policy is
+  organization-level configuration managed upstream (RL-LOCK-003/004/005 — the
+  web app composes no policy write affordance, pinned by the wave8-b guard).
+- **Closure evidence (flipped assertions):**
+  1. `apps/web/test/rl115-capability-discoverability.test.ts` — the GAP probe
+     became the closure probe "VERIFIED CAP-E-POLICY (RL-115-F7 closed)": the
+     seeded world renders `data-policy-summary="configured"` + the statement +
+     source + version + freshness, the old `data-policy-gap` marker is GONE, and
+     the absence worlds render their EXPLICIT states (not-available for a
+     workspace composing no section; not-configured for a record asserting no
+     policy upstream). The inventory row CAP-E-POLICY flipped GAP -> VERIFIED
+     with its four §15 surfaces.
+  2. `apps/web/test/enterprise-workspace.test.ts` — the journey tests: the
+     present-policy render (summary/source/version/effective/freshness + the
+     complete step with its `#policy-summary` contextual link), the
+     absent-policy honest render (not-configured: action-needed step naming the
+     upstream action; not-available: the null-section world), the
+     stale-freshness pairing (content PAIRED with the stale badge, waiting
+     step), the unknown world, and the READ-ONLY authority-note proof.
+  3. `tests/architecture/test/wave8-b-capability-guards.test.ts` — the flipped
+     structural guard: the workspace page composes `derivePolicySummary` with
+     the state/authority/reachability markers, the old `data-policy-gap`
+     marker is absent from the source, no policy write affordance exists on
+     the web surface, and the web app still imports no enterprise domain
+     machinery. The GAP-count guard moved 4 -> 3 with the doc row.
+  4. `tests/architecture/test/wave4-a-app-boundaries.test.ts` — the new mirror
+     drift guards: `ENTERPRISE_POLICY_RESOURCE_STATES` <-
+     `ORGANIZATION_POLICY_STATES` and `ENTERPRISE_POLICY_RESOURCE_SOURCES` <-
+     `ORGANIZATION_POLICY_SOURCES`.
+  5. `packages/enterprise/test/policy.test.ts` +
+     `packages/app-kit/test/enterprise-workspace.test.ts` — the record's
+     honest-absence invariants (fail-closed parse, no write path) and the read
+     contract's additive-tolerance + vocabulary proofs.
 
 ### RL-115-F8 — the delivery-progress order journey is URL-only (CAP-B-ORDERS / CAP-L-COMMERCIAL) — **CLOSED by PA-003**
 
@@ -423,7 +502,8 @@ The dispatch named three candidates; each was verified, not assumed:
 Three further gaps were found by the audit and recorded above: refunds (F4),
 SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit
 by the page itself (F7) and the URL-only delivery-progress journey (F8). F8 has since
-been CLOSED by PA-003 (see the finding record above); the other findings stand.
+been CLOSED by PA-003 and F7 by PA-007 (see the finding records above); the other
+findings stand.
 
 ## 5. Honest verification limits (AR-009/AR-010 discipline)
 

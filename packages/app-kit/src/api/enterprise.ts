@@ -16,6 +16,22 @@
  *    states                       (CONNECTOR_PROVISIONING_STATES)
  *  - connector provisioning     <- packages/enterprise/src/connectors.ts
  *    failure reasons              (CONNECTOR_PROVISIONING_FAILURE_REASONS)
+ *  - organization policy read   <- packages/enterprise/src/policy.ts
+ *    states                        (ORGANIZATION_POLICY_STATES)
+ *  - organization policy source <- packages/enterprise/src/policy.ts
+ *                                  (ORGANIZATION_POLICY_SOURCES)
+ *
+ * PA-007 (closes RL-115-F7): the workspace read gains the READ-ONLY
+ * organization policy section. The section is ADDITIVE on the wire
+ * (RL-LOCK-017): an older payload without it parses to the honest null
+ * section ("not available" - the workspace surface composes no policy
+ * read), which stays DISTINCT from the explicit in-section absence states
+ * (`not-configured` - an observation verified no policy upstream - and
+ * `unknown` - no verified observation). RoamLink never duplicates
+ * connectivity policy authority: the policy is enterprise/organization-
+ * level configuration surfaced as a read model, so this mirror carries NO
+ * policy command (the connector provision command remains the surface's
+ * only mutation).
  *
  * HONESTY RULES:
  *  - this is a READ contract only: the customer surface derives ZERO
@@ -42,6 +58,7 @@ import {
   rejectUnknownFields,
   requireFields,
 } from "./parse-kit.js";
+import { parseFreshnessView, type FreshnessView } from "./resources.js";
 
 export const ENTERPRISE_ENROLLMENT_RESOURCE_STATES = [
   "draft",
@@ -83,6 +100,21 @@ export const ENTERPRISE_CONNECTOR_FAILURE_RESOURCE_REASONS = [
 export type EnterpriseConnectorFailureResourceReason =
   (typeof ENTERPRISE_CONNECTOR_FAILURE_RESOURCE_REASONS)[number];
 
+export const ENTERPRISE_POLICY_RESOURCE_STATES = [
+  "configured",
+  "not-configured",
+  "unknown",
+] as const;
+
+export type EnterprisePolicyResourceState = (typeof ENTERPRISE_POLICY_RESOURCE_STATES)[number];
+
+export const ENTERPRISE_POLICY_RESOURCE_SOURCES = [
+  "organization-administration",
+] as const;
+
+export type EnterprisePolicyResourceSource =
+  (typeof ENTERPRISE_POLICY_RESOURCE_SOURCES)[number];
+
 /** The workspace identity section (from the acting tenant's organization). */
 export interface EnterpriseWorkspaceOrganization {
   readonly tenantId: string;
@@ -118,17 +150,44 @@ export interface EnterpriseConnectorView {
 }
 
 /**
+ * The READ-ONLY organization policy read (PA-007, closes RL-115-F7):
+ * the current policy record with source, version, freshness and the
+ * honest-absence states. `policyVersion`/`summary`/`effectiveAt` ride only
+ * with a `configured` record (the owning domain record enforces this
+ * fail-closed; the mirror parses the wire shape and the closed
+ * vocabularies). Freshness is the SAME FreshnessView contract every other
+ * read carries (never redefined here).
+ */
+export interface EnterprisePolicyView {
+  readonly policyId: string;
+  readonly state: EnterprisePolicyResourceState;
+  /** Where the policy is managed upstream (closed vocabulary). */
+  readonly source: EnterprisePolicyResourceSource;
+  readonly policyVersion?: string;
+  readonly summary?: string;
+  readonly effectiveAt?: string;
+  readonly freshness: FreshnessView;
+}
+
+/**
  * The customer workspace read: identity + enrollment journey + connector
- * status, side by side, each section honestly present or absent. This
- * resource carries NO connectivity facts - the workspace page renders
- * those from the SAME ConnectivityOverviewResource every other page uses
- * (enterprise UX creates no second connectivity authority).
+ * status + the READ-ONLY organization policy read, side by side, each
+ * section honestly present or absent. This resource carries NO
+ * connectivity facts - the workspace page renders those from the SAME
+ * ConnectivityOverviewResource every other page uses (enterprise UX
+ * creates no second connectivity authority).
+ *
+ * PA-007: `policy` is the additive RL-115-F7 closure section. A null
+ * section (or an older payload without the field) is the honest
+ * not-available state: the workspace surface composes no policy read -
+ * never a guessed policy, never a collapsed absence.
  */
 export interface EnterpriseWorkspaceResource {
   readonly presentedAt: string;
   readonly organization: EnterpriseWorkspaceOrganization | null;
   readonly enrollment: EnterpriseEnrollmentView | null;
   readonly connector: EnterpriseConnectorView | null;
+  readonly policy: EnterprisePolicyView | null;
 }
 
 function workspaceField(label: string, issue: string): never {
@@ -250,10 +309,42 @@ function parseConnectorSection(label: string, value: unknown): EnterpriseConnect
   });
 }
 
+function parsePolicySection(label: string, value: unknown): EnterprisePolicyView | null {
+  if (value === null || value === undefined) return null;
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, [
+    "policyId",
+    "state",
+    "source",
+    "policyVersion",
+    "summary",
+    "effectiveAt",
+    "freshness",
+  ]);
+  requireFields(label, record, ["policyId", "state", "source", "freshness"]);
+  return Object.freeze({
+    policyId: asString(`${label}.policyId`, record["policyId"]),
+    state: asEnum(`${label}.state`, ENTERPRISE_POLICY_RESOURCE_STATES, record["state"]),
+    source: asEnum(`${label}.source`, ENTERPRISE_POLICY_RESOURCE_SOURCES, record["source"]),
+    ...(asOptionalString(`${label}.policyVersion`, record["policyVersion"]) !== undefined
+      ? { policyVersion: asOptionalString(`${label}.policyVersion`, record["policyVersion"]) as string }
+      : {}),
+    ...(asOptionalString(`${label}.summary`, record["summary"]) !== undefined
+      ? { summary: asOptionalString(`${label}.summary`, record["summary"]) as string }
+      : {}),
+    ...(asOptionalString(`${label}.effectiveAt`, record["effectiveAt"]) !== undefined
+      ? { effectiveAt: asOptionalString(`${label}.effectiveAt`, record["effectiveAt"]) as string }
+      : {}),
+    freshness: parseFreshnessView(`${label}.freshness`, record["freshness"]),
+  });
+}
+
 /**
  * Fail-closed parser for the workspace read: unknown fields reject, state
  * vocabularies must be members of the mirrored closed sets, sections may
- * be explicitly null (honest not-started) but never malformed.
+ * be explicitly null (honest not-started) but never malformed. The policy
+ * section is additive (RL-LOCK-017): an older payload without it parses to
+ * the honest null section.
  */
 export function parseEnterpriseWorkspaceResource(value: unknown): EnterpriseWorkspaceResource {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -265,6 +356,7 @@ export function parseEnterpriseWorkspaceResource(value: unknown): EnterpriseWork
     "organization",
     "enrollment",
     "connector",
+    "policy",
   ]);
   requireFields("EnterpriseWorkspaceResource", record, [
     "presentedAt",
@@ -288,6 +380,7 @@ export function parseEnterpriseWorkspaceResource(value: unknown): EnterpriseWork
         "EnterpriseWorkspaceResource.connector",
         record["connector"],
       ),
+      policy: parsePolicySection("EnterpriseWorkspaceResource.policy", record["policy"]),
     });
   } catch (error) {
     if (error instanceof ValidationError) throw error;
