@@ -17,6 +17,13 @@
  *    (the §7 recovery path for gated capabilities).
  *
  * Findings are recorded, not fixed (threat-model-verification.md precedent).
+ *
+ * PA-005 extension (RL-114 F5/F6/F7 closure): the truth-table probe now also
+ * proves the capability matrix renders under the CLOSED table contract
+ * (scoped headers inside a labelled, keyboard-focusable scroll region) —
+ * a11y alignment only; the matrix stays status-only (the mobile half of
+ * RL-115-F1's pin is unchanged; the web journey owns the management
+ * affordances, PA-001).
  */
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
@@ -142,6 +149,30 @@ describe("RL-115 the mobile capability truth table (CAP-X-WIFI / CAP-X-ESIM-MANA
     const joined = `${matrixHtml}\n${nowHtml}`.toLowerCase();
     expect(joined).not.toContain("activation code");
     expect(joined).not.toContain("profile list");
+  });
+
+  it("PA-005 (RL-114-F7) alignment: the truth table renders under the closed table contract — scoped headers in a labelled scroll region — while staying status-only", async () => {
+    const shell = buildShell();
+    await shell.runObservationCycle(T0);
+    const html = capabilityMatrixScreen(shell.capabilityMatrix(T0)).html;
+
+    // The closed table contract (RL-114-F7, closed by PA-005): every header
+    // cell declares its column scope...
+    expect(html, "no bare th").not.toContain("<th>");
+    expect(html, "scoped column headers").toMatch(/<th [^>]*scope="col"/);
+    // ...and the table sits inside a labelled, keyboard-focusable scroll
+    // region (role="region" + aria-label + tabindex="0" .table-wrap).
+    expect(html, "scroll region wrapper").toContain('class="table-wrap"');
+    expect(html, "region role").toMatch(/<div [^>]*role="region"/);
+    expect(html, "region label").toMatch(/<div [^>]*aria-label="[^"]+"/);
+    expect(html, "keyboard focusable").toContain('tabindex="0"');
+
+    // The eSIM rows' alignment is a11y-only: the truth table is STILL
+    // status-only (the mobile half of RL-115-F1's pin is unchanged — the
+    // web journey owns the management affordances, PA-001).
+    expect(html, "still no action anchors").not.toContain("<a ");
+    expect(html, "still no forms").not.toContain("<form");
+    expect(html, "still no buttons").not.toContain("<button");
   });
 });
 
