@@ -40,6 +40,14 @@ pin is unchanged; the web journey from PA-001 owns the management affordances).
 No web/admin surface, shared app-kit component or dependency is touched. The
 section 6 cross-reference rows below carry the closure evidence.
 
+**Post-audit update (PA-009 — SLO Dashboard Navigation):** RL-115-F2 is CLOSED
+by the same flip mechanism: the admin console nav carries the §13 "SLO health"
+entry to the host's session-gated `/ops/slo` surface, CAP-SLO is VERIFIED
+(proxy) below with its closure evidence, the flipped assertions live in the
+same suites that pinned the gap, and the customer surfaces stay SLO-free BY
+DESIGN (§13: admin and diagnostics are not customer navigation). All other
+findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -140,16 +148,18 @@ card carries verification freshness + the five automation levels, not per-capabi
 
 | ID | Capability | Entry | Link | View | Recovery | Verdict |
 |----|------------|-------|------|------|----------|---------|
-| CAP-SLO | SLO health (the nine §11 product SLOs) | URL-only: `/ops/slo` (portal-host, session-gated) | NONE — no surface links it | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **GAP** — finding RL-115-F2 |
+| CAP-SLO | SLO health (the nine §11 product SLOs) | Admin console nav "SLO health" → `/ops/slo` (the session-gated host ops surface, RL-109) | The admin nav entry renders on every console page (denied renders included — the nav is chrome; the target holds the gate) | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **VERIFIED (proxy)** — RL-115-F2 closed by PA-009: the admin nav entry (render-level proof in `apps/admin/test/admin-app.test.ts`, structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the customer surfaces stay SLO-free by design (§13) |
 
-**Tally:** 20 VERIFIED · 10 VERIFIED (proxy) · 5 GAP.
+**Tally:** 20 VERIFIED · 11 VERIFIED (proxy) · 4 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
 mechanism: the pinned absence probe became a VERIFIED probe in the web
 suite, the structural guard flipped from absence to presence, and this row
 flipped with them. PA-06: RL-115-F3 closed — CAP-E-CONNECTOR-ENROLLMENT
-moved GAP -> VERIFIED via the guided connector enrollment action.)
+moved GAP -> VERIFIED via the guided connector enrollment action. PA-009:
+RL-115-F2 closed — CAP-SLO moved GAP -> VERIFIED (proxy) via the admin
+console's "SLO health" nav entry to the host ops route.)
 
 ---
 
@@ -210,19 +220,60 @@ original record is preserved below; the flip evidence follows it.
 
 ### RL-115-F2 — the §11 SLO dashboard has no entry point from any surface (CAP-SLO)
 
+**STATUS: CLOSED by PA-009** (the SLO dashboard navigation work order). The
+original record is preserved below; the flip evidence follows it.
+
 - **Where:** `apps/portal-host/src/ops-slo-page.ts` (the dashboard, RL-109) vs the admin
   console nav (`apps/admin/src/app.ts`) and the customer navs.
-- **What:** spec/ux-architecture.md §13 requires admin to expose "SLO health". The
-  dashboard EXISTS and honestly renders the nine §11 rows over the real recorder — but it
-  is reachable ONLY by knowing `/ops/slo`: the admin console's five-item nav carries no
-  SLO destination, and no web/admin/mobile source references the path. By journey-audit
-  line 199 it is not discoverable.
-- **Minimal reproducer:** the RL-115 GAP probe CAP-SLO renders home/settings/more/
-  workspace/connectivity and asserts zero `/ops/slo` references and zero SLO nav labels;
-  the structural guard asserts the same over all three apps' sources while pinning that
-  the ops surface itself still exists.
+- **What (the recorded finding):** spec/ux-architecture.md §13 requires admin to expose
+  "SLO health". The dashboard EXISTS and honestly renders the nine §11 rows over the
+  real recorder — but it was reachable ONLY by knowing `/ops/slo`: the admin console's
+  five-item nav carried no SLO destination, and no web/admin/mobile source referenced
+  the path. By journey-audit line 199 it was not discoverable.
+- **Original minimal reproducer (the pin, now flipped):** the RL-115 GAP probe
+  CAP-SLO rendered home/settings/more/workspace/connectivity and asserted zero
+  `/ops/slo` references and zero SLO nav labels; the structural guard asserted the
+  same over all three apps' sources while pinning that the ops surface itself still
+  exists.
 - **Candidate remediation:** an admin-console nav entry (or ops-surface link) to the
   session-gated dashboard.
+
+**Flip record (PA-009, verified with evidence):** the candidate remediation was
+implemented exactly as bounded —
+
+- the admin console nav gained the §13 "SLO health" entry (the `NAV` array in
+  `apps/admin/src/app.ts`), pointing at the host's ops route through the named
+  constant `OPS_SLO_DASHBOARD_PATH = "/ops/slo"` (`apps/admin/src/routes.ts` —
+  deliberately NOT a console page route: the dashboard lives host-side because the
+  console's `/v1` read routes answer the honest 501 READ_MODEL_NOT_COMPOSED for it
+  on the real runtime, so the console must not compose its read model);
+- the entry is a plain link, honoring every bound: it renders on every console page
+  (the access-denied renders included — the nav is chrome), it adds ZERO API
+  requests and renders NO SLO content of its own (the console composes no SLO read
+  model and no fabricated values), and the TARGET keeps its fail-closed session +
+  `org:read` permission gate — the same permission the console's read surfaces map
+  to. The dashboard itself (RL-109: real recorder state, the nine §11 rows,
+  multi-window burn rates, honest no-data-degraded) is UNCHANGED — only
+  discoverability was closed — and NO customer-surface link was added (§13 keeps
+  admin and diagnostics out of customer navigation; the customer web/mobile
+  surfaces stay SLO-free by design);
+- the pinned assertions FLIPPED: the web suite's GAP probe became the closure probe
+  "VERIFIED CAP-SLO (RL-115-F2, closed by PA-009)" (the customer-surface absence
+  is now pinned as DESIGNED behavior, the /notifications Option B discipline), the
+  structural guard flipped from three-app absence to admin PRESENCE + customer
+  absence (`tests/architecture/test/wave8-b-capability-guards.test.ts`), the
+  suite's inventory row and the matrix row above flipped GAP -> VERIFIED (proxy)
+  with the closure evidence, and the GAP count went 5 -> 4.
+- Evidence: `apps/admin/test/admin-app.test.ts` ("SLO health navigation entry
+  (PA-009, closes RL-115-F2)": the nav renders the entry on every console surface,
+  the entry's href is exactly the ops route, the entry is a link — no SLO read
+  triggered, no dashboard content rendered — and the gate behavior is unchanged:
+  the entry renders on the denied panel while the target keeps its own session
+  gate), `apps/web/test/rl115-capability-discoverability.test.ts` (the flipped
+  probe + the VERIFIED(proxy) inventory row), `tests/architecture/test/
+  wave8-b-capability-guards.test.ts` (the flipped presence guard), and
+  `apps/portal-host/test/ops-slo.test.ts` (the target's fail-closed gate and real
+  recorder state — unchanged and still green).
 
 ### RL-115-F3 — enterprise connector enrollment has no action path (CAP-E-CONNECTOR-ENROLLMENT) — CLOSED by PA-06
 
@@ -361,7 +412,9 @@ The dispatch named three candidates; each was verified, not assumed:
    visibility IS verified on the mobile matrix: the gap was the management journey.
    **Closed by PA-001** (see the flip record on the finding above).
 2. **SLO dashboard entry from the admin console** — confirmed GAP (RL-115-F2): the view
-   is real (host-side, honest), the entry is missing everywhere.
+   is real (host-side, honest), the entry is missing everywhere. **Closed by PA-009**
+   (the admin console nav now carries the §13 "SLO health" entry to the host's
+   session-gated `/ops/slo` surface — see the flip record on the finding above).
 3. **Enterprise connector enrollment discoverability** — confirmed GAP (RL-115-F3):
    status was discoverable on the workspace; the enrollment ACTION was not.
    **Closed by PA-06** (the connector journey step is now the guided action — see the

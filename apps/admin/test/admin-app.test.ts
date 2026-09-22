@@ -19,7 +19,7 @@ import {
 import { DeterministicClock, DeterministicUuidGenerator } from "@roamlink/testkit";
 
 import { AdminConsoleApp, SURFACE_READ_PERMISSIONS } from "../src/app.js";
-import type { AdminPageName } from "../src/routes.js";
+import { OPS_SLO_DASHBOARD_PATH, type AdminPageName } from "../src/routes.js";
 
 const TENANT = "org:11111111-2222-4333-8444-555555555555";
 const OTHER_TENANT = "org:99999999-8888-4777-8666-555555555555";
@@ -309,5 +309,55 @@ describe("projection health dashboard (observability SLO surfaces)", () => {
     // MEMBER is not in OTHER_TENANT -> 404 panels (fail closed, no oracle).
     const page = await console.renderPage({ page: "projectionHealth" });
     expect(page.html).toContain('data-error-kind="not-found"');
+  });
+});
+
+describe("SLO health navigation entry (PA-009, closes RL-115-F2)", () => {
+  it("every console page's nav renders the SLO health entry pointing at the ops route", async () => {
+    const { console } = buildConsole({ actor: ADMIN });
+    for (const surface of ALL_SURFACES) {
+      const doc = await console.renderDocument({ page: surface });
+      // The entry is a real anchor in the shell nav, labelled per §13's
+      // "SLO health" vocabulary, with the host ops route as its href.
+      expect(
+        doc,
+        `${surface}: the SLO health nav entry`,
+      ).toContain(`<a href="${OPS_SLO_DASHBOARD_PATH}">SLO health</a>`);
+    }
+  });
+
+  it("the entry is a link, not a console surface: no SLO read is triggered and no dashboard content is rendered", async () => {
+    const captured: HttpRequest[] = [];
+    const { console } = buildConsole({ actor: ADMIN, captured });
+    const doc = await console.renderDocument({ page: "tenants" });
+    // The console composes NO SLO dashboard content of its own — the
+    // host-side surface (RL-109) owns the view over the real recorder state.
+    expect(doc).not.toContain("data-slo-dashboard");
+    expect(doc).not.toMatch(/data-slo-id=/);
+    // The entry adds ZERO requests: rendering a console page with the nav
+    // entry performs no SLO-related read (the target owns both the gate
+    // and the data; nothing is fetched or fabricated here).
+    for (const request of captured) {
+      expect(request.path, "the console never reads SLO state").not.toMatch(/slo/i);
+    }
+  });
+
+  it("the gate behavior is unchanged: the entry renders on the denied panel too, and the target keeps its own session gate", async () => {
+    // A personal-tenant actor is denied every console surface (the
+    // fail-closed gate) — yet the nav, including the SLO health entry,
+    // still renders: the link is navigation chrome, and the PERMISSION
+    // decision lives at the target (/ops/slo enforces org:read with its
+    // own session resolution — proven in apps/portal-host/test/ops-slo.test.ts).
+    const { console } = buildConsole({
+      actor: MEMBER,
+      tenant: `usr:aaaaaaaa-0000-4000-8000-000000000003`,
+    });
+    const doc = await console.renderDocument({ page: "tenants" });
+    expect(doc).toContain('data-access-denied="true"');
+    expect(doc).toContain(`data-required-permission="${SURFACE_READ_PERMISSIONS.tenants}"`);
+    expect(doc).toContain(`<a href="${OPS_SLO_DASHBOARD_PATH}">SLO health</a>`);
+    // The denied render leaked no surface state before the entry and still
+    // does not: the entry introduced no data path.
+    expect(doc).not.toContain("data-slo-dashboard");
   });
 });
