@@ -15,6 +15,7 @@ console adds a fail-closed *rendering* gate on top.
 | Reconciliation (`/reconciliation`) | Durable job records as §5 commands (command/correlation/idempotency) with per-action repair outcomes (REPAIRED / ALREADY_CONSISTENT / DEGRADED_STALE / DEGRADED_UNKNOWN / …) and the manual trigger |
 | Projection health (`/projection-health`) | Per-projection freshness facts (FRESH / STALE / UNKNOWN — unknown is displayed, never hidden), SLO states with burn rate and budget remaining; `no-data` renders degraded (never silently healthy) |
 | Support triage (`/support`) | Case triage with the OPERATIONS thread view (internal messages visible here, structurally absent from the customer thread) and lifecycle transitions |
+| Integration health (`/integration-health`) | The recorded outcome of the env-gated ADCOS compatibility probe (RL-108): Compatible / Incompatible / Not configured / Unknown — a first-class honest state, never a fabricated compatibility — with the recorded last-checked freshness, the supported ADCOS API version (the single-site pin), the probe suite version, the full check table and the failed-check explanation when incompatible. READ-ONLY: the surface never triggers the probe and never mutates compatibility state (the mutation gate lives inside the ADCOS integration boundary, spec/adcos-integration.md §9) |
 
 ## The fail-closed rendering gate (the top threat)
 
@@ -67,7 +68,7 @@ host owns sessions/CSRF; the console never sees credentials (RL-LOCK-016).
 
 ## Tests
 
-`pnpm test` (13 tests) drives the real console through the real typed client
+`pnpm test` drives the real console through the real typed client
 against the deterministic fake with testkit clocks/ids:
 
 - a member (org:read) sees every read surface but every command fails closed
@@ -83,4 +84,10 @@ against the deterministic fake with testkit clocks/ids:
 - triage sees internal messages and advances cases legally (illegal
   transitions fail typed);
 - the audit chain banner renders and verification is surfaced;
-- projection health shows FRESH/STALE/UNKNOWN and degraded overall.
+- projection health shows FRESH/STALE/UNKNOWN and degraded overall;
+- integration health (PA-010, RL-115-F6): each of the four states renders
+  honestly (compatible/incompatible with the recorded report,
+  not-configured as the honest first-class state, unknown as the fail-closed
+  default), the surface performs NO mutations (GET-only, never triggers the
+  probe), freshness pairs with the state (last-checked vs never-checked),
+  and the nav entry renders on every console page (denied renders included).

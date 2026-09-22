@@ -27,7 +27,13 @@ import {
   type OutboxDeliveryPort,
 } from "@roamlink/workers";
 import { isAuthorizedCronRequest, runDailyMaintenance } from "../../../apps/portal-host/src/maintenance.js";
-import { runAdcosProductionProbe, ADCOS_PROBE_EXIT_CODES } from "@roamlink/compat";
+import {
+  runAdcosProductionProbe,
+  ADCOS_PROBE_EXIT_CODES,
+  ADCOS_INTEGRATION_HEALTH_STATES,
+  adcosIntegrationHealthStateOf,
+} from "@roamlink/compat";
+import { AdcosCompatibilityState } from "@roamlink/integration";
 
 const T0 = "2026-10-01T06:00:00.000Z";
 const T1 = "2026-10-01T06:00:01.000Z";
@@ -228,5 +234,53 @@ describe("RL-108 pin: the production ADCOS probe is honest and fail-closed", () 
       expect(incompatible.state.status()).toBe("incompatible");
       expect(() => incompatible.state.assertMutationsAllowed()).toThrowError(/incompatible/i);
     }
+  });
+
+  it("PA-010: the read-only health-state mapping renders the recorded outcome — never a guess", async () => {
+    const clock = new DeterministicClock(T1);
+    // not-configured: the env gate is off — a first-class honest state.
+    const notConfigured = await runAdcosProductionProbe({ env: {}, at: T1 });
+    expect(adcosIntegrationHealthStateOf(notConfigured, null)).toBe("not-configured");
+
+    // compatible: the recorded report's status is the surface state.
+    const compatible = await runAdcosProductionProbe({
+      env: {
+        ADCOS_API_BASE_URL: "https://adcos.example.test",
+        ADCOS_CLIENT_ID: "roamlink-worker",
+        ADCOS_CLIENT_SECRET: "env-only-never-committed",
+        ADCOS_WEBHOOK_SECRET: "webhook-secret-env-only",
+      },
+      client: new FakeAdcos({ now: () => clock.now() }),
+      at: T1,
+    });
+    expect(adcosIntegrationHealthStateOf(compatible, null)).toBe("compatible");
+
+    // incompatible: same law, fail-closed.
+    const broken = new FakeAdcos({ now: () => clock.now() });
+    broken.disableRoute("application_self");
+    const incompatible = await runAdcosProductionProbe({
+      env: {
+        ADCOS_API_BASE_URL: "https://adcos.example.test",
+        ADCOS_CLIENT_ID: "roamlink-worker",
+        ADCOS_CLIENT_SECRET: "env-only-never-committed",
+        ADCOS_WEBHOOK_SECRET: "webhook-secret-env-only",
+      },
+      client: broken,
+      at: T1,
+    });
+    expect(adcosIntegrationHealthStateOf(incompatible, null)).toBe("incompatible");
+
+    // unknown: the AdcosCompatibilityState default before any report is
+    // applied (the fail-closed gate) — and nothing recorded at all.
+    expect(adcosIntegrationHealthStateOf(null, new AdcosCompatibilityState())).toBe("unknown");
+    expect(adcosIntegrationHealthStateOf(null, null)).toBe("unknown");
+
+    // The closed surface vocabulary stays the four honest states.
+    expect([...ADCOS_INTEGRATION_HEALTH_STATES]).toEqual([
+      "compatible",
+      "incompatible",
+      "not-configured",
+      "unknown",
+    ]);
   });
 });

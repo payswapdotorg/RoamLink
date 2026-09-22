@@ -30,6 +30,7 @@ import {
 import { htmlDocument, fragment, el, text } from "@roamlink/app-kit";
 
 import { auditPage } from "./pages/audit-page.js";
+import { integrationHealthPage } from "./pages/integration-health-page.js";
 import { projectionHealthPage } from "./pages/projection-health-page.js";
 import { reconciliationPage } from "./pages/reconciliation-page.js";
 import { supportTriagePage } from "./pages/support-triage-page.js";
@@ -48,6 +49,10 @@ export const SURFACE_READ_PERMISSIONS: Readonly<Record<AdminPageName, string>> =
   reconciliation: "org:read",
   projectionHealth: "org:read",
   supportTriage: "org:read",
+  // PA-010: the integration-health read is a read surface like the other
+  // observability pages (the API enforces org:read; the console mirrors it
+  // for the fail-closed rendering gate).
+  integrationHealth: "org:read",
 });
 
 export interface AdminConsoleAppDeps {
@@ -63,13 +68,16 @@ export interface AdminPageRequest {
 }
 
 /**
- * The console navigation. The five console pages plus the §13 "SLO health"
- * entry (PA-009, closes RL-115-F2): a plain link to the HOST's session-gated
- * `/ops/slo` ops surface (RL-109) — not a console page, so it has no
- * SURFACE_READ_PERMISSIONS row and fetches nothing here. The link renders on
- * every console page (including denied renders — the nav is chrome); the
- * TARGET keeps its own fail-closed session + `org:read` gate, exactly the
- * discipline apps/portal-host enforces for the ops surface.
+ * The console navigation. The six console pages — the §13 admin musts
+ * (tenants, audit/security events, reconciliation, projection freshness,
+ * support triage) plus the integration-health page (PA-010, closes
+ * RL-115-F6: the recorded ADCOS compatibility probe outcome) — and the §13
+ * "SLO health" entry (PA-009, closes RL-115-F2): a plain link to the HOST's
+ * session-gated `/ops/slo` ops surface (RL-109) — not a console page, so it
+ * has no SURFACE_READ_PERMISSIONS row and fetches nothing here. The links
+ * render on every console page (including denied renders — the nav is
+ * chrome); the TARGET keeps its own fail-closed session + `org:read` gate,
+ * exactly the discipline apps/portal-host enforces for the ops surface.
  */
 const NAV = [
   { label: "Tenants", href: adminPagePath("tenants") },
@@ -78,6 +86,7 @@ const NAV = [
   { label: "Projection health", href: adminPagePath("projectionHealth") },
   { label: "SLO health", href: OPS_SLO_DASHBOARD_PATH },
   { label: "Support triage", href: adminPagePath("supportTriage") },
+  { label: "Integration health", href: adminPagePath("integrationHealth") },
 ] as const;
 
 export class AdminConsoleApp {
@@ -138,6 +147,11 @@ export class AdminConsoleApp {
         return projectionHealthPage({ health: await this.#client.getProjectionHealth() });
       case "supportTriage":
         return supportTriagePage({ cases: await this.#client.listSupportCases() });
+      case "integrationHealth":
+        // PA-010: the recorded probe outcome through the application contract
+        // — a READ. The surface never triggers the probe and never mutates
+        // compatibility state (the gate stays in the integration boundary).
+        return integrationHealthPage({ health: await this.#client.getIntegrationHealth() });
     }
   }
 

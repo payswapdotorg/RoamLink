@@ -134,6 +134,11 @@ const READ_MODEL_ROUTES: readonly RegExp[] = Object.freeze([
   /^\/v1\/audit-events$/,
   /^\/v1\/reconciliation-jobs$/,
   /^\/v1\/projection-health$/,
+  // PA-010 (RL-115-F6): the integration-health read model is not composed on
+  // the real runtime in this wave — the route answers the typed honest 501
+  // (READ_MODEL_NOT_COMPOSED), exactly like its sibling admin observability
+  // reads; the deterministic fake API remains the contract reference.
+  /^\/v1\/integration-health$/,
   /^\/v1\/support-cases$/,
   /^\/v1\/support-cases\/[^/]+$/,
 ]);

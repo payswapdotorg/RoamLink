@@ -41,6 +41,14 @@ export const API_ROUTE_TEMPLATES = Object.freeze({
   auditEvents: "/v1/audit-events",
   reconciliationJobs: "/v1/reconciliation-jobs",
   projectionHealth: "/v1/projection-health",
+  // PA-010 / RL-115-F6 (additive, RL-LOCK-017): the admin integration-health
+  // read — the recorded outcome of the env-gated ADCOS compatibility probe
+  // (RL-108). READ-ONLY: the surface renders what the probe recorded
+  // (compatible/incompatible with its report, or the honest not-configured /
+  // unknown states); it never triggers a probe run and never mutates
+  // compatibility state — the mutation gate lives inside the ADCOS
+  // integration boundary (spec/adcos-integration.md §9).
+  integrationHealth: "/v1/integration-health",
   supportCases: "/v1/support-cases",
   supportCaseTransitions: "/v1/support-cases/{caseId}/transitions",
   command: "/v1/commands/{commandId}",

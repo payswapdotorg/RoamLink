@@ -326,11 +326,44 @@ export interface FakeEnterpriseSeed {
   readonly connector?: FakeEnterpriseConnectorSeed;
 }
 
+/**
+ * The integration-health seed (PA-010): the recorded probe outcome. The
+ * `mutationsAllowed` fact is NEVER seeded — it is derived from the state
+ * (exactly `compatible`) so the wire cannot lie about the fail-closed gate.
+ */
+export interface FakeIntegrationHealthSeed {
+  readonly state: "compatible" | "incompatible" | "not-configured" | "unknown";
+  /** The ONE pinned supported ADCOS API version (mirrors @roamlink/adcos). */
+  readonly supportedApiVersion: string;
+  /** When the probe recorded its report (report states only). */
+  readonly lastCheckedAt?: string;
+  /** The recorded report's suite version (report states only). */
+  readonly suiteVersion?: string;
+  /** The recorded report's checks (report states only; value-free details). */
+  readonly checks?: readonly FakeIntegrationHealthCheckSeed[];
+}
+
+export interface FakeIntegrationHealthCheckSeed {
+  readonly name: string;
+  readonly passed: boolean;
+  readonly code?: string;
+  readonly detail: string;
+}
+
 export interface FakeTenantSeed {
   /** Organization tenant data (org:<uuid>). */
   readonly organization?: FakeOrganizationSeed;
   /** Optional enterprise journey fixtures (RL-104, additive). */
   readonly enterprise?: FakeEnterpriseSeed;
+  /**
+   * The recorded ADCOS integration-health state (PA-010, additive): what
+   * the env-gated compatibility probe (RL-108) recorded for this world —
+   * compatible/incompatible carry their report (lastCheckedAt, suiteVersion,
+   * checks); not-configured/unknown carry none. An ABSENT section is the
+   * honest `unknown` world (nothing recorded — the fail-closed default,
+   * never a guessed compatibility).
+   */
+  readonly integrationHealth?: FakeIntegrationHealthSeed;
   readonly devices: readonly FakeDeviceSeed[];
   readonly intents: readonly FakeIntentSeed[];
   readonly orders: readonly FakeOrderSeed[];
@@ -768,6 +801,59 @@ export function fakeApiSeed(): FakeApiSeed {
             updatedAt: "2025-01-06T09:05:00.000Z",
           },
         ],
+        // PA-010: the default world's recorded probe outcome — the §9
+        // compatibility suite ran and PASSED (the real check names from
+        // @roamlink/compat's gate + suite; details are value-free). Scenario
+        // seeds derive the incompatible / not-configured / unknown worlds.
+        integrationHealth: {
+          state: "compatible",
+          supportedApiVersion: "2.0",
+          lastCheckedAt: "2025-01-06T09:00:00.000Z",
+          suiteVersion: "1.0",
+          checks: [
+            {
+              name: "application_self.available",
+              passed: true,
+              detail: "GET application answered with a contract-shaped response",
+            },
+            {
+              name: "contract_lifecycle_states.required",
+              passed: true,
+              detail:
+                "the 13-state v2 lifecycle vocabulary is intact (closed enum, canonical progression, terminal states)",
+            },
+            {
+              name: "request_schemas.closed",
+              passed: true,
+              detail: "closed request schemas reject unknown members",
+            },
+            {
+              name: "webhook_envelope.closed",
+              passed: true,
+              detail: "the webhook envelope is closed (9 documented members)",
+            },
+            {
+              name: "webhook_signature_semantics.pinned",
+              passed: true,
+              detail: "signature scheme constants + HMAC-SHA256 round-trip verified",
+            },
+            {
+              name: "idempotency_behavior.replay",
+              passed: true,
+              detail: "same-key replay returned the identical response (no duplicate effect)",
+            },
+            {
+              name: "version_pin.single_site",
+              passed: true,
+              detail: "one supported line, pinned identically in the adcos boundary and the contracts env schema",
+            },
+            {
+              name: "mutation_gate.fail_closed",
+              passed: true,
+              detail: "the runtime gate refuses mutations unless the compatibility check passed",
+            },
+          ],
+        },
         projections: [
           {
             projectionId: "prj.connectivity_contract.ctr_123",

@@ -377,6 +377,17 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/enterprise/src/connectors.ts",
       owner: "CONNECTOR_PROVISIONING_FAILURE_REASONS",
     },
+    // PA-010 (RL-115-F6): the integration-health surface vocabulary is a
+    // CONTRACT MIRROR of the probe machinery's closed list (the admin console
+    // renders the recorded ADCOS compatibility outcome — the vocabulary's
+    // owner is @roamlink/compat, the RL-108 probe package).
+    {
+      label: "integration health states",
+      mirrorFile: "packages/app-kit/src/api/resources.ts",
+      mirror: "INTEGRATION_HEALTH_RESOURCE_STATES",
+      ownerFile: "packages/compat/src/probe.ts",
+      owner: "ADCOS_INTEGRATION_HEALTH_STATES",
+    },
   ];
 
   it.each(MIRRORS)("the app contract's $label mirror matches the owning domain vocabulary", ({ mirrorFile, mirror, ownerFile, owner }) => {

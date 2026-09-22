@@ -157,6 +157,45 @@ export type AdcosProbeStatus =
   | { readonly compatible: true }
   | { readonly compatible: false };
 
+/**
+ * The closed integration-health surface vocabulary (PA-010, RL-115-F6): the
+ * probe's observable outcomes plus the compatibility gate's fail-closed
+ * default. This package owns the vocabulary because it owns the probe
+ * machinery: `compatible`/`incompatible` are the recorded report statuses,
+ * `not-configured` is the env gate's honest off state (the probe never blocks
+ * local/CI runs), and `unknown` is the `AdcosCompatibilityState` default
+ * before any report is applied (mutations fail closed). The application
+ * contract mirrors this list (drift-guarded by tests/architecture).
+ */
+export const ADCOS_INTEGRATION_HEALTH_STATES = [
+  "compatible",
+  "incompatible",
+  "not-configured",
+  "unknown",
+] as const;
+
+export type AdcosIntegrationHealthState = (typeof ADCOS_INTEGRATION_HEALTH_STATES)[number];
+
+/**
+ * READ-ONLY mapping (PA-010): the probe's recorded outcome as the
+ * integration-health surface state. This never runs the probe and never
+ * mutates any state — it renders what was recorded: the report's status when
+ * the probe ran, `not-configured` when the env gate was off, and `unknown`
+ * when no report has been applied (the fail-closed default; absence of a
+ * recorded outcome is unknown, never a guessed compatibility).
+ */
+export function adcosIntegrationHealthStateOf(
+  probe: AdcosProbeResult | null,
+  state: AdcosCompatibilityState | null,
+): AdcosIntegrationHealthState {
+  if (probe !== null) {
+    if (probe.status === "not-configured") return "not-configured";
+    return probe.report.status;
+  }
+  if (state !== null) return state.status();
+  return "unknown";
+}
+
 export type AdcosProbeResult =
   | { readonly status: "not-configured" }
   | {

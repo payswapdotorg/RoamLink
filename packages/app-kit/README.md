@@ -47,7 +47,10 @@ the domain modules, and the conformance suite guards the boundary.
   `/v1/reconciliation-jobs`, `/v1/projection-health`,
   `/v1/enterprise/workspace` (the RL-104 workspace read),
   `/v1/enterprise/workspace/connector/provision` (the PA-06 connector
-  provisioning command).
+  provisioning command), `/v1/integration-health` (the PA-010 recorded
+  ADCOS compatibility probe outcome — the read-only integration-health
+  surface's feed; its state vocabulary mirrors @roamlink/compat's closed
+  four-state list, drift-guarded by tests/architecture).
 - `src/api/client.ts` - `RoamLinkApiClient`: reads return parsed resources;
   every mutation carries the full command header set; optimistic-version
   conflicts surface as typed `conflict` errors.
@@ -89,7 +92,8 @@ Authorization is enforced by the API, never by the console. The mapping (within
 the frozen `ACCOUNT_PERMISSIONS` vocabulary from `packages/auth`, RL-004):
 
 - read/list surfaces (`/v1/organizations`, `/v1/audit-events`,
-  `/v1/reconciliation-jobs`, `/v1/projection-health`): `org:read`;
+  `/v1/reconciliation-jobs`, `/v1/projection-health`,
+  `/v1/integration-health`): `org:read`;
 - mutating admin commands (org suspend/reactivate, reconciliation trigger,
   support-case transitions): `org:manage`;
 - administrative surfaces require an organization tenant scope: personal

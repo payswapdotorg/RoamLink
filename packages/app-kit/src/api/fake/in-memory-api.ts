@@ -2362,6 +2362,72 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       });
     }
 
+    // -- Admin: integration health (PA-010, the recorded probe outcome) ---------
+    if (method === "GET" && segments.length === 2 && segments[0] === "v1" && segments[1] === "integration-health") {
+      const tenant = tenantOf(tenantId);
+      requireOrgScope(actor);
+      try {
+        requirePermission(actor, "org:read");
+      } catch (error) {
+        if (error instanceof HttpError) {
+          appendAudit(tenantId, {
+            category: "admin-override",
+            action: "integration_health.read",
+            outcome: "denied",
+            actorId: actorHeader,
+            correlationId: "console",
+            detail: "actor lacked org:read",
+          });
+        }
+        throw error;
+      }
+      // READ-ONLY: the handler derives the recorded seed — it never runs a
+      // probe, never mutates state, and derives mutationsAllowed from the
+      // state (exactly `compatible`) so the wire cannot lie about the gate.
+      const recorded = tenant.integrationHealth;
+      const state = recorded?.state ?? "unknown";
+      const reportRecorded = state === "compatible" || state === "incompatible";
+      const checks = reportRecorded ? (recorded?.checks ?? []).map((check) => ({
+        name: check.name,
+        passed: check.passed,
+        ...(check.code !== undefined ? { code: check.code } : {}),
+        detail: check.detail,
+      })) : [];
+      if (state === "compatible" && !checks.every((check) => check.passed)) {
+        fail(badRequest(
+          "FAKE_SEED_INCONSISTENT",
+          "the seeded integration-health world claims compatible with a failed check (a compatible report passed every check)",
+        ));
+      }
+      if (state === "incompatible" && !checks.some((check) => !check.passed)) {
+        fail(badRequest(
+          "FAKE_SEED_INCONSISTENT",
+          "the seeded integration-health world claims incompatible with no failed check (an incompatible report carries its failure explanation)",
+        ));
+      }
+      if (reportRecorded && (recorded?.lastCheckedAt === undefined || recorded?.suiteVersion === undefined || checks.length === 0)) {
+        fail(badRequest(
+          "FAKE_SEED_INCONSISTENT",
+          "the seeded integration-health world claims a recorded report without its facts (lastCheckedAt, suiteVersion and checks are required together)",
+        ));
+      }
+      if (!reportRecorded && (recorded?.lastCheckedAt !== undefined || recorded?.suiteVersion !== undefined || (recorded?.checks?.length ?? 0) > 0)) {
+        fail(badRequest(
+          "FAKE_SEED_INCONSISTENT",
+          "the seeded integration-health world claims no report but carries report facts (not-configured/unknown carry none)",
+        ));
+      }
+      return ok({
+        state,
+        supportedApiVersion: recorded?.supportedApiVersion ?? "2.0",
+        lastCheckedAt: reportRecorded ? (recorded?.lastCheckedAt ?? null) : null,
+        suiteVersion: reportRecorded ? (recorded?.suiteVersion ?? null) : null,
+        mutationsAllowed: state === "compatible",
+        checks,
+        presentedAt: now(),
+      });
+    }
+
     fail(notFound("the requested API route does not exist"));
   }
 

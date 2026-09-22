@@ -1834,6 +1834,173 @@ export function parseProjectionHealthResource(value: unknown): ProjectionHealthR
 }
 
 // --------------------------------------------------------------------------------
+// Integration health (the recorded ADCOS compatibility probe outcome, PA-010)
+// --------------------------------------------------------------------------------
+
+/**
+ * The integration-health state vocabulary — the app-contract MIRROR of the
+ * probe machinery's closed vocabulary (@roamlink/compat
+ * ADCOS_INTEGRATION_HEALTH_STATES, drift-guarded by tests/architecture):
+ * `compatible`/`incompatible` are the recorded report statuses,
+ * `not-configured` is the env gate's honest off state, and `unknown` is the
+ * fail-closed default when no report has been recorded. Not configured is a
+ * first-class honest state, never a fabricated compatibility.
+ */
+export const INTEGRATION_HEALTH_RESOURCE_STATES = [
+  "compatible",
+  "incompatible",
+  "not-configured",
+  "unknown",
+] as const;
+
+/** One recorded probe check: name + pass/fail + a log-safe code/detail (no values, RL-LOCK-016). */
+export interface IntegrationHealthCheckView {
+  readonly name: string;
+  readonly passed: boolean;
+  readonly code: string | null;
+  readonly detail: string;
+}
+
+/**
+ * The admin integration-health surface (PA-010, RL-115-F6): what the
+ * env-gated ADCOS compatibility probe (RL-108) RECORDED — never a live probe
+ * run. Cross-field honesty invariants (fail-closed parse): a recorded
+ * report (compatible/incompatible) always carries its last-checked instant,
+ * suite version and checks, and the wire can never lie about the mutation
+ * gate — `mutationsAllowed` is exactly `state === "compatible"`, a
+ * compatible report passed every check, and an incompatible one failed at
+ * least one.
+ */
+export interface IntegrationHealthResource {
+  readonly state: (typeof INTEGRATION_HEALTH_RESOURCE_STATES)[number];
+  /** The ONE pinned supported ADCOS API version (the single-site pin). */
+  readonly supportedApiVersion: string;
+  /** When the probe last recorded a report (null when it never did). */
+  readonly lastCheckedAt: string | null;
+  /** The recorded report's suite version (null when no report). */
+  readonly suiteVersion: string | null;
+  /** True only when the recorded state is compatible (fail-closed otherwise). */
+  readonly mutationsAllowed: boolean;
+  /** The recorded report's checks (empty when no report was recorded). */
+  readonly checks: readonly IntegrationHealthCheckView[];
+  readonly presentedAt: string;
+}
+
+export function parseIntegrationHealthResource(value: unknown): IntegrationHealthResource {
+  const label = "IntegrationHealthResource";
+  const record = asObject(label, value);
+  rejectUnknownFields(label, record, [
+    "state",
+    "supportedApiVersion",
+    "lastCheckedAt",
+    "suiteVersion",
+    "mutationsAllowed",
+    "checks",
+    "presentedAt",
+  ]);
+  requireFields(label, record, [
+    "state",
+    "supportedApiVersion",
+    "mutationsAllowed",
+    "checks",
+    "presentedAt",
+  ]);
+  const state = asEnum(`${label}.state`, INTEGRATION_HEALTH_RESOURCE_STATES, record["state"]);
+  const reportRecorded = state === "compatible" || state === "incompatible";
+  const lastCheckedAt = asNullableInstant(`${label}.lastCheckedAt`, record["lastCheckedAt"]);
+  const suiteVersion = asNullableString(`${label}.suiteVersion`, record["suiteVersion"]);
+  const checks = arrayOf(`${label}.checks`, record["checks"], (checkLabel, check) => {
+    const checkRecord = asObject(checkLabel, check);
+    rejectUnknownFields(checkLabel, checkRecord, ["name", "passed", "code", "detail"]);
+    requireFields(checkLabel, checkRecord, ["name", "passed", "detail"]);
+    const detail = asString(`${checkLabel}.detail`, checkRecord["detail"]);
+    if (detail.trim().length === 0) {
+      throw new ValidationError(`${checkLabel}.detail must not be empty`, {
+        reason: "RESOURCE_INVALID",
+        details: [{ path: `${checkLabel}.detail`, issue: "an absent explanation is not a check outcome" }],
+      });
+    }
+    return Object.freeze({
+      name: asString(`${checkLabel}.name`, checkRecord["name"]),
+      passed: asBoolean(`${checkLabel}.passed`, checkRecord["passed"]),
+      code: asNullableString(`${checkLabel}.code`, checkRecord["code"]),
+      detail,
+    });
+  });
+  // Cross-field honesty invariants: the recorded-report states carry their
+  // report facts; the no-report states carry none (never a half-claim).
+  if (reportRecorded) {
+    if (lastCheckedAt === null) {
+      throw new ValidationError(`${label}: state '${state}' must carry lastCheckedAt`, {
+        reason: "RESOURCE_INVALID",
+        details: [{ path: `${label}.lastCheckedAt`, issue: "a recorded report always carries its instant" }],
+      });
+    }
+    if (suiteVersion === null) {
+      throw new ValidationError(`${label}: state '${state}' must carry suiteVersion`, {
+        reason: "RESOURCE_INVALID",
+        details: [{ path: `${label}.suiteVersion`, issue: "a recorded report always carries its suite version" }],
+      });
+    }
+    if (checks.length === 0) {
+      throw new ValidationError(`${label}: state '${state}' must carry its checks`, {
+        reason: "RESOURCE_INVALID",
+        details: [{ path: `${label}.checks`, issue: "a recorded report always carries its checks" }],
+      });
+    }
+  } else if (lastCheckedAt !== null || suiteVersion !== null || checks.length > 0) {
+    throw new ValidationError(
+      `${label}: state '${state}' records no report and must carry no report facts`,
+      {
+        reason: "RESOURCE_INVALID",
+        details: [
+          {
+            path: `${label}`,
+            issue: "not-configured/unknown carry no lastCheckedAt, suiteVersion or checks",
+          },
+        ],
+      },
+    );
+  }
+  const mutationsAllowed = asBoolean(`${label}.mutationsAllowed`, record["mutationsAllowed"]);
+  if (mutationsAllowed !== (state === "compatible")) {
+    throw new ValidationError(
+      `${label}.mutationsAllowed must be exactly (state === "compatible") — the wire cannot lie about the fail-closed gate`,
+      {
+        reason: "RESOURCE_INVALID",
+        details: [
+          {
+            path: `${label}.mutationsAllowed`,
+            issue: `state '${state}' cannot claim mutations ${mutationsAllowed ? "allowed" : "refused"}`,
+          },
+        ],
+      },
+    );
+  }
+  if (state === "compatible" && !checks.every((check) => check.passed)) {
+    throw new ValidationError(`${label}: a compatible report passed every check`, {
+      reason: "RESOURCE_INVALID",
+      details: [{ path: `${label}.checks`, issue: "compatible requires all checks passed" }],
+    });
+  }
+  if (state === "incompatible" && !checks.some((check) => !check.passed)) {
+    throw new ValidationError(`${label}: an incompatible report failed at least one check`, {
+      reason: "RESOURCE_INVALID",
+      details: [{ path: `${label}.checks`, issue: "incompatible requires a failed check (the failure explanation)" }],
+    });
+  }
+  return Object.freeze({
+    state,
+    supportedApiVersion: asString(`${label}.supportedApiVersion`, record["supportedApiVersion"]),
+    lastCheckedAt,
+    suiteVersion,
+    mutationsAllowed,
+    checks,
+    presentedAt: asInstant(`${label}.presentedAt`, record["presentedAt"]),
+  });
+}
+
+// --------------------------------------------------------------------------------
 // List wrappers + exported collection parsers
 // --------------------------------------------------------------------------------
 
