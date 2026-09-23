@@ -20,7 +20,19 @@
  *    evaluates at the query instant); the page renders what the read
  *    asserts and invents nothing;
  *  - after payment the customer lands HERE — a delivery-progress view —
- *    not on a payment-success page (user-journey-audit §6).
+ *    not on a payment-success page (user-journey-audit §6);
+ *  - PA-002 (closes RL-115-F4): the refund section renders refund state
+ *    FROM THE READ ONLY (the additive refunds read riding this order
+ *    journey read). Refund state is a MONEY FACT in its own closed
+ *    vocabulary (customer_refund_state, mirrored through the app contract,
+ *    never merged with payment/invoice/order states — RL-LOCK-008); a
+ *    refund never claims anything about connectivity delivery, and refund
+ *    EXECUTION lives upstream in commerce operations — the section is
+ *    READ-ONLY (no refund request/cancel control exists anywhere on this
+ *    page, because no customer refund write contract backs one). A stale
+ *    refund read keeps its content PAIRED with the stale badge (§14); an
+ *    absent/null section renders the honest not-available state; an empty
+ *    section renders the honest no-refunds state.
  *
  * Every stage the read model cannot confirm renders honestly as waiting /
  * not-recorded / none. Pure function over parsed read models plus the
@@ -39,9 +51,15 @@ import {
   fragment,
   text,
   type ConnectivityOverviewResource,
+  type CustomerRefundFailureResourceReason,
+  type CustomerRefundResourceState,
+  type FreshnessView,
   type HtmlFragment,
+  type MoneyView,
   type MutationAcknowledgement,
   type OrderDetailResource,
+  type RefundReasonResourceCode,
+  type RefundView,
   type SubjectConnectivityResource,
   type SubscriptionResource,
 } from "@roamlink/app-kit";
@@ -100,6 +118,304 @@ const CHAIN_STATE_LANGUAGE: Readonly<Record<OrderJourneyChainState, string>> = O
   "not-recorded": "Not recorded yet",
   blocked: "Blocked",
 });
+
+// --------------------------------------------------------------------------------
+// PA-002 (closes RL-115-F4): the refund read section
+// --------------------------------------------------------------------------------
+
+/**
+ * Human words for the mirrored `customer_refund_state` vocabulary
+ * (presentation only — the authoritative state value always renders too,
+ * as the `data-refund-state` marker and the visible state word).
+ */
+const REFUND_STATE_LANGUAGE: Readonly<Record<CustomerRefundResourceState, string>> =
+  Object.freeze({
+    pending: "Pending",
+    succeeded: "Succeeded",
+    failed: "Failed",
+    cancelled: "Cancelled",
+  });
+
+/**
+ * The closed reason-code LABEL vocabulary (presentation only): each label
+ * explains the commercial decision the reason code records. A reason label
+ * never asserts delivery evidence (RL-LOCK-008 — a refund is a money fact).
+ */
+const REFUND_REASON_LANGUAGE: Readonly<Record<RefundReasonResourceCode, string>> =
+  Object.freeze({
+    customer_request: "You asked for this refund",
+    service_not_delivered: "The service was not delivered",
+    billing_error: "A billing error was corrected",
+    duplicate_charge: "A duplicate charge was returned",
+    goodwill: "A goodwill adjustment",
+    other: "A recorded reason",
+  });
+
+/** Human sentences for the closed refund failure-reason vocabulary. */
+const REFUND_FAILURE_LANGUAGE: Readonly<
+  Record<CustomerRefundFailureResourceReason, string>
+> = Object.freeze({
+  processor_error: "the payment processor reported an error",
+  payment_instrument_unreachable: "the payment instrument could not be reached",
+  compliance_hold: "a compliance hold stopped the refund",
+  cancelled_by_operator: "commerce operations cancelled it",
+});
+
+/** One refund row, derived purely from the order journey's refunds read. */
+export interface RefundRowView {
+  readonly refundId: string;
+  /** The payment this refund returns money from (the parent reference). */
+  readonly paymentId: string;
+  readonly state: CustomerRefundResourceState;
+  readonly amount: MoneyView;
+  readonly reasonCode: RefundReasonResourceCode;
+  /** The human label for the reason code (presentation only). */
+  readonly reasonLabel: string;
+  /** The optional human-facing note riding the record. */
+  readonly note?: string;
+  /** The per-state honest fact (a money fact — never a delivery claim). */
+  readonly fact: string;
+  /** The read's freshness; PAIRS with the state at render (§14). */
+  readonly freshness: FreshnessView;
+}
+
+function refundFailureSentence(failureReason: CustomerRefundFailureResourceReason): string {
+  return REFUND_FAILURE_LANGUAGE[failureReason] ?? failureReason;
+}
+
+/**
+ * Derives the honest per-state fact for ONE refund. The §14 discipline:
+ * the CONTENT stays PAIRED with the freshness state — a stale read keeps
+ * its state word and fact, qualified as the last verified read; an
+ * unverified read says so instead of guessing.
+ */
+function refundFact(
+  refund: RefundView,
+): string {
+  const freshness = refund.freshness.freshnessState;
+  if (refund.state === "pending") {
+    if (freshness === "FRESH") {
+      return "In progress — the refund has been recorded and commerce operations are returning this money. It is not confirmed returned yet.";
+    }
+    if (freshness === "STALE") {
+      return "In progress as of the last verified read — the read is stale, so the refund may have progressed since.";
+    }
+    return "A pending refund record exists, but no verified observation backs this read yet.";
+  }
+  if (refund.state === "succeeded") {
+    if (freshness === "FRESH") {
+      return "Completed — the recorded refund state is succeeded. This is a money fact only: it says nothing about connectivity delivery.";
+    }
+    if (freshness === "STALE") {
+      return "Completed as of the last verified read — the read is stale; this is what was last verified, never a guess about now.";
+    }
+    return "A succeeded refund record exists, but no verified observation backs this read yet.";
+  }
+  if (refund.state === "failed") {
+    const reason =
+      refund.failureReason !== undefined ? ` — ${refundFailureSentence(refund.failureReason)}` : "";
+    if (freshness === "STALE") {
+      return `The refund attempt failed${reason} (as of the last verified read). No money moved back for this refund.`;
+    }
+    if (freshness === "UNKNOWN") {
+      return `A failed refund record exists${reason}, but no verified observation backs this read yet.`;
+    }
+    return `The refund attempt failed${reason}. No money moved back for this refund.`;
+  }
+  // cancelled
+  if (freshness === "STALE") {
+    return "Cancelled as of the last verified read — the read is stale.";
+  }
+  if (freshness === "UNKNOWN") {
+    return "A cancelled refund record exists, but no verified observation backs this read yet.";
+  }
+  return "Cancelled before any money moved — the refund was withdrawn.";
+}
+
+/**
+ * Derives the refund rows from the order journey read's refunds section.
+ * Pure over every shape-legal wire world: a NULL section (an older
+ * payload, or a surface composing no refund read) derives NO rows — the
+ * section render owns that honest not-available state; an empty section
+ * derives no rows (the honest no-refunds state); nothing invents a refund,
+ * collapses a state, or merges the refund vocabulary with another state
+ * family.
+ */
+export function deriveRefundRows(
+  refunds: readonly RefundView[] | null | undefined,
+): readonly RefundRowView[] {
+  if (refunds === null || refunds === undefined) return [];
+  return refunds.map((refund) => ({
+    refundId: refund.refundId,
+    paymentId: refund.paymentId,
+    state: refund.state,
+    amount: refund.amount,
+    reasonCode: refund.reasonCode,
+    reasonLabel: REFUND_REASON_LANGUAGE[refund.reasonCode],
+    ...(refund.note !== undefined ? { note: refund.note } : {}),
+    fact: refundFact(refund),
+    freshness: refund.freshness,
+  }));
+}
+
+function refundRow(row: RefundRowView): HtmlFragment {
+  return el(
+    "li",
+    {
+      class: "goal-card",
+      "data-refund-id": row.refundId,
+      "data-refund-state": row.state,
+    },
+    fragment(
+      el(
+        "p",
+        {},
+        fragment(
+          el("strong", {}, fragment(text("Refund "), moneyView(row.amount))),
+          text(" — "),
+          el(
+            "span",
+            { class: "journey-state", "data-state-word": row.state },
+            text(REFUND_STATE_LANGUAGE[row.state]),
+          ),
+        ),
+      ),
+      el("p", { class: "muted" }, text(`Returns money from payment ${row.paymentId}`)),
+      el(
+        "p",
+        { class: "muted" },
+        fragment(
+          text(`Reason: ${row.reasonLabel}`),
+          row.note === undefined ? fragment() : text(` — "${row.note}"`),
+        ),
+      ),
+      el("p", { class: "journey-fact" }, text(row.fact)),
+      // The freshness PAIRING (§14): the read's state rides NEXT TO the
+      // refund's own content — a stale read keeps its content paired with
+      // the stale badge, never hidden, never dropped.
+      el("p", {}, fragment(text("Refund read: "), freshnessBadge(row.freshness))),
+    ),
+  );
+}
+
+/**
+ * The PA-002 refund section: one row per refund with its state word,
+ * per-state fact, amount + currency, reason label and freshness pairing —
+ * rendered FROM THE READ ONLY. The authority note names where refund
+ * EXECUTION lives (upstream, in commerce operations); the recovery path is
+ * the §15 support escape (pre-carrying the order + refund references) in
+ * the degraded worlds, the quiet reachability note otherwise. An
+ * absent/null section renders the honest not-available state; an empty
+ * section renders the honest no-refunds state.
+ */
+function refundSection(orderDetail: OrderDetailResource): HtmlFragment {
+  const refunds = orderDetail.refunds;
+  const rows = deriveRefundRows(refunds);
+  // The authority note (the available user action, honestly bounded):
+  // refund execution lives UPSTREAM, in commerce operations. This section
+  // composes no refund request or cancellation control — no write contract
+  // backs one, so composing one would fabricate capability.
+  const authorityNote = el(
+    "p",
+    { class: "muted", "data-refunds-authority": "true" },
+    text(
+      "Refunds are executed by RoamLink's commerce operations, upstream of this journey. This section shows their recorded state read-only — there is no refund button here because requesting or changing a refund is not a capability this surface composes.",
+    ),
+  );
+  // The §15 recovery path: a degraded refund world (a failed refund, a
+  // stale/unverified read, or no refund read composed at all) carries the
+  // support escape with the facts the read holds pre-carried in the
+  // narrative; a fully-verified healthy world renders the quiet
+  // reachability note instead (an escape is for degraded states, never
+  // decoration).
+  const degraded =
+    refunds === null ||
+    rows.some(
+      (row) =>
+        row.state === "failed" ||
+        row.freshness.freshnessState === "STALE" ||
+        row.freshness.freshnessState === "UNKNOWN",
+    );
+  const recovery = degraded
+    ? supportEscape({
+        context: {
+          subject: "I need help with a refund on my order.",
+          detail:
+            refunds === null
+              ? "The order journey composes no refund read for this order yet, so no refund state is visible."
+              : `The order journey reads: ${rows
+                  .map(
+                    (row) =>
+                      `refund ${row.refundId} — ${REFUND_STATE_LANGUAGE[row.state]} (${row.freshness.freshnessState})`,
+                  )
+                  .join("; ")}.`,
+          refs: [
+            { kind: "order", id: orderDetail.order.orderId },
+            ...rows.map((row) => ({ kind: "refund" as const, id: row.refundId })),
+          ],
+        },
+        label: "Get help with refunds",
+      })
+    : el(
+        "p",
+        { class: "muted", "data-refunds-reachability": "true" },
+        text("If a refund looks wrong or stale, Support is reachable from this page's journeys."),
+      );
+
+  if (refunds === null) {
+    // The honest not-available state: this surface composes no refund read
+    // (the page's established pattern — the same discipline the command
+    // pipeline's absent note uses).
+    return el(
+      "section",
+      { class: "panel", "data-refunds": "not-available", "data-refunds-absent": "true" },
+      fragment(
+        el("h3", {}, text("Refunds")),
+        el(
+          "p",
+          { class: "muted" },
+          text(
+            "Refund state for this order is not part of this read yet. When the refund read composes, the real states appear here — nothing is invented in the meantime.",
+          ),
+        ),
+        authorityNote,
+        recovery,
+      ),
+    );
+  }
+
+  return el(
+    "section",
+    { class: "panel", "data-refunds": refunds.length === 0 ? "empty" : "true" },
+    fragment(
+      el("h3", {}, text("Refunds")),
+      el(
+        "p",
+        { class: "muted" },
+        text(
+          "Money facts: refunds recorded against this order's payments. A refund never claims anything about connectivity delivery — the two chains stay separate.",
+        ),
+      ),
+      refunds.length === 0
+        ? el(
+            "p",
+            { class: "muted", "data-refunds-empty": "true" },
+            text("No refunds are recorded for this order."),
+          )
+        : el(
+            "ul",
+            {
+              class: "goal-list",
+              "data-refund-rows": "true",
+              "aria-label": "Refunds for this order and their current states",
+            },
+            ...rows.map(refundRow),
+          ),
+      authorityNote,
+      recovery,
+    ),
+  );
+}
 
 function subjectFor(
   subjects: readonly SubjectConnectivityResource[],
@@ -494,6 +810,10 @@ export function orderJourneyPage(input: OrderJourneyInput): HtmlFragment {
       { "data-order-journey": "true", "data-order-id": orderId },
       fragment(
         commerceChainSection(input.orderDetail),
+        // PA-002 (closes RL-115-F4): the refund read section rides the
+        // order journey right after the commercial facts it belongs to —
+        // refunds are money facts against this order's payments.
+        refundSection(input.orderDetail),
         subjects.length === 0
           ? el(
               "p",

@@ -31,6 +31,8 @@ import {
   rejectUnknownFields,
   requireFields,
 } from "./parse-kit.js";
+import { parseRefundSection } from "./refunds.js";
+import type { RefundView } from "./refunds.js";
 
 // --------------------------------------------------------------------------------
 // Shared views
@@ -2008,16 +2010,26 @@ export interface OrderDetailResource {
   readonly order: OrderResource;
   readonly payments: readonly PaymentResource[];
   readonly invoices: readonly InvoiceResource[];
+  /**
+   * PA-002 (closes RL-115-F4): the READ-ONLY refund read section riding the
+   * order journey read, ADDITIVE on the wire (RL-LOCK-017) - an older
+   * payload without the field parses to the honest null section (this
+   * surface composes no refund read; never a guessed refund, never a
+   * collapsed absence). An empty section is the composed read asserting no
+   * refunds exist for this order.
+   */
+  readonly refunds: readonly RefundView[] | null;
 }
 
 function parseOrderDetailResourceAt(label: string, value: unknown): OrderDetailResource {
   const record = asObject(label, value);
-  rejectUnknownFields(label, record, ["order", "payments", "invoices"]);
+  rejectUnknownFields(label, record, ["order", "payments", "invoices", "refunds"]);
   requireFields(label, record, ["order", "payments", "invoices"]);
   return Object.freeze({
     order: parseOrderResourceAt(`${label}.order`, record["order"]),
     payments: arrayOf(`${label}.payments`, record["payments"], parsePaymentResourceAt),
     invoices: arrayOf(`${label}.invoices`, record["invoices"], parseInvoiceResourceAt),
+    refunds: parseRefundSection(`${label}.refunds`, record["refunds"]),
   });
 }
 

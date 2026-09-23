@@ -1526,6 +1526,16 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       }
       if (method === "GET" && segments.length === 3) {
         const order = findOrder(tenant, orderId);
+        // PA-002 (closes RL-115-F4): the READ-ONLY refund read section rides
+        // the order journey read additively (RL-LOCK-017) - composed from the
+        // tenant's seeded refund records scoped to THIS order's payments (a
+        // refund returns money from one payment of the order), with the
+        // freshness STATE evaluated at the query instant. A tenant composing
+        // no refunds read (absent seed section) renders the honest NULL
+        // section - the fake NEVER invents a refund, never fabricates a
+        // refund state, and never mutates refunds from this read.
+        const orderPayments = tenant.payments.filter((p) => p.orderId === orderId);
+        const refundSeeds = tenant.refunds;
         return ok({
           order: {
             orderId: order.orderId,
@@ -1562,6 +1572,21 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
               issuedAt: i.issuedAt,
               ...(i.reconciledAt !== undefined ? { reconciledAt: i.reconciledAt } : {}),
             })),
+          refunds:
+            refundSeeds === undefined || refundSeeds === null
+              ? null
+              : refundSeeds
+                  .filter((r) => orderPayments.some((p) => p.paymentId === r.paymentId))
+                  .map((r) => ({
+                    refundId: r.refundId,
+                    paymentId: r.paymentId,
+                    state: r.state,
+                    amount: { amountMinor: r.amountMinor, currency: r.currency },
+                    reasonCode: r.reasonCode,
+                    ...(r.note !== undefined ? { note: r.note } : {}),
+                    ...(r.failureReason !== undefined ? { failureReason: r.failureReason } : {}),
+                    freshness: evaluateFresh(r.freshness, now()),
+                  })),
         });
       }
       const order = findOrder(tenant, orderId);

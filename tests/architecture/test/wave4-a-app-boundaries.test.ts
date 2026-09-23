@@ -420,6 +420,17 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/compat/src/probe.ts",
       owner: "ADCOS_INTEGRATION_HEALTH_STATES",
     },
+    // PA-002 (closes RL-115-F4): the READ-ONLY refund read mirror - the
+    // customer_refund_state vocabulary (the order journey's refund section
+    // renders it; the owning read record mirrors the CustomerRefund
+    // aggregate's own closed vocabulary in turn).
+    {
+      label: "customer refund states",
+      mirrorFile: "packages/app-kit/src/api/refunds.ts",
+      mirror: "CUSTOMER_REFUND_RESOURCE_STATES",
+      ownerFile: "packages/domain-commerce/src/refund-read.ts",
+      owner: "REFUND_READ_STATES",
+    },
   ];
 
   it.each(MIRRORS)("the app contract's $label mirror matches the owning domain vocabulary", ({ mirrorFile, mirror, ownerFile, owner }) => {

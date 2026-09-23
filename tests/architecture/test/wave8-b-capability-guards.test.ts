@@ -13,8 +13,8 @@
  *  - every capability row and every GAP finding stays in sync with the doc;
  *  - the §7 device-capability vocabulary the matrix rows cite stays closed;
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
- *  - the recorded ABSENCES (refund surface, compatibility health
- *    surface, /notifications inbound links) stay truthful — if one of
+ *  - the recorded ABSENCES (compatibility health surface,
+ *    /notifications inbound links) stay truthful — if one of
  *    these tests FAILS because a surface changed, the inventory + doc
  *    MUST be updated in the same change;
  *  - FLIPPED ABSENCES: PA-001 requires the eSIM management vocabulary on
@@ -41,7 +41,16 @@
  *    is the missing-backend-contract declaration), the surface composes NO
  *    configuration affordance (no OAuth dance, no SCIM endpoint fields,
  *    no MDM enrollment forms), and the admin/mobile surfaces stay
- *    integration-vocabulary-free until their own work orders.
+ *    integration-vocabulary-free until their own work orders; PA-002
+ *    requires the order journey's refund read section to stay composed
+ *    from the app contract's READ-ONLY refund read — the closed
+ *    customer_refund_state vocabulary mirrored through the app contract,
+ *    the §14 freshness pairing, and the authority note naming where refund
+ *    execution lives (upstream, in commerce operations) with NO refund
+ *    write affordance anywhere on the web surface, while the commerce
+ *    page stays refund-view-free BY DESIGN (the §2 Layer B split: the
+ *    commerce surface renders catalog/orders/subscriptions; refund state
+ *    renders on the order's own delivery-progress journey).
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -187,9 +196,10 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
     // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4; PA-007
     // closed RL-115-F7 (CAP-E-POLICY): 4 -> 3; PA-008 closed RL-115-F5
     // (CAP-E-SSO-SCIM-MDM): 3 -> 2; PA-010 closed RL-115-F6
-    // (CAP-D-COMPAT): 2 -> 1 (the remaining gap: refunds F4 — F8 stays
-    // VERIFIED(proxy)).
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(1);
+    // (CAP-D-COMPAT): 2 -> 1; PA-002 closed RL-115-F4 (CAP-B-REFUNDS):
+    // 1 -> 0 (the LAST recorded GAP closes — the audit stands at zero
+    // open findings; F8 stays VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records zero open GAP rows").toBe(0);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -291,14 +301,41 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     expect(joined, "no direct enterprise package import").not.toContain('from "@roamlink/enterprise"');
   });
 
-  it("no commerce surface source composes a refund view or flow (CAP-B-REFUNDS, RL-115-F4)", () => {
-    // The two surfaces that would carry a refund view (the §2 Layer B read
-    // surfaces) carry none. (Other pages legitimately name the refund
-    // SUPPORT-REF KIND in the closed recovery vocabulary — that is not a
-    // refund view.)
-    for (const file of ["apps/web/src/pages/commerce-page.ts", "apps/web/src/pages/order-journey-page.ts"]) {
-      expect(read(file), `${file}: no refund view vocabulary`).not.toMatch(/[Rr]efund/);
-    }
+  it("the order journey composes the refund read section from the app contract; the commerce surface stays refund-free by design (CAP-B-REFUNDS, RL-115-F4 closed by PA-002)", () => {
+    // PA-002 closed RL-115-F4 through the audit's designed flip: the pinned
+    // absence ("no refund view vocabulary in the commerce surfaces") became
+    // the presence guard for the ORDER JOURNEY — the customer refund surface
+    // is the order journey's refund read section (state + freshness from
+    // the READ-ONLY refund read model, riding the projection discipline).
+    // The §2 Layer B split this closure pins: commerce-page.ts (the
+    // catalog/orders/subscriptions surface) stays refund-view-free BY
+    // DESIGN — refund state renders on the order's own delivery-progress
+    // journey, next to the payments it returns money from.
+    const orderJourney = read("apps/web/src/pages/order-journey-page.ts");
+    expect(orderJourney, "the refund section composes").toContain('"data-refunds"');
+    expect(orderJourney, "the per-refund state markers").toContain('"data-refund-state"');
+    expect(orderJourney, "the rows derive from the read").toContain("deriveRefundRows");
+    expect(orderJourney, "the state word vocabulary renders").toContain("REFUND_STATE_LANGUAGE");
+    expect(orderJourney, "the closed reason-code label vocabulary renders").toContain(
+      "REFUND_REASON_LANGUAGE",
+    );
+    expect(orderJourney, "the authority note names where refund execution lives").toContain(
+      "commerce operations, upstream of this journey",
+    );
+    expect(orderJourney, "the authority note marker").toContain('"data-refunds-authority"');
+    expect(orderJourney, "the §14 freshness pairing renders").toContain("freshnessBadge");
+    // THE NO-FABRICATION FENCE (PA-002 MUST NOT): the refund section
+    // composes NO refund request/cancel control — refund EXECUTION lives
+    // upstream, in commerce operations — and no refund write affordance
+    // exists anywhere on the web surface (no write contract backs one).
+    expect(orderJourney).not.toMatch(/data-flow="[a-z-]*refund/);
+    expect(readDirJoined("apps/web/src")).not.toMatch(
+      /data-flow="(request|issue|create|cancel|retry|execute)-refund/,
+    );
+    // The commerce surface stays refund-view-free BY DESIGN (the §2 Layer B
+    // split — the original pin's scope, preserved for the surface this work
+    // order does not own).
+    expect(read("apps/web/src/pages/commerce-page.ts")).not.toMatch(/[Rr]efund/);
   });
 
   it("the workspace composes the enterprise integrations surface through the app contract's READ-ONLY read (RL-115-F5, closed by PA-008)", () => {

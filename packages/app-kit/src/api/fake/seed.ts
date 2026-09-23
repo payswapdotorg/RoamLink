@@ -5,7 +5,7 @@
  * The seed is a plain, frozen data structure: organizations with memberships
  * (owner/admin/member roles mirroring @roamlink/auth's permission map),
  * devices with observation freshness, experience intents with version chains,
- * a product catalog, orders/subscriptions/payments/invoices, delivery
+ * a product catalog, orders/subscriptions/payments/invoices/refunds, delivery
  * references, notifications, support cases, projections, SLOs and a
  * reconciliation job history. Tests derive scenario-specific seeds from
  * {@link fakeApiSeed} (copy + override) so every app test is deterministic
@@ -392,6 +392,45 @@ export interface FakeIntegrationHealthCheckSeed {
   readonly detail: string;
 }
 
+/**
+ * PA-002 (closes RL-115-F4): the customer refund fixtures mirror
+ * packages/domain-commerce's refund read model vocabularies (the closed
+ * `customer_refund_state` / reason-code / failure-reason vocabularies,
+ * drift-guarded by tests/architecture). The seeded default is the honest
+ * world: one order carrying a SUCCEEDED partial refund plus a PENDING one
+ * (both against the order's one succeeded payment - the multi-refund
+ * partial-payment case, sums within the payment amount), while a second
+ * tenant carries an order with NO refunds (the honest empty section).
+ * Scenario seeds derive every state x at least one refund (and the
+ * stale/unknown freshness worlds) by copy + override.
+ */
+export interface FakeRefundSeed {
+  readonly refundId: string;
+  /** The SUCCEEDED payment this refund returns money from. */
+  readonly paymentId: string;
+  readonly amountMinor: number;
+  readonly currency: string;
+  readonly state: "pending" | "succeeded" | "failed" | "cancelled";
+  readonly reasonCode:
+    | "customer_request"
+    | "service_not_delivered"
+    | "billing_error"
+    | "duplicate_charge"
+    | "goodwill"
+    | "other";
+  /** Optional human-facing note (explicitly clearable in scenario seeds). */
+  readonly note?: string | undefined;
+  readonly failureReason?:
+    | "processor_error"
+    | "payment_instrument_unreachable"
+    | "compliance_hold"
+    | "cancelled_by_operator"
+    | undefined;
+  /** The observation facts (absent/undefined = the UNKNOWN freshness world);
+   * the fake evaluates the state at the query instant. */
+  readonly freshness?: FakeFreshnessSeed | undefined;
+}
+
 export interface FakeTenantSeed {
   /** Organization tenant data (org:<uuid>). */
   readonly organization?: FakeOrganizationSeed;
@@ -412,6 +451,13 @@ export interface FakeTenantSeed {
   readonly subscriptions: readonly FakeSubscriptionSeed[];
   readonly payments: readonly FakePaymentSeed[];
   readonly invoices: readonly FakeInvoiceSeed[];
+  /**
+   * PA-002 (closes RL-115-F4, additive): the tenant's refund read records,
+   * scoped to orders through their payments. An ABSENT section is the honest
+   * null world (this surface composes no refund read - the pre-PA-002 wire,
+   * RL-LOCK-017); an empty array composes the read with no refunds.
+   */
+  readonly refunds?: readonly FakeRefundSeed[];
   readonly references: readonly FakeReferenceSeed[];
   readonly notifications: readonly FakeNotificationSeed[];
   readonly supportCases: readonly FakeSupportCaseSeed[];
@@ -464,12 +510,15 @@ export const DEFAULT_PERSONAL_ACTOR = `usr:${MEMBER_USER}`;
 
 /**
  * A sensible default dataset: one organization (owner + admin + member), a
- * second organization (fail-closed cross-tenant target), two devices (FRESH
- * and STALE observations), one active intent (v2 superseding v1), a product
- * catalog, one placed order with a subscription (UNEVIDENCED reference), one
- * evidenced reference (FRESH), notifications, a support case with an internal
- * message, projections in all three freshness states, SLOs and one completed
- * reconciliation job.
+ * second organization (fail-closed cross-tenant target; PA-002: it carries
+ * one order with no refunds - the honest empty-section world), two devices
+ * (FRESH and STALE observations), one active intent (v2 superseding v1), a
+ * product catalog, one placed order with a subscription (UNEVIDENCED
+ * reference), one evidenced reference (FRESH), a succeeded payment carrying
+ * two refunds (PA-002: one succeeded partial + one pending - the
+ * multi-refund partial-payment case), notifications, a support case with an
+ * internal message, projections in all three freshness states, SLOs and one
+ * completed reconciliation job.
  */
 export function fakeApiSeed(): FakeApiSeed {
   return {
@@ -808,6 +857,43 @@ export function fakeApiSeed(): FakeApiSeed {
             issuedAt: "2025-01-06T09:06:00.000Z",
           },
         ],
+        // PA-002 (closes RL-115-F4): the honest refund world - the seeded
+        // order carries TWO refunds against its one succeeded payment
+        // (the multi-refund PARTIAL payment case: 500 + 250 <= 1999): a
+        // SUCCEEDED partial refund (customer request, fresh observation)
+        // and a PENDING one (billing error, fresh observation). A newly
+        // placed order composes the honest EMPTY refund section (no refunds
+        // attach to its payments). Scenario seeds derive every state x at
+        // least one refund plus the stale/unknown freshness worlds.
+        refunds: [
+          {
+            refundId: "3e3e3e3e-0000-4000-8000-000000000001",
+            paymentId: "90909090-0000-4000-8000-000000000001",
+            amountMinor: 500,
+            currency: "USD",
+            state: "succeeded",
+            reasonCode: "customer_request",
+            note: "Partial refund for the unused days.",
+            freshness: {
+              observedAt: T0,
+              receivedAt: T0,
+              freshUntil: FAKE_SEED_CLOCK.freshUntil,
+            },
+          },
+          {
+            refundId: "3e3e3e3e-0000-4000-8000-000000000002",
+            paymentId: "90909090-0000-4000-8000-000000000001",
+            amountMinor: 250,
+            currency: "USD",
+            state: "pending",
+            reasonCode: "billing_error",
+            freshness: {
+              observedAt: T0,
+              receivedAt: T0,
+              freshUntil: FAKE_SEED_CLOCK.freshUntil,
+            },
+          },
+        ],
         references: [
           {
             subjectType: "subscription",
@@ -1046,10 +1132,48 @@ export function fakeApiSeed(): FakeApiSeed {
         },
         devices: [],
         intents: [],
-        orders: [],
+        // PA-002: Beta carries one placed order with a succeeded payment and
+        // NO refunds (the honest EMPTY refund section world - the read is
+        // composed, zero refunds exist for this order).
+        orders: [
+          {
+            orderId: "66666666-0000-4000-8000-000000000002",
+            status: "placed",
+            lines: [
+              {
+                lineId: "77777777-0000-4000-8000-000000000002",
+                productId: "44444444-0000-4000-8000-000000000001",
+                variantId: "55555555-0000-4000-8000-000000000002",
+                quantity: 1,
+                amountMinor: 499,
+                currency: "USD",
+              },
+            ],
+            revision: 1,
+          },
+        ],
         subscriptions: [],
-        payments: [],
-        invoices: [],
+        payments: [
+          {
+            paymentId: "90909090-0000-4000-8000-000000000002",
+            orderId: "66666666-0000-4000-8000-000000000002",
+            amountMinor: 499,
+            currency: "USD",
+            state: "succeeded",
+            recordedAt: "2025-01-06T09:20:00.000Z",
+          },
+        ],
+        invoices: [
+          {
+            invoiceId: "bbbbbbbb-0000-4000-8000-000000000002",
+            orderId: "66666666-0000-4000-8000-000000000002",
+            amountMinor: 499,
+            currency: "USD",
+            state: "issued",
+            issuedAt: "2025-01-06T09:20:00.000Z",
+          },
+        ],
+        refunds: [],
         references: [],
         notifications: [],
         supportCases: [],
