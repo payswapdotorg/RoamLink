@@ -54,6 +54,13 @@ export function parseEnterprisePolicyId(value: unknown): EnterprisePolicyId {
   return parseCanonicalUuidAs<EnterprisePolicyId>(value, "EnterprisePolicyId");
 }
 
+/** Identity of an enterprise integration status read record. */
+export type EnterpriseIntegrationId = Branded<"EnterpriseIntegrationId">;
+
+export function parseEnterpriseIntegrationId(value: unknown): EnterpriseIntegrationId {
+  return parseCanonicalUuidAs<EnterpriseIntegrationId>(value, "EnterpriseIntegrationId");
+}
+
 /** Identity of one webhook delivery attempt record. */
 export type WebhookDeliveryId = Branded<"WebhookDeliveryId">;
 

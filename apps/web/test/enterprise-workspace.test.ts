@@ -34,6 +34,7 @@ import {
   fakeApiSeed,
   RoamLinkApiClient,
   type FakeApiSeed,
+  type FakeEnterpriseIntegrationSeed,
   type FakeEnterprisePolicySeed,
   type FakeTenantSeed,
   type HttpTransport,
@@ -312,6 +313,209 @@ describe("the organization policy summary renders from the read model (PA-007, R
   });
 });
 
+// --------------------------------------------------------------------------------
+// The enterprise integrations section renders from the read model
+// (PA-008, closes RL-115-F5): each integration x each state renders
+// honestly - the missing backend contract is an EXPLICIT unavailable
+// state with an explanation, never a fabricated control.
+// --------------------------------------------------------------------------------
+
+/** Derives a scenario seed by overriding the tenant's integration rows. */
+function integrationsSeed(integrations: readonly FakeEnterpriseIntegrationSeed[]): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: { ...tenant.enterprise, integrations },
+  };
+  return { ...seed, tenants };
+}
+
+/** Derives a scenario seed whose workspace composes NO integrations section. */
+function integrationsNotAvailableSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { enrollment, connector, policy } = tenant.enterprise ?? {};
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(enrollment !== undefined ? { enrollment } : {}),
+      ...(connector !== undefined ? { connector } : {}),
+      ...(policy !== undefined ? { policy } : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+const INTEGRATION_KINDS = ["sso", "scim", "mdm"] as const;
+const INTEGRATION_STATES = ["configured", "not-configured", "unavailable", "unknown"] as const;
+
+const OBSERVED_FRESH = {
+  observedAt: "2025-01-06T09:00:00.000Z",
+  receivedAt: "2025-01-06T09:00:00.000Z",
+  freshUntil: "2025-01-06T10:00:00.000Z",
+} as const;
+
+function integrationRow(
+  kind: (typeof INTEGRATION_KINDS)[number],
+  state: (typeof INTEGRATION_STATES)[number],
+): FakeEnterpriseIntegrationSeed {
+  return {
+    integrationId: `iiiiiiii-0000-4000-8000-0000000000${kind === "sso" ? "01" : kind === "scim" ? "02" : "03"}`,
+    kind,
+    state,
+    ...(state === "configured"
+      ? { summary: `The ${kind} integration, configured for the journey-test world.` }
+      : {}),
+    ...(state === "configured" || state === "not-configured" ? { freshness: OBSERVED_FRESH } : {}),
+  };
+}
+
+describe("the enterprise integrations section renders honest states (PA-008, RL-115-F5)", () => {
+  it("the seeded world: SSO configured with its summary + freshness pairing; SCIM and MDM the honest unavailable declaration", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-integrations="true"');
+    expect(page.html).toContain("Enterprise integrations");
+    // SSO: the present, configured read - summary + freshness pairing.
+    expect(page.html).toContain('data-integration="sso" data-integration-state="configured"');
+    expect(page.html).toContain("In effect: ");
+    expect(page.html).toContain("Sign in to RoamLink through your organization");
+    expect(page.html).toContain("Integration read: ");
+    expect(page.html).toContain('data-freshness="FRESH"');
+    // SCIM / MDM: the honest missing-backend-contract states, each with the
+    // per-kind explanation (never a fake status, never a fake control).
+    expect(page.html).toContain('data-integration="scim" data-integration-state="unavailable"');
+    expect(page.html).toContain("does not expose a user provisioning status read yet");
+    expect(page.html).toContain('data-integration="mdm" data-integration-state="unavailable"');
+    expect(page.html).toContain("does not expose a device management status read yet");
+    // The degraded-cannot-see world carries the support escape with the
+    // statuses pre-carried in the narrative.
+    expect(page.html).toContain('data-support-escape="true"');
+    expect(page.html).toContain("Get help with integrations");
+    expect(page.html).toContain(
+      "The workspace reads: Single sign-on (SSO) — Configured; User provisioning (SCIM) — Unavailable; Device management (MDM) — Unavailable",
+    );
+  });
+
+  it.each(
+    INTEGRATION_KINDS.flatMap((kind) =>
+      INTEGRATION_STATES.map((state) => ({ kind, state })),
+    ),
+  )("each integration renders the $state state honestly ($kind)", async ({ kind, state }) => {
+    const { app } = buildApp({ seed: integrationsSeed([integrationRow(kind, state)]) });
+    const page = await app.renderPage({ page: "workspace" });
+    // The row's closed state marker renders.
+    expect(page.html).toContain(`data-integration="${kind}" data-integration-state="${state}"`);
+    // The state word renders beside the label (§14: never color alone).
+    expect(page.html).toMatch(
+      new RegExp(`data-integration="${kind}"[\\s\\S]{0,600}?<span class="journey-state" data-state-word="${state}">`),
+    );
+    // The per-state honest content:
+    if (state === "configured") {
+      expect(page.html).toContain("In effect: ");
+      expect(page.html).toContain(`The ${kind} integration, configured for the journey-test world.`);
+      expect(page.html).toContain("Integration read: ");
+      expect(page.html).toContain('data-freshness="FRESH"');
+    } else if (state === "not-configured") {
+      expect(page.html).toContain("Not configured — a verified observation confirms");
+      expect(page.html).toContain("Integration read: ");
+      expect(page.html).not.toContain(`data-integration="${kind}" data-integration-state="configured"`);
+    } else if (state === "unavailable") {
+      expect(page.html).toContain("Unavailable — requires the enterprise integration API");
+      expect(page.html).toContain("Nothing is invented in the meantime.");
+      expect(page.html).not.toContain("In effect: ");
+    } else {
+      expect(page.html).toContain("No verified observation exists yet");
+      expect(page.html).toContain('data-freshness="UNKNOWN"');
+      expect(page.html).not.toContain("In effect: ");
+    }
+  });
+
+  it("a stale configured read keeps its content PAIRED with the stale badge (never hidden, never trusted)", async () => {
+    const { app } = buildApp({
+      seed: integrationsSeed([
+        {
+          integrationId: "iiiiiiii-0000-4000-8000-000000000001",
+          kind: "sso",
+          state: "configured",
+          summary: "Sign in through your organization's identity provider.",
+          freshness: {
+            observedAt: "2025-01-06T08:00:00.000Z",
+            receivedAt: "2025-01-06T08:00:00.000Z",
+            // Expired before the deterministic query instant (09:45).
+            freshUntil: "2025-01-06T09:30:00.000Z",
+          },
+        },
+        ...(["scim", "mdm"] as const).map((kind) => integrationRow(kind, "unavailable")),
+      ]),
+    });
+    const page = await app.renderPage({ page: "workspace" });
+    // The content still renders (from the last verified read)...
+    expect(page.html).toContain('data-integration="sso" data-integration-state="configured"');
+    expect(page.html).toContain("Sign in through your organization&#39;s identity provider");
+    // ...PAIRed with the stale freshness badge (09:30 < 09:45).
+    expect(page.html).toContain('data-freshness="STALE"');
+    expect(page.html).toContain("In effect as of the last verified read");
+    expect(page.html).toContain("the read is stale");
+  });
+
+  it("a workspace composing no integrations read degrades honestly (every kind unavailable + the support escape)", async () => {
+    const { app } = buildApp({ seed: integrationsNotAvailableSeed() });
+    const page = await app.renderPage({ page: "workspace" });
+    expect(page.html).toContain('data-integrations="true"');
+    for (const kind of INTEGRATION_KINDS) {
+      expect(page.html).toContain(`data-integration="${kind}" data-integration-state="unavailable"`);
+    }
+    expect(page.html).toContain("composes no integration status read yet");
+    expect(page.html).toContain('data-support-escape="true"');
+    expect(page.html).toContain("Get help with integrations");
+    expect(page.html).not.toContain('data-integration-state="configured"');
+  });
+
+  it("the section composes NO configuration affordance (read-only; no OAuth dance, no SCIM endpoint fields, no MDM enrollment forms)", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "workspace" });
+    const section = page.html.slice(
+      page.html.indexOf('data-integrations="true"'),
+      page.html.indexOf('data-device-fleet="true"'),
+    );
+    expect(section).not.toMatch(/<form|<button|data-flow=|type="password"|<input|oauth|issuer|endpoint/i);
+    // The authority note names where integration management lives upstream.
+    expect(page.html).toContain('data-integrations-authority="true"');
+    expect(page.html).toContain(
+      "Enterprise integrations are managed by your organization&#39;s administrators and its own identity and device systems",
+    );
+  });
+
+  it("the fully-verified world renders the quiet reachability note instead of the escape", async () => {
+    const { app } = buildApp({
+      seed: integrationsSeed(
+        INTEGRATION_KINDS.map((kind) => integrationRow(kind, "configured")),
+      ),
+    });
+    const page = await app.renderPage({ page: "workspace" });
+    const section = page.html.slice(
+      page.html.indexOf('data-integrations="true"'),
+      page.html.indexOf('data-device-fleet="true"'),
+    );
+    expect(section).toContain('data-integrations-support-reachability="true"');
+    expect(section).not.toContain('data-support-escape="true"');
+  });
+
+  it("the settings page carries the contextual link to the integrations section", async () => {
+    const { app } = buildApp();
+    const settings = await app.renderPage({ page: "settings" });
+    expect(settings.html).toMatch(
+      /<a [^>]*href="\/workspace#integrations"[^>]*>Review enterprise integrations/,
+    );
+  });
+});
+
 describe("no second connectivity authority", () => {
   it("organization connectivity renders from the SAME read model and derived state vocabulary", async () => {
     const { app } = buildApp();
@@ -462,6 +666,48 @@ function healthyWorkspaceSeed(): FakeApiSeed {
         freshUntil: "2025-01-06T10:00:00.000Z",
       },
     })),
+    // PA-008: the quiet-support world is quiet because EVERYTHING is
+    // healthy - including the enterprise integrations, all verified and
+    // in effect (so the integrations section renders its quiet
+    // reachability note instead of the degraded-state support escape).
+    enterprise: {
+      ...tenant.enterprise,
+      integrations: [
+        {
+          integrationId: "iiiiiiii-0000-4000-8000-000000000001",
+          kind: "sso",
+          state: "configured",
+          summary: "Sign in to RoamLink through your organization's identity provider.",
+          freshness: {
+            observedAt: "2025-01-06T09:00:00.000Z",
+            receivedAt: "2025-01-06T09:00:00.000Z",
+            freshUntil: "2025-01-06T10:00:00.000Z",
+          },
+        },
+        {
+          integrationId: "iiiiiiii-0000-4000-8000-000000000002",
+          kind: "scim",
+          state: "configured",
+          summary: "Your organization's directory keeps RoamLink membership in sync.",
+          freshness: {
+            observedAt: "2025-01-06T09:00:00.000Z",
+            receivedAt: "2025-01-06T09:00:00.000Z",
+            freshUntil: "2025-01-06T10:00:00.000Z",
+          },
+        },
+        {
+          integrationId: "iiiiiiii-0000-4000-8000-000000000003",
+          kind: "mdm",
+          state: "configured",
+          summary: "Your organization's device management enrolls the fleet's devices.",
+          freshness: {
+            observedAt: "2025-01-06T09:00:00.000Z",
+            receivedAt: "2025-01-06T09:00:00.000Z",
+            freshUntil: "2025-01-06T10:00:00.000Z",
+          },
+        },
+      ],
+    },
   };
   return { ...seed, tenants };
 }

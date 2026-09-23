@@ -1679,8 +1679,14 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
       // PA-007: the policy section composes the same way - READ-ONLY, with
       // the freshness STATE evaluated at the query instant (the fake never
       // invents a policy, never invents an observation).
+      // PA-008: the integrations section composes the same way - READ-ONLY,
+      // one status view per seeded kind, with the freshness STATE evaluated
+      // at the query instant. The fake NEVER invents an integration status
+      // and NEVER fabricates the missing backend contract away: an
+      // `unavailable` seed renders the honest unavailable declaration.
       const enterprise = tenant.enterprise;
       const policySeed = enterprise?.policy;
+      const integrationSeeds = enterprise?.integrations;
       return ok({
         presentedAt: now(),
         organization:
@@ -1712,6 +1718,15 @@ export function createInMemoryApi(seed: FakeApiSeed, options: FakeApiOptions): I
                 ...(policySeed.effectiveAt !== undefined ? { effectiveAt: policySeed.effectiveAt } : {}),
                 freshness: evaluateFresh(policySeed.freshness, now()),
               },
+        integrations:
+          integrationSeeds === undefined || integrationSeeds === null
+            ? null
+            : integrationSeeds.map((integration) => ({
+                kind: integration.kind,
+                state: integration.state,
+                ...(integration.summary !== undefined ? { summary: integration.summary } : {}),
+                freshness: evaluateFresh(integration.freshness, now()),
+              })),
       });
     }
 

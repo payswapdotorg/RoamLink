@@ -40,7 +40,15 @@
  * READ MODEL rides the workspace contract: CAP-E-POLICY flipped GAP ->
  * VERIFIED with the policy summary section rendering the current policy
  * record — source, version, freshness pairing — and the absence states
- * staying EXPLICIT contract states, never a UI shrug). The closure probes
+ * staying EXPLICIT contract states, never a UI shrug). RL-115-F5 is
+ * CLOSED (PA-008 — the enterprise integrations surface: CAP-E-SSO-SCIM-MDM
+ * flipped GAP -> VERIFIED with the workspace's Enterprise integrations
+ * section rendering the SSO/SCIM/MDM statuses from the READ MODEL with
+ * EXACTLY four honest states — configured / not-configured / unavailable /
+ * unknown — where `unavailable` is the honest missing-backend-contract
+ * state, never a fabricated control; the section composes no configuration
+ * affordance at all, and a workspace composing no integrations read
+ * degrades honestly with the support escape). The closure probes
  * below carry the flipped expectations; the remaining GAP probes still
  * pin the open findings.
  */
@@ -546,8 +554,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-E-SSO-SCIM-MDM",
     capability: "SSO/SCIM/MDM integrations",
     spec: "spec/architecture.md §8",
-    verdict: "GAP",
-    gapNote: "zero UX vocabulary for SSO/SCIM/MDM on any surface (web, mobile, admin)",
+    verdict: "VERIFIED",
+    entry: { page: "workspace", mustRender: ['data-integrations="true"', "Enterprise integrations", "Single sign-on (SSO)", "User provisioning (SCIM)", "Device management (MDM)"] },
+    contextualLink: { from: "settings", href: "/workspace#integrations", labelContains: "Review enterprise integrations" },
+    explanatoryView: { page: "workspace", mustRender: ['data-integration="sso"', 'data-integration-state="configured"', "Integration read: ", "requires the enterprise integration API"] },
+    recovery: { page: "workspace", mustRender: ['data-support-escape="true"', "Get help with integrations"] },
+    gapNote:
+      "was RL-115-F5 (GAP: zero UX vocabulary for SSO/SCIM/MDM on any surface); closed by PA-008 — the workspace's Enterprise integrations section renders the SSO/SCIM/MDM statuses from the READ MODEL (the app contract's mirrored integrations section) with EXACTLY four honest states: configured / not-configured / unavailable / unknown. `unavailable` is the honest missing-backend-contract state ('requires the enterprise integration API' + an explanation, never a fabricated control — the section composes no form, button or command flow: no OAuth dance, no SCIM endpoint fields, no MDM enrollment forms); the settings page carries the contextual link; a workspace composing no integrations read degrades honestly (every kind renders the honest unavailable state + the support escape)",
   },
   {
     id: "CAP-E-AUDIT",
@@ -857,14 +870,6 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     }
   });
 
-  it("GAP CAP-E-SSO-SCIM-MDM (RL-115-F5): zero SSO/SCIM/MDM vocabulary on any rendered surface", async () => {
-    const { app } = buildApp();
-    for (const page of ["workspace", "settings", "more"] as const) {
-      const html = await app.renderDocument({ page });
-      expect(html).not.toMatch(/SSO|SCIM|MDM/i);
-    }
-  });
-
   it("GAP CAP-D-COMPAT (RL-115-F6): no integration/compatibility health surface exists in the customer nav or pages", async () => {
     const { app } = buildApp();
     for (const page of ["more", "settings", "home"] as const) {
@@ -881,6 +886,11 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
   // (RL-115-F7's GAP probe was flipped by PA-007 into the closure probe
   //  below — "RL-115 closure probes (PA-007)" — when the organization
   //  policy read model made the promised summary section real.)
+
+  // (RL-115-F5's GAP probe was flipped by PA-008 into the closure probe
+  //  below — "RL-115 closure probes (PA-008)" — when the enterprise
+  //  integrations surface made the SSO/SCIM/MDM statuses visible with
+  //  honest states.)
 });
 
 // --------------------------------------------------------------------------------
@@ -993,6 +1003,99 @@ describe("RL-115 closure probes (PA-007)", () => {
     expect(noneHtml).toContain('data-policy-absent="true"');
     expect(noneHtml).toContain("No organization policy is configured yet.");
     expect(noneHtml).not.toContain('data-policy-statement="true"');
+  });
+});
+
+// --------------------------------------------------------------------------------
+// The closure probes (PA-008 — RL-115-F5: the enterprise integrations
+// surface makes the SSO/SCIM/MDM statuses visible with honest states;
+// fixes flip explicit assertions)
+// --------------------------------------------------------------------------------
+
+/**
+ * PA-008 (closes RL-115-F5): a workspace composing NO integrations section
+ * (the pre-PA-008 wire, RL-LOCK-017 additive tolerance) — the honest
+ * degradation world the surface must survive without inventing statuses.
+ */
+function integrationsNotAvailableSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { enrollment, connector, policy } = tenant.enterprise ?? {};
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(enrollment !== undefined ? { enrollment } : {}),
+      ...(connector !== undefined ? { connector } : {}),
+      ...(policy !== undefined ? { policy } : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+describe("RL-115 closure probes (PA-008)", () => {
+  it("VERIFIED CAP-E-SSO-SCIM-MDM (RL-115-F5 closed): the integrations surface renders the SSO/SCIM/MDM statuses with honest states — never a fabricated control", async () => {
+    const { app } = buildApp();
+    const workspace = await app.renderDocument({ page: "workspace" });
+    // THE FLIP: the vocabulary now renders (the pinned absence is gone) —
+    // the section, the heading, and all three integration rows.
+    expect(workspace).toContain('data-integrations="true"');
+    expect(workspace).toContain("Enterprise integrations");
+    for (const kind of ["sso", "scim", "mdm"] as const) {
+      expect(workspace).toContain(`data-integration="${kind}"`);
+    }
+    // The seeded world: SSO is configured (its summary + the freshness
+    // pairing)...
+    expect(workspace).toContain('data-integration="sso" data-integration-state="configured"');
+    expect(workspace).toContain("In effect: ");
+    expect(workspace).toContain("Integration read: ");
+    expect(workspace).toContain('data-freshness="FRESH"');
+    // ...while SCIM and MDM render the HONEST missing-backend-contract
+    // state with its explanation — never a fake status, never a fake
+    // control.
+    expect(workspace).toContain('data-integration="scim" data-integration-state="unavailable"');
+    expect(workspace).toContain('data-integration="mdm" data-integration-state="unavailable"');
+    expect(workspace).toContain("Unavailable — requires the enterprise integration API");
+    expect(workspace).toContain("Nothing is invented in the meantime.");
+    // THE NO-FABRICATION PIN: the integrations section composes no form,
+    // button or command flow — no OAuth dance, no SCIM endpoint fields, no
+    // MDM enrollment forms (the UI never fabricates configuration
+    // capability; no write contract backs them).
+    const section = workspace.slice(
+      workspace.indexOf('data-integrations="true"'),
+      workspace.indexOf('data-device-fleet="true"'),
+    );
+    expect(section).not.toMatch(/<form|<button|data-flow=|type="password"|<input/);
+    // The §15 contextual link: the settings page (the account/workspace
+    // controls) links the integrations section.
+    const settings = await app.renderDocument({ page: "settings" });
+    expect(settings).toMatch(
+      /<a [^>]*href="\/workspace#integrations"[^>]*>[\s\S]{0,200}?Review enterprise integrations/,
+    );
+    // The vocabulary stays bounded to the workspace entry surface: the
+    // settings/more pages carry the link, not the integration acronyms.
+    for (const page of ["settings", "more"] as const) {
+      const html = await app.renderDocument({ page });
+      expect(html, `${page}: the integration vocabulary stays on the workspace`).not.toMatch(
+        /\b(SSO|SCIM|MDM)\b/,
+      );
+    }
+    // The honest degradation: a workspace composing NO integrations read
+    // (the pre-PA-008 wire, RL-LOCK-017) renders every kind in the honest
+    // unavailable state + THE SUPPORT ESCAPE — the surface degrades
+    // honestly without the read contract, exactly as the finding's
+    // remediation demanded.
+    const noSection = buildApp({ seed: integrationsNotAvailableSeed() });
+    const degraded = await noSection.app.renderDocument({ page: "workspace" });
+    for (const kind of ["sso", "scim", "mdm"] as const) {
+      expect(degraded).toContain(`data-integration="${kind}" data-integration-state="unavailable"`);
+    }
+    expect(degraded).toContain("composes no integration status read yet");
+    expect(degraded).toContain('data-support-escape="true"');
+    expect(degraded).toContain("Get help with integrations");
+    // No invented status leaked into the degraded world.
+    expect(degraded).not.toContain('data-integration-state="configured"');
   });
 });
 

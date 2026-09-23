@@ -341,10 +341,31 @@ export interface FakeEnterprisePolicySeed {
   readonly freshness?: FakeFreshnessSeed;
 }
 
+/**
+ * PA-008 (closes RL-115-F5): the enterprise integration status fixtures
+ * mirror packages/enterprise's integration kind + four-state vocabularies
+ * (drift-guarded by tests/architecture). The seeded default is the honest
+ * wave-2 world: SSO carries a present, configured read (with a fresh
+ * observation), while SCIM and MDM carry the honest `unavailable`
+ * declaration - the enterprise integration API exposes no status read for
+ * those kinds yet, so the fake declares it instead of inventing a status.
+ * Scenario seeds derive the not-configured / unknown / stale worlds by
+ * copy + override.
+ */
+export interface FakeEnterpriseIntegrationSeed {
+  readonly integrationId: string;
+  readonly kind: "sso" | "scim" | "mdm";
+  readonly state: "configured" | "not-configured" | "unavailable" | "unknown";
+  readonly summary?: string;
+  /** The observation facts; the fake evaluates the state at the query instant. */
+  readonly freshness?: FakeFreshnessSeed;
+}
+
 export interface FakeEnterpriseSeed {
   readonly enrollment?: FakeEnterpriseEnrollmentSeed;
   readonly connector?: FakeEnterpriseConnectorSeed;
   readonly policy?: FakeEnterprisePolicySeed;
+  readonly integrations?: readonly FakeEnterpriseIntegrationSeed[];
 }
 
 export interface FakeTenantSeed {
@@ -506,6 +527,37 @@ export function fakeApiSeed(): FakeApiSeed {
               freshUntil: FAKE_SEED_CLOCK.freshUntil,
             },
           },
+          // PA-008 (closes RL-115-F5): the seeded org carries the honest
+          // enterprise integration statuses - SSO is configured upstream
+          // (a fresh observation + a human summary), while SCIM and MDM
+          // carry the honest `unavailable` declaration (the enterprise
+          // integration API exposes no status read for those kinds yet;
+          // scenario seeds derive the other state worlds by copy +
+          // override).
+          integrations: [
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000001",
+              kind: "sso",
+              state: "configured",
+              summary:
+                "Sign in to RoamLink through your organization's identity provider instead of a separate password.",
+              freshness: {
+                observedAt: T0,
+                receivedAt: T0,
+                freshUntil: FAKE_SEED_CLOCK.freshUntil,
+              },
+            },
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000002",
+              kind: "scim",
+              state: "unavailable",
+            },
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000003",
+              kind: "mdm",
+              state: "unavailable",
+            },
+          ],
         },
         devices: [
           {

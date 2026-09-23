@@ -13,10 +13,10 @@
  *  - every capability row and every GAP finding stays in sync with the doc;
  *  - the §7 device-capability vocabulary the matrix rows cite stays closed;
  *  - the §11 SLO vocabulary the ops surface renders stays closed;
- *  - the recorded ABSENCES (refund surface, SSO/SCIM/MDM
- *    surface, compatibility health surface, /notifications inbound links)
- *    stay truthful — if one of these tests FAILS because a surface
- *    changed, the inventory + doc MUST be updated in the same change;
+ *  - the recorded ABSENCES (refund surface, compatibility health
+ *    surface, /notifications inbound links) stay truthful — if one of
+ *    these tests FAILS because a surface changed, the inventory + doc
+ *    MUST be updated in the same change;
  *  - FLIPPED ABSENCES: PA-001 requires the eSIM management vocabulary on
  *    the customer web surface (the flipped presence guard below — the
  *    mobile surface stays status-only until its own work order); PA-003
@@ -33,7 +33,15 @@
  *    workspace policy summary to stay composed from the app contract's
  *    READ-ONLY organization policy read — the absence states stay explicit
  *    contract states and the surface composes no policy write affordance
- *    (policy is organization-level configuration managed upstream).
+ *    (policy is organization-level configuration managed upstream);
+ *    PA-008 requires the workspace's enterprise integrations surface to
+ *    stay composed from the app contract's READ-ONLY integrations read —
+ *    the SSO/SCIM/MDM statuses render with EXACTLY the four honest states
+ *    (configured / not-configured / unavailable / unknown; `unavailable`
+ *    is the missing-backend-contract declaration), the surface composes NO
+ *    configuration affordance (no OAuth dance, no SCIM endpoint fields,
+ *    no MDM enrollment forms), and the admin/mobile surfaces stay
+ *    integration-vocabulary-free until their own work orders.
  *
  * Structure-only (this package depends on no app): files are read and
  * scanned, never imported — the same pattern as the wave boundary guards.
@@ -174,10 +182,10 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
     );
     // PA-06 closed RL-115-F3 (CAP-E-CONNECTOR-ENROLLMENT): the GAP count
     // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4; PA-007
-    // closed RL-115-F7 (CAP-E-POLICY): 4 -> 3 (the remaining gaps:
-    // refunds F4, SSO/SCIM/MDM F5, compatibility F6 - F8 stays
-    // VERIFIED(proxy)).
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(3);
+    // closed RL-115-F7 (CAP-E-POLICY): 4 -> 3; PA-008 closed RL-115-F5
+    // (CAP-E-SSO-SCIM-MDM): 3 -> 2 (the remaining gaps: refunds F4 and
+    // compatibility F6 - F8 stays VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(2);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -289,9 +297,56 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     }
   });
 
-  it("no surface source carries SSO/SCIM/MDM vocabulary (CAP-E-SSO-SCIM-MDM, RL-115-F5)", () => {
-    for (const dir of ["apps/web/src", "apps/admin/src", "apps/mobile/src"]) {
-      expect(readDirJoined(dir), `${dir}: no SSO/SCIM/MDM vocabulary`).not.toMatch(
+  it("the workspace composes the enterprise integrations surface through the app contract's READ-ONLY read (RL-115-F5, closed by PA-008)", () => {
+    // PA-008 closed RL-115-F5: the customer web surface NOW carries the
+    // SSO/SCIM/MDM vocabulary — the workspace's Enterprise integrations
+    // section, composed from the app contract's mirrored integrations read
+    // (never a direct enterprise dependency, never a redefined state). The
+    // admin and mobile surfaces stay integration-vocabulary-free until
+    // their own work orders (the original pin's scope, preserved for the
+    // surfaces this work order does not own).
+    const joined = readDirJoined("apps/web/src");
+    expect(joined, "the integration vocabulary renders on the web surface").toMatch(
+      /\b(SSO|SCIM|MDM)\b/,
+    );
+    expect(joined, "the integrations section marker").toContain('"data-integrations"');
+    expect(joined, "the per-integration state markers").toContain('"data-integration-state"');
+    expect(joined, "the honest missing-backend-contract explanation").toContain(
+      "requires the enterprise integration API",
+    );
+    expect(joined, "the section derives from the mirrored read").toContain(
+      "deriveIntegrationRows",
+    );
+    expect(joined, "the rows ride the mirrored kind vocabulary").toContain(
+      "ENTERPRISE_INTEGRATION_RESOURCE_KINDS",
+    );
+    expect(joined, "the settings page carries the contextual link").toContain(
+      'href: "/workspace#integrations"',
+    );
+    // THE NO-FABRICATION FENCE (PA-008 MUST NOT): the integrations section
+    // composes NO configuration affordance — no OAuth dance, no SCIM
+    // endpoint fields, no MDM enrollment forms — because no write contract
+    // backs them. The section source slice must carry no form, button or
+    // command flow, and the web app composes no integration write flow
+    // anywhere.
+    const workspacePage = read("apps/web/src/pages/workspace-page.ts");
+    const sectionSource = workspacePage.slice(
+      workspacePage.indexOf("function integrationsSection"),
+      workspacePage.indexOf("function deviceFleetSection"),
+    );
+    expect(sectionSource, "the integrations section composes no form").not.toMatch(
+      /<form|el\(\s*"form"|el\(\s*"button"|"button"|data-flow|type="password"|<input|el\(\s*"input"/,
+    );
+    expect(joined, "no integration write affordance").not.toMatch(
+      /data-flow="(configure|setup|enroll|provision|connect|enable|disable)-(sso|scim|mdm|integration)/,
+    );
+    // THE AUTHORITY FENCE (the same fence the connector/policy flows
+    // guard): the web app imports NO enterprise domain machinery.
+    expect(joined, "no direct enterprise package import").not.toContain('from "@roamlink/enterprise"');
+    // The admin and mobile surfaces stay integration-vocabulary-free
+    // (their own work orders own any future surfaces).
+    for (const dir of ["apps/admin/src", "apps/mobile/src"]) {
+      expect(readDirJoined(dir), `${dir}: no SSO/SCIM/MDM vocabulary yet`).not.toMatch(
         /\b(SSO|SCIM|MDM)\b/,
       );
     }
