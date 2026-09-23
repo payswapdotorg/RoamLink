@@ -94,6 +94,24 @@ seeds derive every kind × state world. CAP-E-SSO-SCIM-MDM is VERIFIED below
 with its closure evidence; the flipped assertions live in the same suites
 that pinned the gap. All other findings stand unchanged.
 
+**Post-audit update (PA-010 — ADCOS Compatibility Health Surface):** RL-115-F6
+is CLOSED by the same flip mechanism: the admin console gains the §13
+"integration/compatibility health" surface — a read-only page over the
+application contract's new `/v1/integration-health` read, rendering the
+RECORDED outcome of the env-gated ADCOS compatibility probe (RL-108):
+Compatible | Incompatible | Not configured | Unknown, with the recorded
+last-checked freshness, the supported API version, the probe suite version
+and the failed-check explanation when incompatible. The surface never
+triggers the probe and never mutates compatibility state (the mutation gate
+stays inside the ADCOS integration boundary); not configured is a first-class
+honest state, never a fabricated compatibility. CAP-D-COMPAT is VERIFIED
+(proxy) below with its closure evidence, the flipped assertions live in the
+same suites that pinned the gap (the web GAP probe became the closure probe
+keeping the customer surface compatibility-free BY DESIGN, §13; the wave8-b
+structural absence guard became the presence guard), and the customer
+surfaces stay compatibility-vocabulary-free BY DESIGN. All other findings
+stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -146,7 +164,7 @@ entry point), **Link** (contextual link from the journey), **View** (explanatory
 |----|------------|-------|------|------|----------|---------|
 | CAP-D-RECONCILIATION | Reconciliation (durable admit, dedupe, repair, honest stale) | Customer effect: Connectivity "What RoamLink is waiting for" | More → Workspace | Honest stale/unknown language | Support escapes | **VERIFIED (proxy)** — operator view = admin Reconciliation page (structural guard); an unavailable read renders "Cannot confirm right now", never a status |
 | CAP-D-PROJECTIONS | Projection of ADCOS state (§5 record fields) | Evidence disclosure (class, canonical record, source version, observed/received, freshness, digest) | Order → Connectivity | Evidence/Technical disclosure layers | Support escapes | **VERIFIED (proxy)** — §5 fields render through the evidence disclosure; operator view = admin Projection-health page (structural guard) |
-| CAP-D-COMPAT | Compatibility checks vs the supported ADCOS API contract | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F6 |
+| CAP-D-COMPAT | Compatibility checks vs the supported ADCOS API contract | Admin console Integration health (`/integration-health`) — the §13 "integration/compatibility health" page | Workspace names the admin operations surface (§13: admin is not customer navigation) | The recorded probe outcome (state + checks + last-checked + supported version + failure explanation), read-only | Read-only ops surface; the mutation gate lives in the ADCOS integration boundary | **VERIFIED (proxy)** — RL-115-F6 closed by PA-010: the admin console's Integration health page renders the recorded RL-108 probe outcome through the application contract's `/v1/integration-health` read (render-level proof in `apps/admin/test/admin-app.test.ts` "Integration health surface": each of the four states renders honestly, the surface performs no mutations — GET-only, never triggers the probe — and freshness pairs with the state; structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`, vocabulary drift guard in `tests/architecture/test/wave4-a-app-boundaries.test.ts`); the customer surfaces stay compatibility-free BY DESIGN (§13) |
 
 ### §4 — the three control loops
 
@@ -196,7 +214,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | Admin console nav "SLO health" → `/ops/slo` (the session-gated host ops surface, RL-109) | The admin nav entry renders on every console page (denied renders included — the nav is chrome; the target holds the gate) | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **VERIFIED (proxy)** — RL-115-F2 closed by PA-009: the admin nav entry (render-level proof in `apps/admin/test/admin-app.test.ts`, structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the customer surfaces stay SLO-free by design (§13) |
 
-**Tally:** 22 VERIFIED · 11 VERIFIED (proxy) · 2 GAP.
+**Tally:** 22 VERIFIED · 12 VERIFIED (proxy) · 1 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
@@ -210,7 +228,10 @@ closed — CAP-E-POLICY moved GAP -> VERIFIED via the organization policy
 read model + the real policy summary section. PA-008: RL-115-F5 closed —
 CAP-E-SSO-SCIM-MDM moved GAP -> VERIFIED via the enterprise integrations
 surface: the workspace's integrations section rendering the SSO/SCIM/MDM
-statuses from the read model with exactly four honest states.)
+statuses from the read model with exactly four honest states. PA-010:
+RL-115-F6 closed — CAP-D-COMPAT moved GAP -> VERIFIED (proxy) via the
+admin console's Integration health page over the application contract's
+integration-health read.)
 
 ---
 
@@ -480,16 +501,64 @@ implemented exactly as bounded —
      read contract's additive-tolerance + vocabulary + fail-closed
      proofs.
 
-### RL-115-F6 — no integration/compatibility-health surface (CAP-D-COMPAT)
+### RL-115-F6 — no integration/compatibility-health surface (CAP-D-COMPAT) — **CLOSED by PA-010**
 
 - **Where:** `apps/admin/src/pages/*` vs §13 ("integration/compatibility health").
-- **What:** the env-gated compatibility probe (RL-108) runs host-side, but the admin
-  console has no page exposing its outcome; §13's admin musts are otherwise covered
-  (tenants, audit, reconciliation, projection health, support triage).
-- **Minimal reproducer:** the structural guard asserts the admin page sources contain no
-  compatibility/integration-health vocabulary.
-- **Candidate remediation:** an admin integration-health surface fed by the probe's
-  fail-closed state (compatible/incompatible/not-configured with timestamps).
+- **What (the recorded gap):** the env-gated compatibility probe (RL-108) runs
+  host-side, but the admin console had no page exposing its outcome; §13's admin
+  musts were otherwise covered (tenants, audit, reconciliation, projection health,
+  support triage, plus the PA-009 SLO entry).
+- **Original minimal reproducer (the pin, now flipped):** the structural guard
+  asserted the admin page sources contain no compatibility/integration-health
+  vocabulary; the web suite's GAP probe asserted no customer nav or page carries
+  compatibility vocabulary and recorded the admin-side absence as the finding.
+- **CLOSURE (PA-010, VERIFIED):** the admin console's Integration health page
+  (`apps/admin/src/pages/integration-health-page.ts`, route
+  `/integration-health`) renders the recorded outcome of the RL-108 probe
+  through the application contract's additive `/v1/integration-health` read
+  (RL-LOCK-017): the four honest states (Compatible | Incompatible | Not
+  configured | Unknown — the closed vocabulary owned by @roamlink/compat,
+  `ADCOS_INTEGRATION_HEALTH_STATES`, mirrored in the app contract and
+  drift-guarded), the recorded last-checked freshness, the supported ADCOS API
+  version (the single-site pin), the probe suite version, the full check table,
+  and the failed-check explanation when incompatible. The surface is READ-ONLY:
+  it never triggers the probe and never mutates compatibility state — the
+  mutation gate stays inside the ADCOS integration boundary
+  (spec/adcos-integration.md §9); not-configured is a first-class honest state,
+  never a fabricated compatibility.
+- **Closure evidence (flipped assertions):**
+  1. `apps/web/test/rl115-capability-discoverability.test.ts` — the GAP probe
+     became the closure probe "VERIFIED CAP-D-COMPAT (RL-115-F6, closed by
+     PA-010)": the customer surfaces (more/settings/home/connectivity/workspace
+     renders + the frozen nav vocabularies) carry ZERO compatibility vocabulary
+     BY DESIGN (§13), and the row flipped GAP -> VERIFIED (proxy) with the admin
+     render + structural proof named as the closure evidence.
+  2. `tests/architecture/test/wave8-b-capability-guards.test.ts` — the
+     structural absence guard ("no compat / integration health vocabulary in
+     the admin pages") became the presence guard (the page, the vocabulary,
+     the state data attributes, the read-only discipline vocabulary, and the
+     never-triggers-the-probe pins); `ADMIN_PAGE_ROUTES` flipped five -> six
+     console surfaces; the GAP count floor flipped 4 -> 3.
+  3. `apps/admin/test/admin-app.test.ts` — the render-level proof: each of the
+     four states renders honestly (compatible with the recorded report,
+     incompatible with the failed-check explanation, not-configured as the
+     honest first-class state, unknown as the fail-closed default); the
+     surface performs NO mutations (GET-only requests, no probe/adcos route
+     ever requested, re-render purity); freshness pairs with the state
+     (recorded last-checked vs never-checked); the fail-closed rendering gate
+     and the nav chrome hold; a read failure renders the typed error panel,
+     never a guessed compatibility.
+  4. `tests/architecture/test/wave4-a-app-boundaries.test.ts` — the app
+     contract's `INTEGRATION_HEALTH_RESOURCE_STATES` mirror is drift-guarded
+     against the owning `ADCOS_INTEGRATION_HEALTH_STATES` (RL-LOCK-018).
+- **Honest limit (recorded):** the `/v1/integration-health` read model is not
+  composed on the real runtime in this wave — `services/api` answers the typed
+  501 READ_MODEL_NOT_COMPOSED for it (exactly like its sibling admin
+  observability reads), and the deterministic fake API remains the contract
+  reference; the page renders the typed error panel on that runtime, never a
+  fabricated value. Composing the real read model over the worker host's
+  recorded probe outcome (`services/workers/src/host.ts`) is follow-up
+  operator work.
 
 ### RL-115-F7 — organization policies render only their own absence (CAP-E-POLICY) — **CLOSED by PA-007**
 
@@ -617,10 +686,12 @@ The dispatch named three candidates; each was verified, not assumed:
    F3 record below).
 
 Three further gaps were found by the audit and recorded above: refunds (F4),
-SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit
+SSO/SCIM/MDM (F5), plus the org-policy absence made explicit
 by the page itself (F7) and the URL-only delivery-progress journey (F8). F8 has since
-been CLOSED by PA-003, F7 by PA-007 (see the finding records above) and F5 by PA-008
-(the enterprise integrations surface — see the finding record above); the other
+been CLOSED by PA-003, F7 by PA-007 (see the finding records above) and F5 by
+PA-008 (the enterprise integrations surface — see the finding record above); F6
+(compatibility health) has since been CLOSED by PA-010 (see the finding record
+above); the other
 findings stand.
 
 ## 5. Honest verification limits (AR-009/AR-010 discipline)

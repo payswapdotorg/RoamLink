@@ -54,6 +54,9 @@ describe("resolveAdminPage (the console's own route table under /admin)", () => 
     expect(resolveAdminPage("/admin/reconciliation")?.page).toBe("reconciliation");
     expect(resolveAdminPage("/admin/projection-health")?.page).toBe("projectionHealth");
     expect(resolveAdminPage("/admin/support")?.page).toBe("supportTriage");
+    // PA-010 (RL-115-F6): the integration-health console surface resolves
+    // through the console's own route table under the /admin mount.
+    expect(resolveAdminPage("/admin/integration-health")?.page).toBe("integrationHealth");
   });
 
   it("answers undefined outside the /admin mount (the customer root is NOT a console page)", () => {

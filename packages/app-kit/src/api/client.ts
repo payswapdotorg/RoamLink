@@ -74,11 +74,13 @@ import {
   parseOrganizationList,
   parseProductList,
   parseProjectionHealthResource,
+  parseIntegrationHealthResource,
   parseReconciliationJobList,
   parseSubscriptionList,
   parseSupportCaseList,
   parseUserResource,
   type AuditEventResource,
+  type IntegrationHealthResource,
 } from "./resources.js";
 import { parseEnterpriseWorkspaceResource } from "./enterprise.js";
 import { parseMutationAcknowledgement, type MutationAcknowledgement } from "./outcomes.js";
@@ -267,6 +269,17 @@ export class RoamLinkApiClient {
 
   async getProjectionHealth() {
     return this.#get(route("projectionHealth"), parseProjectionHealthResource);
+  }
+
+  /**
+   * The admin integration-health read (PA-010): the recorded outcome of the
+   * env-gated ADCOS compatibility probe (RL-108). READ-ONLY by construction —
+   * a GET whose parsed resource is what the probe recorded (never a live
+   * probe run, never a compatibility mutation; the gate stays inside the
+   * ADCOS integration boundary).
+   */
+  async getIntegrationHealth(): Promise<IntegrationHealthResource> {
+    return this.#get(route("integrationHealth"), parseIntegrationHealthResource);
   }
 
   // ---------------------------------------------------------------------------

@@ -381,9 +381,10 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-D-COMPAT",
     capability: "Compatibility checks against the supported ADCOS API contract",
     spec: "spec/architecture.md §2 Layer D; spec/ux-architecture.md §13 (integration/compatibility health)",
-    verdict: "GAP",
+    verdict: "VERIFIED(proxy)",
+    entry: { page: "workspace", mustRender: ["admin operations surface"] },
     gapNote:
-      "the env-gated compatibility probe runs host-side (RL-108) but NO rendered surface exposes integration/compatibility health — the admin console has no such page and §13 expects one",
+      "closed (PA-010 — RL-115-F6): the admin console's Integration health page renders the recorded outcome of the env-gated ADCOS compatibility probe (RL-108) — compatible/incompatible with the report's checks, the honest not-configured and unknown states, last-checked freshness, the supported API version and the failure explanation — proven by the admin suite's render tests and the flipped structural guard; the customer web surface intentionally carries zero compatibility vocabulary (§13: admin and diagnostics are not customer navigation — the workspace names the admin operations surface where the entry lives)",
   },
 
   // ---- §4 control loops (spec/architecture.md §4) --------------------------
@@ -870,13 +871,29 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     }
   });
 
-  it("GAP CAP-D-COMPAT (RL-115-F6): no integration/compatibility health surface exists in the customer nav or pages", async () => {
+  it("VERIFIED CAP-D-COMPAT (RL-115-F6, closed by PA-010): the surface is the admin console's integration-health page; the customer surface stays compatibility-free by design", async () => {
     const { app } = buildApp();
-    for (const page of ["more", "settings", "home"] as const) {
+    // PA-010 added NO customer-surface vocabulary (§13: admin and
+    // diagnostics are not customer navigation): the customer pages keep
+    // zero compatibility vocabulary — BY DESIGN now, the same
+    // designed-absence discipline as the SLO entry (CAP-SLO, RL-115-F2).
+    for (const page of ["more", "settings", "home", "connectivity", "workspace"] as const) {
       const html = await app.renderDocument({ page });
-      expect(html.toLowerCase()).not.toContain("compatibility");
+      expect(html.toLowerCase(), `${page}: no compatibility vocabulary (customer surfaces never render integration health)`).not.toContain("compatibility");
     }
-    // (The admin-side absence is pinned structurally in tests/architecture.)
+    // The frozen customer navigation vocabularies carry no integration-health
+    // destination.
+    for (const nav of [...DESKTOP_NAV, ...MOBILE_NAV]) {
+      expect(nav.label).not.toMatch(/integration|compat/i);
+      expect(nav.href).not.toContain("/integration-health");
+    }
+    // The surface now EXISTS — on the ADMIN console (the §13
+    // "integration/compatibility health" page over the application
+    // contract's integration-health read): the render-level proof lives in
+    // apps/admin/test/admin-app.test.ts ("Integration health surface",
+    // PA-010), and the structural presence guard in
+    // tests/architecture/test/wave8-b-capability-guards.test.ts pins the
+    // page, the route and the vocabulary in the admin sources.
   });
 
   // (RL-115-F8's GAP probe was flipped by PA-003 into the closure probe

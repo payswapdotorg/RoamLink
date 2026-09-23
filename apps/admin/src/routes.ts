@@ -11,6 +11,9 @@ export const ADMIN_PAGE_ROUTES = Object.freeze({
   reconciliation: "/reconciliation",
   projectionHealth: "/projection-health",
   supportTriage: "/support",
+  // PA-010 (RL-115-F6): the §13 "integration/compatibility health" console
+  // surface over the same public application API the customer app consumes.
+  integrationHealth: "/integration-health",
 } as const);
 
 export type AdminPageName = keyof typeof ADMIN_PAGE_ROUTES;

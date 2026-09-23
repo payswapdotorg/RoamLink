@@ -128,7 +128,7 @@ describe("RL-115 guard: the cited surface vocabularies stay frozen", () => {
     ]);
   });
 
-  it("ADMIN_PAGE_ROUTES keeps the five console surfaces (the audit/reconciliation/projection rows cite them)", () => {
+  it("ADMIN_PAGE_ROUTES keeps the six console surfaces (the audit/reconciliation/projection/compat rows cite them)", () => {
     const source = read("apps/admin/src/routes.ts");
     expect(constArrayKeys(source, "ADMIN_PAGE_ROUTES")).toEqual([
       "tenants",
@@ -136,6 +136,9 @@ describe("RL-115 guard: the cited surface vocabularies stay frozen", () => {
       "reconciliation",
       "projectionHealth",
       "supportTriage",
+      // PA-010 (RL-115-F6): the §13 "integration/compatibility health"
+      // console surface — the recorded ADCOS probe outcome.
+      "integrationHealth",
     ]);
   });
 });
@@ -183,9 +186,10 @@ describe("RL-115 guard: the inventory, the doc and the recorded gaps stay in syn
     // PA-06 closed RL-115-F3 (CAP-E-CONNECTOR-ENROLLMENT): the GAP count
     // went 6 -> 5; PA-009 closed RL-115-F2 (CAP-SLO): 5 -> 4; PA-007
     // closed RL-115-F7 (CAP-E-POLICY): 4 -> 3; PA-008 closed RL-115-F5
-    // (CAP-E-SSO-SCIM-MDM): 3 -> 2 (the remaining gaps: refunds F4 and
-    // compatibility F6 - F8 stays VERIFIED(proxy)).
-    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(2);
+    // (CAP-E-SSO-SCIM-MDM): 3 -> 2; PA-010 closed RL-115-F6
+    // (CAP-D-COMPAT): 2 -> 1 (the remaining gap: refunds F4 — F8 stays
+    // VERIFIED(proxy)).
+    expect(gapIds.length, "the audit records the candidate gaps").toBeGreaterThanOrEqual(1);
     for (const id of gapIds) {
       expect(doc, `${id} must appear in the doc's findings/matrix as GAP`).toContain(id);
     }
@@ -352,10 +356,34 @@ describe("RL-115 guard: the recorded discoverability absences stay truthful", ()
     }
   });
 
-  it("no integration/compatibility-health surface exists in the admin console (CAP-D-COMPAT, RL-115-F6)", () => {
+  it("the admin console carries the integration-health surface fed by the probe's recorded state (CAP-D-COMPAT, RL-115-F6 closed by PA-010)", () => {
+    // PA-010 closed RL-115-F6 through the audit's designed flip: the pinned
+    // absence ("no compat / integration health vocabulary in the admin
+    // pages") became the presence guard — the §13 "integration/compatibility
+    // health" surface EXISTS on the admin console and renders the recorded
+    // ADCOS compatibility probe outcome (RL-108).
     const adminPages = readDirJoined("apps/admin/src/pages");
-    expect(adminPages.toLowerCase()).not.toContain("compat");
-    expect(adminPages.toLowerCase()).not.toContain("integration health");
+    expect(adminPages.toLowerCase(), "the integration-health page exists").toContain("integration health");
+    expect(adminPages.toLowerCase(), "the compatibility vocabulary renders").toContain("compatibility");
+    expect(adminPages).toContain('data-integration-state');
+    expect(adminPages).toContain('data-integration-health');
+    // The honest state vocabulary renders as first-class states (not
+    // configured is never a fabricated compatibility).
+    for (const state of ["compatible", "incompatible", "not-configured", "unknown"]) {
+      expect(adminPages, `the '${state}' state renders`).toContain(`"${state}"`);
+    }
+    // The read-only discipline (PA-010 MUST NOT): the console page performs
+    // NO probe run and NO compatibility mutation — it renders the recorded
+    // state through the application contract read only. The apps-import
+    // boundary (wave4-a) already forbids importing the probe machinery; this
+    // pins the page source's own discipline vocabulary.
+    expect(adminPages, "the read-only note renders").toContain("never triggers the probe");
+    expect(adminPages).not.toContain("runAdcosProductionProbe");
+    expect(adminPages).not.toContain("assertMutationsAllowed");
+    expect(adminPages).not.toMatch(/AdcosCompatibilityState\b/);
+    // The mutation gate stays inside the ADCOS integration boundary: the
+    // page renders its recorded EFFECT, never the gate itself.
+    expect(adminPages).toContain("integration boundary");
   });
 
   it("the workspace composes the policy summary from the app contract's READ-ONLY policy read (RL-115-F7, closed by PA-007)", () => {

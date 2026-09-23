@@ -13,6 +13,9 @@ import {
   createInMemoryApi,
   fakeApiSeed,
   RoamLinkApiClient,
+  type FakeApiSeed,
+  type FakeIntegrationHealthSeed,
+  type FakeTenantSeed,
   type HttpRequest,
   type HttpResponse,
 } from "@roamlink/app-kit";
@@ -33,6 +36,7 @@ const ALL_SURFACES: readonly AdminPageName[] = [
   "reconciliation",
   "projectionHealth",
   "supportTriage",
+  "integrationHealth",
 ];
 
 function buildConsole(options?: {
@@ -41,8 +45,10 @@ function buildConsole(options?: {
   captured?: HttpRequest[];
   /** Share an existing fake (state, clock) across consoles. */
   shared?: ReturnType<typeof newFake>;
+  /** Scenario seed (the integration-health worlds derive from it). */
+  seed?: FakeApiSeed;
 }) {
-  const fake = options?.shared ?? newFake();
+  const fake = options?.shared ?? newFake(options?.seed);
   const clock = new DeterministicClock("2025-01-06T09:45:00.000Z");
   const transport =
     options?.captured === undefined
@@ -62,13 +68,31 @@ function buildConsole(options?: {
   return { console, fake, clock, client };
 }
 
-function newFake() {
+function newFake(seed?: FakeApiSeed) {
   const clock = new DeterministicClock("2025-01-06T09:45:00.000Z");
   const fakeIds = new DeterministicUuidGenerator(100_000);
-  return createInMemoryApi(fakeApiSeed(), {
+  return createInMemoryApi(seed ?? fakeApiSeed(), {
     now: () => clock.now(),
     ids: () => fakeIds.next(),
   });
+}
+
+/**
+ * Derives an integration-health scenario world (PA-010): the recorded probe
+ * outcome of the default tenant is replaced (or removed, for the unknown
+ * world) while every other fact stays identical.
+ */
+function integrationHealthSeed(
+  integrationHealth: FakeIntegrationHealthSeed | undefined,
+): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { integrationHealth: _removed, ...rest } = tenant;
+  tenants[TENANT] =
+    integrationHealth === undefined ? rest : { ...rest, integrationHealth };
+  return { ...seed, tenants };
 }
 
 describe("fail-closed rendering gate (privilege-escalation threat)", () => {
@@ -133,6 +157,7 @@ describe("fail-closed rendering gate (privilege-escalation threat)", () => {
       "/v1/reconciliation-jobs",
       "/v1/projection-health",
       "/v1/support-cases",
+      "/v1/integration-health",
     ];
     for (const request of captured) {
       expect(
@@ -359,5 +384,212 @@ describe("SLO health navigation entry (PA-009, closes RL-115-F2)", () => {
     // The denied render leaked no surface state before the entry and still
     // does not: the entry introduced no data path.
     expect(doc).not.toContain("data-slo-dashboard");
+  });
+});
+
+describe("Integration health surface (PA-010, closes RL-115-F6)", () => {
+  it("the compatible world renders the recorded report: state, version, last-checked, every check passed, mutations allowed", async () => {
+    const { console } = buildConsole({ actor: ADMIN });
+    const page = await console.renderPage({ page: "integrationHealth" });
+    expect(page.html).toContain('data-integration-health="true"');
+    expect(page.html).toContain('data-integration-state="compatible"');
+    expect(page.html).toContain(">Compatible</span>");
+    expect(page.html).toContain('data-mutations="allowed"');
+    expect(page.html).toContain("mutations allowed");
+    // The supported API version renders (the single-site pin).
+    expect(page.html).toContain('data-fact="supported-api-version"');
+    expect(page.html).toContain("Supported ADCOS API version: 2.0");
+    // Freshness pairs with the state: the recorded last-checked instant.
+    expect(page.html).toContain('data-fact="last-checked"');
+    expect(page.html).toContain('data-last-checked="2025-01-06T09:00:00.000Z"');
+    expect(page.html).toContain("2025-01-06T09:00:00.000Z");
+    // The recorded report's checks render as the real §9 suite names, all
+    // passed — and no failure explanation exists on a compatible report.
+    expect(page.html).toContain('data-compat-checks="true"');
+    expect(page.html).toContain('data-check-name="application_self.available"');
+    expect(page.html).toContain('data-check-name="version_pin.single_site"');
+    expect(page.html).not.toContain('data-check-passed="false"');
+    expect(page.html).not.toContain('data-failure-explanation');
+    // The read-only discipline is stated on the surface itself.
+    expect(page.html).toContain("never triggers the probe");
+    expect(page.html).toContain("never changes compatibility state");
+  });
+
+  it("the incompatible world renders the fail-closed state with a useful failure explanation", async () => {
+    const { console } = buildConsole({
+      actor: ADMIN,
+      seed: integrationHealthSeed({
+        state: "incompatible",
+        supportedApiVersion: "2.0",
+        lastCheckedAt: "2025-01-06T09:40:00.000Z",
+        suiteVersion: "1.0",
+        checks: [
+          {
+            name: "application_self.available",
+            passed: true,
+            detail: "GET application answered with a contract-shaped response",
+          },
+          {
+            name: "contract_lifecycle_states.required",
+            passed: false,
+            code: "ADCOS_CONTRACT_STATE_INVALID",
+            detail: "the pinned contract-state vocabulary must carry the 13 documented v2 states (found 11)",
+          },
+          {
+            name: "version_pin.single_site",
+            passed: false,
+            code: "ADCOS_VERSION_UNSUPPORTED",
+            detail: "the endpoint rejects the pinned ADCOS API version",
+          },
+        ],
+      }),
+    });
+    const page = await console.renderPage({ page: "integrationHealth" });
+    expect(page.html).toContain('data-integration-state="incompatible"');
+    expect(page.html).toContain(">Incompatible</span>");
+    expect(page.html).toContain('data-mutations="fail-closed"');
+    expect(page.html).toContain("mutations fail closed");
+    // The failure explanation is the recorded failed checks — names, codes
+    // and value-free details, never a guess.
+    expect(page.html).toContain('data-failure-explanation="true"');
+    expect(page.html).toContain("Why the probe recorded incompatible");
+    expect(page.html).toContain("2 of 3 recorded checks failed");
+    expect(page.html).toContain('data-failed-check="contract_lifecycle_states.required"');
+    expect(page.html).toContain("contract_lifecycle_states.required (ADCOS_CONTRACT_STATE_INVALID)");
+    expect(page.html).toContain('data-failed-check="version_pin.single_site"');
+    expect(page.html).toContain("version_pin.single_site (ADCOS_VERSION_UNSUPPORTED)");
+    // The passing check still renders as passed (the full report is shown).
+    expect(page.html).toContain('data-check-name="application_self.available"');
+    expect(page.html).toContain('data-check-passed="true"');
+    // Freshness pairs with the state (the recorded instant, not "now").
+    expect(page.html).toContain('data-last-checked="2025-01-06T09:40:00.000Z"');
+  });
+
+  it("the not-configured world renders the honest first-class state — never a fabricated compatibility", async () => {
+    const { console } = buildConsole({
+      actor: ADMIN,
+      seed: integrationHealthSeed({
+        state: "not-configured",
+        supportedApiVersion: "2.0",
+      }),
+    });
+    const page = await console.renderPage({ page: "integrationHealth" });
+    expect(page.html).toContain('data-integration-state="not-configured"');
+    expect(page.html).toContain(">Not configured</span>");
+    expect(page.html).toContain("The ADCOS probe environment is not configured");
+    expect(page.html).toContain("no compatibility claim is made");
+    // No report exists: never checked, no checks, mutations fail closed.
+    expect(page.html).toContain('data-never-checked="true"');
+    expect(page.html).toContain("never checked (no report recorded)");
+    expect(page.html).toContain('data-compat-checks="none"');
+    expect(page.html).not.toContain('data-check-name=');
+    expect(page.html).toContain('data-mutations="fail-closed"');
+    // The supported pin still renders (it is a pin, not a probe outcome).
+    expect(page.html).toContain("Supported ADCOS API version: 2.0");
+  });
+
+  it("the unknown world renders the fail-closed default (no report recorded — absent seed is unknown, never healthy)", async () => {
+    // The absent seed section IS the honest unknown world (nothing recorded).
+    const { console } = buildConsole({ actor: ADMIN, seed: integrationHealthSeed(undefined) });
+    const page = await console.renderPage({ page: "integrationHealth" });
+    expect(page.html).toContain('data-integration-state="unknown"');
+    expect(page.html).toContain(">Unknown</span>");
+    expect(page.html).toContain("The compatibility gate has not recorded a report");
+    expect(page.html).toContain("Mutations are refused until a startup compatibility check passes");
+    expect(page.html).toContain('data-never-checked="true"');
+    expect(page.html).toContain('data-compat-checks="none"');
+    expect(page.html).toContain('data-mutations="fail-closed"');
+  });
+
+  it("the surface performs NO mutations: rendering is read-only and never triggers the probe", async () => {
+    const captured: HttpRequest[] = [];
+    const { console } = buildConsole({ actor: ADMIN, captured });
+    const first = await console.renderPage({ page: "integrationHealth" });
+    expect(first.html).toContain('data-integration-state="compatible"');
+    // Every request is a READ (GET): the session resolution + the one
+    // integration-health read. No mutation route, no probe trigger, no
+    // adcos route is ever requested by the console surface.
+    expect(captured.length).toBeGreaterThanOrEqual(2);
+    for (const request of captured) {
+      expect(request.method, "the surface only reads").toBe("GET");
+      expect(request.path, "the surface never mutates or probes").not.toMatch(/probe|adcos|suspend|reactivate|trigger|transitions/);
+    }
+    const paths = captured.map((request) => `${request.method} ${request.path}`);
+    expect(paths).toContain("GET /v1/integration-health");
+    // Re-rendering is pure: the recorded state is unchanged by being read.
+    const second = await console.renderPage({ page: "integrationHealth" });
+    expect(second.html).toContain('data-integration-state="compatible"');
+    expect(second.html).toContain('data-last-checked="2025-01-06T09:00:00.000Z"');
+    // The mutations-allowed fact comes from the recorded state only — the
+    // gate itself stays inside the ADCOS integration boundary.
+    expect(second.html).toContain('data-mutations="allowed"');
+  });
+
+  it("freshness pairs with the state on every world (§14: text plus treatment, never hidden)", async () => {
+    // Report states: the recorded last-checked instant renders BESIDE the
+    // state; no-report states: the honest "never checked" renders.
+    const compatible = await buildConsole({ actor: ADMIN }).console.renderPage({ page: "integrationHealth" });
+    expect(compatible.html).toMatch(/data-integration-state="compatible"[\s\S]{0,2000}?data-last-checked="2025-01-06T09:00:00\.000Z"/);
+    expect(compatible.html).toContain('data-fact="presented-at"');
+    expect(compatible.html).toContain("Presented at: 2025-01-06T09:45:00.000Z");
+    const notConfigured = await buildConsole({
+      actor: ADMIN,
+      seed: integrationHealthSeed({ state: "not-configured", supportedApiVersion: "2.0" }),
+    }).console.renderPage({ page: "integrationHealth" });
+    expect(notConfigured.html).toMatch(/data-integration-state="not-configured"[\s\S]{0,2000}?data-never-checked="true"/);
+    expect(notConfigured.html).toContain('data-fact="presented-at"');
+  });
+
+  it("the nav entry renders on every console page (including denied renders — the nav is chrome)", async () => {
+    const { console } = buildConsole({ actor: ADMIN });
+    for (const surface of ALL_SURFACES) {
+      const doc = await console.renderDocument({ page: surface });
+      expect(doc, `${surface}: the integration-health nav entry`).toContain(
+        '<a href="/integration-health">Integration health</a>',
+      );
+    }
+    // A personal-tenant actor is denied the surface (fail-closed gate) but
+    // the nav entry still renders — and the surface's data is never fetched.
+    const captured: HttpRequest[] = [];
+    const denied = buildConsole({
+      actor: MEMBER,
+      tenant: `usr:aaaaaaaa-0000-4000-8000-000000000003`,
+      captured,
+    });
+    const doc = await denied.console.renderDocument({ page: "integrationHealth" });
+    expect(doc).toContain('data-access-denied="true"');
+    expect(doc).toContain(`data-required-permission="${SURFACE_READ_PERMISSIONS.integrationHealth}"`);
+    expect(doc).toContain('<a href="/integration-health">Integration health</a>');
+    expect(doc).not.toContain('data-integration-state=');
+    for (const request of captured) {
+      expect(request.path).not.toBe("/v1/integration-health");
+    }
+  });
+
+  it("a read failure renders the typed error panel, never a guessed compatibility", async () => {
+    const brokenConsole = new AdminConsoleApp({
+      client: new RoamLinkApiClient({
+        transport: {
+          async request(): Promise<HttpResponse> {
+            return {
+              status: 503,
+              body: JSON.stringify({
+                kind: "unavailable",
+                reason: "READ_MODEL_NOT_COMPOSED",
+                message: "the integration-health read model is not composed on this runtime",
+                retryable: true,
+                details: [],
+              }),
+            };
+          },
+        },
+        actor: { actorId: ADMIN, tenantId: TENANT },
+        ids: new DeterministicUuidGenerator(400_000),
+      }),
+    });
+    const page = await brokenConsole.renderPage({ page: "integrationHealth" });
+    expect(page.html).toContain('data-error-kind="unavailable"');
+    expect(page.html).not.toContain('data-integration-state=');
+    expect(page.html).not.toContain('data-integration-health=');
   });
 });
