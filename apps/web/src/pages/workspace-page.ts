@@ -44,6 +44,20 @@
  *    organization-level configuration managed upstream, so the section's
  *    user action names where management lives, it never offers a policy
  *    editor (RoamLink creates no second policy authority);
+ *  - PA-008 (closes RL-115-F5): the enterprise integrations section renders
+ *    the SSO/SCIM/MDM statuses from the READ MODEL - each integration
+ *    distinguishes EXACTLY four honest states (configured / not-configured
+ *    / unavailable / unknown). A missing backend contract is represented
+ *    HONESTLY: `unavailable` renders "requires the enterprise integration
+ *    API" with an explanation, never a fabricated configuration control -
+ *    no OAuth dance, no SCIM endpoint fields, no MDM enrollment forms
+ *    exist on this surface (the section composes no form, button or
+ *    command flow at all). Integrations are organization-level
+ *    configuration managed by the organization's own identity/device
+ *    infrastructure, so the section stays READ-ONLY and its user action
+ *    names where management lives; a workspace composing no integrations
+ *    read degrades honestly (every kind renders the honest unavailable
+ *    state + the support escape);
  *  - sections the API does not yet expose (cross-workspace switching; the
  *    audit trail surface) render the honest not-yet-available state
  *    instead of invented content;
@@ -57,6 +71,7 @@
 import {
   connectivitySubjectCard,
   deriveShellConnectivityState,
+  ENTERPRISE_INTEGRATION_RESOURCE_KINDS,
   SHELL_CONNECTIVITY_LANGUAGE,
   freshnessBadge,
   mutationStages,
@@ -68,9 +83,13 @@ import {
   type ConnectivityOverviewResource,
   type DeviceResource,
   type EnterpriseConnectorFailureResourceReason,
+  type EnterpriseIntegrationResourceKind,
+  type EnterpriseIntegrationResourceState,
+  type EnterpriseIntegrationView,
   type EnterprisePolicyView,
   type EnterpriseWorkspaceResource,
   type ExperienceIntentResource,
+  type FreshnessView,
   type HtmlFragment,
   type MutationAcknowledgement,
 } from "@roamlink/app-kit";
@@ -1069,6 +1088,251 @@ function policySummarySection(policy: EnterprisePolicyView | null): HtmlFragment
   );
 }
 
+// ---------------------------------------------------------------------------------
+// PA-008 (closes RL-115-F5): the enterprise integrations section. SSO, SCIM
+// and MDM finally have a visible surface — rendered FROM THE READ MODEL
+// ONLY, exactly as bounded by the audit's candidate remediation: each
+// integration distinguishes EXACTLY four honest states (Configured | Not
+// configured | Unavailable | Unknown), and a missing backend contract is
+// represented HONESTLY ("Unavailable — requires the enterprise integration
+// API" + an explanation), never replaced with a fabricated configuration
+// control. The section composes NO form, button or command flow: the UI
+// never fabricates configuration capability (no OAuth dance, no SCIM
+// endpoint fields, no MDM enrollment forms), because no write contract
+// backs them. Enterprise integrations are organization-level configuration
+// managed by the organization's own identity/device infrastructure — the
+// section is READ-ONLY, like the policy summary.
+// ---------------------------------------------------------------------------------
+
+/**
+ * The render order of the integration rows: the mirrored closed kind
+ * vocabulary, verbatim (never redefined here — apps/web imports ONLY
+ * app-kit's mirrored vocabularies).
+ */
+export const WORKSPACE_INTEGRATION_KINDS: readonly EnterpriseIntegrationResourceKind[] =
+  ENTERPRISE_INTEGRATION_RESOURCE_KINDS;
+
+/** The kind vocabulary in plain words (for the honest unavailable explanations). */
+const INTEGRATION_LANGUAGE: Readonly<
+  Record<EnterpriseIntegrationResourceKind, { readonly label: string; readonly plainName: string; readonly explanation: string }>
+> = Object.freeze({
+  sso: {
+    label: "Single sign-on (SSO)",
+    plainName: "single sign-on",
+    explanation:
+      "Your organization's people sign in with their existing work accounts instead of separate RoamLink passwords.",
+  },
+  scim: {
+    label: "User provisioning (SCIM)",
+    plainName: "user provisioning",
+    explanation:
+      "Your organization's directory would keep RoamLink membership in sync automatically.",
+  },
+  mdm: {
+    label: "Device management (MDM)",
+    plainName: "device management",
+    explanation:
+      "Your organization's device management would enroll and guide the fleet's devices.",
+  },
+});
+
+/** The four honest states, as written words (§14: never state by color alone). */
+const INTEGRATION_STATE_LANGUAGE: Readonly<Record<EnterpriseIntegrationResourceState, string>> =
+  Object.freeze({
+    configured: "Configured",
+    "not-configured": "Not configured",
+    unavailable: "Unavailable",
+    unknown: "Unknown",
+  });
+
+/** One integration row, derived purely from the workspace read. */
+export interface IntegrationRowView {
+  readonly kind: EnterpriseIntegrationResourceKind;
+  readonly state: EnterpriseIntegrationResourceState;
+  readonly fact: string;
+  /** The in-effect summary; present only on a configured row. */
+  readonly summary?: string;
+  /** The read's freshness; absent when no view was composed for the kind. */
+  readonly freshness?: FreshnessView;
+}
+
+/** The honest "missing backend contract" sentence every unavailable row leads with. */
+const UNAVAILABLE_LEAD = "Unavailable — requires the enterprise integration API.";
+
+/**
+ * Derives the integration rows from the workspace read's integrations
+ * section. Pure + total over every shape-legal wire world; no world invents
+ * an integration status, and the four states stay SEPARATE — never
+ * collapsed, never a guess:
+ *  - a `configured` view renders its summary with the freshness pairing
+ *    (a stale read keeps its content PAIRED with the stale badge — the §14
+ *    discipline);
+ *  - a `not-configured` view renders the verified absence (the action
+ *    lives upstream: the organization's administrators configure
+ *    integrations, never RoamLink);
+ *  - an `unavailable` view renders the honest missing-contract state —
+ *    "requires the enterprise integration API" with the explanation, never
+ *    a fabricated control;
+ *  - an `unknown` view renders the absence of evidence (never a guess);
+ *  - a kind the section does not carry renders the honest unavailable state
+ *    (no status was composed for it — nothing is invented);
+ *  - a NULL section (an older payload, or a workspace composing no
+ *    integrations read) degrades honestly: every kind renders the honest
+ *    unavailable state.
+ */
+export function deriveIntegrationRows(
+  integrations: readonly EnterpriseIntegrationView[] | null,
+): readonly IntegrationRowView[] {
+  return WORKSPACE_INTEGRATION_KINDS.map((kind) => {
+    const view = integrations?.find((candidate) => candidate.kind === kind);
+    if (view === undefined) {
+      return {
+        kind,
+        state: "unavailable" as const,
+        fact:
+          integrations === null
+            ? `${UNAVAILABLE_LEAD} This workspace composes no integration status read yet; when it does, the real states appear here. Nothing is invented in the meantime.`
+            : `${UNAVAILABLE_LEAD} This workspace's integration read carries no ${INTEGRATION_LANGUAGE[kind].plainName} status; when the read exists, the real state appears here. Nothing is invented in the meantime.`,
+      };
+    }
+    const freshness = view.freshness.freshnessState;
+    if (view.state === "configured") {
+      const summary = view.summary ?? "the configured integration";
+      return {
+        kind,
+        state: "configured" as const,
+        fact:
+          freshness === "FRESH"
+            ? `In effect: "${summary}".`
+            : freshness === "STALE"
+              ? `In effect as of the last verified read: "${summary}" — the read is stale.`
+              : "An integration record exists but no verified observation backs it yet.",
+        ...(view.summary !== undefined ? { summary: view.summary } : {}),
+        freshness: view.freshness,
+      };
+    }
+    if (view.state === "not-configured") {
+      return {
+        kind,
+        state: "not-configured" as const,
+        fact:
+          freshness === "FRESH"
+            ? "Not configured — a verified observation confirms your organization has not set this up. Your organization's administrators configure it upstream, never RoamLink."
+            : freshness === "STALE"
+              ? "Not configured as of the last verified read — the read is stale."
+              : "No verified observation exists yet — whether this integration is configured is unknown.",
+        freshness: view.freshness,
+      };
+    }
+    if (view.state === "unavailable") {
+      return {
+        kind,
+        state: "unavailable" as const,
+        fact: `${UNAVAILABLE_LEAD} RoamLink's enterprise integration API does not expose a ${INTEGRATION_LANGUAGE[kind].plainName} status read yet; when it does, the real state appears here. Nothing is invented in the meantime.`,
+        freshness: view.freshness,
+      };
+    }
+    return {
+      kind,
+      state: "unknown" as const,
+      fact: "No verified observation exists yet — whether this integration is configured is unknown.",
+      freshness: view.freshness,
+    };
+  });
+}
+
+function integrationsSection(integrations: readonly EnterpriseIntegrationView[] | null): HtmlFragment {
+  const rows = deriveIntegrationRows(integrations);
+  return el(
+    "section",
+    { id: "integrations", "data-integrations": "true" },
+    fragment(
+      pageHeading(
+        "Enterprise integrations",
+        "The single sign-on, user provisioning and device management integrations your organization can connect through RoamLink — every state below comes from the live read, never from a guess.",
+      ),
+      el(
+        "ul",
+        {
+          class: "goal-list",
+          "data-integration-rows": "true",
+          "aria-label": "Enterprise integrations and their current states",
+        },
+        ...rows.map((row) =>
+          el(
+            "li",
+            {
+              class: "goal-card",
+              "data-integration": row.kind,
+              "data-integration-state": row.state,
+            },
+            fragment(
+              el(
+                "p",
+                {},
+                fragment(
+                  el("strong", {}, text(INTEGRATION_LANGUAGE[row.kind].label)),
+                  text(" — "),
+                  el(
+                    "span",
+                    { class: "journey-state", "data-state-word": row.state },
+                    text(INTEGRATION_STATE_LANGUAGE[row.state]),
+                  ),
+                ),
+              ),
+              el("p", { class: "muted" }, text(INTEGRATION_LANGUAGE[row.kind].explanation)),
+              el("p", { class: "journey-fact" }, text(row.fact)),
+              row.freshness === undefined
+                ? fragment()
+                : el(
+                    "p",
+                    {},
+                    fragment(text("Integration read: "), freshnessBadge(row.freshness)),
+                  ),
+            ),
+          ),
+        ),
+      ),
+      // The authority note (the available user action, honestly bounded):
+      // integration configuration lives UPSTREAM, with the organization's
+      // administrators and its own identity/device infrastructure. This
+      // section offers no configuration control, because composing one here
+      // would fabricate capability no contract backs.
+      el(
+        "p",
+        { class: "muted", "data-integrations-authority": "true" },
+        text(
+          "Enterprise integrations are managed by your organization's administrators and its own identity and device systems. RoamLink surfaces their status here read-only — it never configures, enrolls or authenticates an integration.",
+        ),
+      ),
+      // The recovery path (§15). Where no read contract exists yet (any row
+      // unavailable) or no verified observation exists (any row unknown),
+      // the surface renders the honest state + THE SUPPORT ESCAPE — the
+      // customer cannot see the real status there, so help must be one
+      // reach away, with the statuses the read holds pre-carried in the
+      // narrative (no invented references). When every row rests on a
+      // verified observation, the quiet reachability note renders instead
+      // (an escape is for degraded states, never decoration).
+      rows.some((row) => row.state === "unavailable" || row.state === "unknown")
+        ? supportEscape({
+            context: {
+              subject: "We need help with our organization's enterprise integrations.",
+              detail: `The workspace reads: ${rows
+                .map((row) => `${INTEGRATION_LANGUAGE[row.kind].label} — ${INTEGRATION_STATE_LANGUAGE[row.state]}`)
+                .join("; ")}.`,
+              refs: [],
+            },
+            label: "Get help with integrations",
+          })
+        : el(
+            "p",
+            { class: "muted", "data-integrations-support-reachability": "true" },
+            text("If an integration status looks wrong or stale, Support is reachable from this workspace's Support section below."),
+          ),
+    ),
+  );
+}
+
 function deviceFleetSection(devices: readonly DeviceResource[]): HtmlFragment {
   return el(
     "section",
@@ -1246,6 +1510,10 @@ export function workspacePage(input: WorkspacePageInput): HtmlFragment {
     connectorEnrollmentSection(input.session, input.workspace, input.command),
     orgConnectivitySection(input.connectivity),
     policySummarySection(input.workspace.policy),
+    // PA-008: the enterprise integrations surface (the RL-115-F5 closure —
+    // SSO/SCIM/MDM statuses render from the read model with EXACTLY the
+    // four honest states; the section composes no configuration control).
+    integrationsSection(input.workspace.integrations),
     deviceFleetSection(input.devices),
     activeGoalsSection(input.intents),
     enrollmentSection(input.workspace),

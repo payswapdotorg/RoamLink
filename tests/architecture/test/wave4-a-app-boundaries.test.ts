@@ -393,6 +393,22 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/enterprise/src/policy.ts",
       owner: "ORGANIZATION_POLICY_SOURCES",
     },
+    // PA-008 (closes RL-115-F5): the READ-ONLY enterprise integration
+    // status mirror - kind + four-state vocabularies, the same discipline.
+    {
+      label: "enterprise integration kinds",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_INTEGRATION_RESOURCE_KINDS",
+      ownerFile: "packages/enterprise/src/integrations.ts",
+      owner: "ENTERPRISE_INTEGRATION_KINDS",
+    },
+    {
+      label: "enterprise integration states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_INTEGRATION_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/integrations.ts",
+      owner: "ENTERPRISE_INTEGRATION_STATES",
+    },
   ];
 
   it.each(MIRRORS)("the app contract's $label mirror matches the owning domain vocabulary", ({ mirrorFile, mirror, ownerFile, owner }) => {

@@ -69,6 +69,31 @@ policy authority, RL-LOCK-003/004/005). CAP-E-POLICY is VERIFIED below with
 its closure evidence; the flipped assertions live in the same suites that
 pinned the gap. All other findings stand unchanged.
 
+**Post-audit update (PA-008 — Enterprise Integrations Surface):** RL-115-F5
+is CLOSED by the same flip mechanism. The SSO/SCIM/MDM integrations now
+have a visible surface: the workspace's Enterprise integrations section
+(`apps/web/src/pages/workspace-page.ts` `integrationsSection`, anchored
+`#integrations`), rendered FROM THE READ MODEL — a new READ-ONLY
+integration status record owned by the enterprise domain
+(`packages/enterprise/src/integrations.ts` — the closed kind vocabulary
+sso/scim/mdm and the four-state vocabulary, fail-closed parse with honest-
+state invariants, NO write path) mirrored additively through the app
+contract's workspace read (`packages/app-kit/src/api/enterprise.ts` —
+`ENTERPRISE_INTEGRATION_RESOURCE_KINDS`/`STATES`, drift-guarded in wave4-a;
+an older payload without the section parses to the honest null section,
+RL-LOCK-017, and the surface degrades honestly from there). Each
+integration distinguishes EXACTLY four states — Configured | Not configured
+| Unavailable | Unknown — and the missing backend contract is represented
+HONESTLY: `unavailable` renders "requires the enterprise integration API"
+with an explanation, never a fabricated configuration control (the section
+composes no form, button or command flow: no OAuth dance, no SCIM endpoint
+fields, no MDM enrollment forms — the UI never fabricates configuration
+capability). The deterministic fake seeds the honest wave-2 world (SSO
+configured + fresh; SCIM/MDM the unavailable declaration) and the scenario
+seeds derive every kind × state world. CAP-E-SSO-SCIM-MDM is VERIFIED below
+with its closure evidence; the flipped assertions live in the same suites
+that pinned the gap. All other findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -156,7 +181,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 | CAP-E-ONBOARDING | Guided enterprise onboarding journey (the frozen 8-step chain) | Workspace journey | More → Workspace | Per-step states (complete/waiting/action-needed/blocked/not-started/not-available) | Workspace support section | **VERIFIED** |
 | CAP-E-POLICY | Organization-level policies + policy summary | Workspace policy summary section (`/workspace` `#policy-summary`) | Policy journey step → "Review the policy summary" (in-page anchor) | The summary section: current policy (statement, source, version, effective instant) with the freshness pairing; the explicit absence states (not-configured / unknown / not-available) | Policy support-reachability note + the workspace Support section | **VERIFIED** — was RL-115-F7 (GAP); closed by PA-007 (the org-policy read model + the real summary section; READ-ONLY — the authority note names where management lives upstream) |
 | CAP-E-CONNECTOR-ENROLLMENT | Enterprise connector (enrollment/provisioning as a user task) | Workspace connector-enrollment flow (`/workspace#connector-enrollment`) — the [Start enrollment] command form (`data-flow="provision-connector"`), capability-gated | Connector journey step → "Start connector enrollment" (in-page anchor to the flow) | The four-stage guided flow (Not started → Provisioning → Verification → Provisioned; closed failure-reason vocabulary explained; command pipeline on the `commandId` polling read) | Failure panel: [Retry enrollment] + support escape pre-carrying the connector facts | **VERIFIED** — was RL-115-F3 (GAP); closed by PA-06 |
-| CAP-E-SSO-SCIM-MDM | SSO/SCIM/MDM integrations | NONE | NONE | NONE | NONE | **GAP** — finding RL-115-F5 |
+| CAP-E-SSO-SCIM-MDM | SSO/SCIM/MDM integrations | Workspace integrations section (`/workspace` `#integrations`) | Settings → "Review enterprise integrations" (in-page anchor target on the workspace) | The integrations section: one row per integration (SSO / SCIM / MDM), each with its state, per-state fact and freshness pairing; the honest missing-backend-contract explanation | The integrations support escape ("Get help with integrations", pre-carrying the three statuses) in the unavailable/unknown worlds; the quiet reachability note otherwise | **VERIFIED** — was RL-115-F5 (GAP); closed by PA-008 (the enterprise integrations surface: statuses render from the READ MODEL with EXACTLY four honest states; `unavailable` is the honest "requires the enterprise integration API" state, never a fabricated control — READ-ONLY, no configuration affordance at all) |
 | CAP-E-AUDIT | Organization audit trail | Admin console Audit page (structural guard) | Workspace names the admin ops surface | Admin audit view | Support | **VERIFIED (proxy)** |
 
 ### §10 — failure semantics
@@ -171,7 +196,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | Admin console nav "SLO health" → `/ops/slo` (the session-gated host ops surface, RL-109) | The admin nav entry renders on every console page (denied renders included — the nav is chrome; the target holds the gate) | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **VERIFIED (proxy)** — RL-115-F2 closed by PA-009: the admin nav entry (render-level proof in `apps/admin/test/admin-app.test.ts`, structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the customer surfaces stay SLO-free by design (§13) |
 
-**Tally:** 21 VERIFIED · 11 VERIFIED (proxy) · 3 GAP.
+**Tally:** 22 VERIFIED · 11 VERIFIED (proxy) · 2 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
@@ -182,7 +207,10 @@ moved GAP -> VERIFIED via the guided connector enrollment action. PA-009:
 RL-115-F2 closed — CAP-SLO moved GAP -> VERIFIED (proxy) via the admin
 console's "SLO health" nav entry to the host ops route. PA-007: RL-115-F7
 closed — CAP-E-POLICY moved GAP -> VERIFIED via the organization policy
-read model + the real policy summary section.)
+read model + the real policy summary section. PA-008: RL-115-F5 closed —
+CAP-E-SSO-SCIM-MDM moved GAP -> VERIFIED via the enterprise integrations
+surface: the workspace's integrations section rendering the SSO/SCIM/MDM
+statuses from the read model with exactly four honest states.)
 
 ---
 
@@ -352,16 +380,105 @@ implemented exactly as bounded —
 - **Candidate remediation:** a refund read model section on the order journey (state +
   freshness, riding the projection discipline).
 
-### RL-115-F5 — SSO/SCIM/MDM integrations have zero UX vocabulary (CAP-E-SSO-SCIM-MDM)
+### RL-115-F5 — SSO/SCIM/MDM integrations have zero UX vocabulary (CAP-E-SSO-SCIM-MDM) — **CLOSED by PA-008**
 
 - **Where:** all app surfaces.
-- **What:** §8 lists SSO/SCIM/MDM integrations; no web, admin or mobile source carries
-  the vocabulary at all. There is no integration-status view, let alone a setup journey.
-- **Minimal reproducer:** the RL-115 GAP probe asserts `\b(SSO|SCIM|MDM)\b` is absent
-  from workspace/settings/more renders; the structural guard asserts absence over all
-  three apps' sources.
-- **Candidate remediation:** an enterprise integrations section on the workspace page
-  (honest not-available states until the API exists — the page's established pattern).
+- **What (the recorded gap):** §8 lists SSO/SCIM/MDM integrations; no web, admin or mobile
+  source carried the vocabulary at all. There was no integration-status view, let alone a
+  setup journey.
+- **Original minimal reproducer (the pin, now flipped):** the RL-115 GAP probe
+  asserted `\b(SSO|SCIM|MDM)\b` is absent from workspace/settings/more renders;
+  the structural guard asserted absence over all three apps' sources.
+- **CLOSURE (PA-008, VERIFIED):** the candidate remediation was implemented
+  exactly as bounded — an enterprise integrations section on the workspace
+  page (honest not-available states until the API exists — the page's
+  established pattern), PLUS the minimal read contract that pattern calls
+  for. The owning record is the enterprise domain's read-only
+  `EnterpriseIntegrationStatusRecord`
+  (`packages/enterprise/src/integrations.ts`): the closed kind vocabulary
+  (`ENTERPRISE_INTEGRATION_KINDS`: sso / scim / mdm) and the closed
+  FOUR-state vocabulary (`ENTERPRISE_INTEGRATION_STATES`: configured /
+  not-configured / unavailable / unknown — exactly the four states the
+  finding's remediation demanded, never collapsed), first-class freshness
+  (used DIRECTLY from @roamlink/contracts, never redefined), a fail-closed
+  parse with honest-state invariants (a `configured` assertion carries its
+  summary and rests on a COMPLETE observation; an `unavailable` record is a
+  contract declaration carrying NO observation — the missing backend
+  contract is never dressed up as an observed state; absence states carry
+  no integration content), and NO write path (the module owns parse +
+  vocabularies only; the authority fence is pinned by its own test). The
+  record is mirrored additively through the app contract's workspace read
+  (`packages/app-kit/src/api/enterprise.ts`: `EnterpriseIntegrationView`
+  — `kind`, `state`, optional `summary`, the shared `FreshnessView`
+  pairing — and `ENTERPRISE_INTEGRATION_RESOURCE_KINDS`/`STATES`,
+  drift-guarded by the wave4-a mirrors; duplicate kinds and unknown
+  fields/states fail closed; an older payload without the section parses
+  to the honest null section, RL-LOCK-017). The deterministic fake seeds
+  the honest wave-2 world by default (SSO configured + fresh with its
+  summary; SCIM and MDM carrying the honest `unavailable` declaration) and
+  the scenario seeds derive every kind × state world. The page's
+  `deriveIntegrationRows` renders the section from the read only: one row
+  per §8 kind (the mirrored kind vocabulary is the render's totality
+  anchor — a kind the read does not carry renders the honest unavailable
+  state), each with its state word, per-state fact and freshness pairing
+  (a stale configured read keeps its content PAIRED with the stale badge —
+  the §14 discipline), the authority note naming where integration
+  management lives (upstream, with the organization's administrators and
+  its own identity/device systems), and the §15 recovery path: the support
+  escape ("Get help with integrations", pre-carrying the three statuses)
+  in the unavailable/unknown worlds, the quiet reachability note
+  otherwise. THE NO-FABRICATION CONTRACT: the section composes NO form,
+  button or command flow — no OAuth dance, no SCIM endpoint fields, no
+  MDM enrollment forms — because no write contract backs them; a
+  workspace composing no integrations read degrades honestly (every kind
+  renders `unavailable` — "requires the enterprise integration API" with
+  an explanation — plus the support escape). The settings page carries
+  the contextual link ("Review enterprise integrations" →
+  `/workspace#integrations`); the admin and mobile surfaces stay
+  integration-vocabulary-free until their own work orders.
+- **Closure evidence (flipped assertions):**
+  1. `apps/web/test/rl115-capability-discoverability.test.ts` — the GAP
+     probe became the closure probe "VERIFIED CAP-E-SSO-SCIM-MDM
+     (RL-115-F5 closed)": the workspace renders
+     `data-integrations="true"` with all three integration rows, SSO
+     `configured` with the freshness pairing, SCIM/MDM `unavailable` with
+     the exact honest explanation, NO form/button/input inside the
+     section slice, the settings contextual link, the vocabulary bounded
+     to the workspace entry surface (settings/more stay acronym-free),
+     and the honest null-section degradation (every kind `unavailable` +
+     the support escape). The inventory row CAP-E-SSO-SCIM-MDM flipped
+     GAP -> VERIFIED with its four §15 surfaces.
+  2. `apps/web/test/enterprise-workspace.test.ts` — the journey tests:
+     the seeded-world render (SSO configured + summary + freshness
+     pairing, SCIM/MDM the unavailable declarations with their per-kind
+     explanations, the escape with the pre-carried statuses), EACH
+     INTEGRATION × EACH STATE (3 kinds × 4 states, `it.each`) rendering
+     its closed state marker + state word + per-state honest content, the
+     stale-freshness pairing, the null-section honest degradation, the
+     no-configuration-affordance pin (+ the authority note), the quiet
+     reachability note in the fully-verified world, and the settings
+     contextual link.
+  3. `tests/architecture/test/wave8-b-capability-guards.test.ts` — the
+     flipped structural guard: the web surface NOW carries the
+     SSO/SCIM/MDM vocabulary, the `data-integrations` /
+     `data-integration-state` markers, the "requires the enterprise
+     integration API" explanation, the `deriveIntegrationRows` composition
+     over the mirrored kind vocabulary and the settings link; the
+     integrations section source composes no form/button/input and the
+     web app composes no integration write affordance; no direct
+     enterprise package import; admin/mobile stay vocabulary-free. The
+     GAP-count guard moved 3 -> 2 with the doc row.
+  4. `tests/architecture/test/wave4-a-app-boundaries.test.ts` — the new
+     mirror drift guards: `ENTERPRISE_INTEGRATION_RESOURCE_KINDS` <-
+     `ENTERPRISE_INTEGRATION_KINDS` and
+     `ENTERPRISE_INTEGRATION_RESOURCE_STATES` <-
+     `ENTERPRISE_INTEGRATION_STATES`.
+  5. `packages/enterprise/test/integrations.test.ts` +
+     `packages/app-kit/test/enterprise-workspace.test.ts` — the record's
+     honest-state invariants (fail-closed parse, the unavailable
+     declaration's observation-free discipline, no write path) and the
+     read contract's additive-tolerance + vocabulary + fail-closed
+     proofs.
 
 ### RL-115-F6 — no integration/compatibility-health surface (CAP-D-COMPAT)
 
@@ -502,7 +619,8 @@ The dispatch named three candidates; each was verified, not assumed:
 Three further gaps were found by the audit and recorded above: refunds (F4),
 SSO/SCIM/MDM (F5), compatibility health (F6), plus the org-policy absence made explicit
 by the page itself (F7) and the URL-only delivery-progress journey (F8). F8 has since
-been CLOSED by PA-003 and F7 by PA-007 (see the finding records above); the other
+been CLOSED by PA-003, F7 by PA-007 (see the finding records above) and F5 by PA-008
+(the enterprise integrations surface — see the finding record above); the other
 findings stand.
 
 ## 5. Honest verification limits (AR-009/AR-010 discipline)

@@ -69,6 +69,11 @@ export function settingsPage(input: { readonly session: ActorSessionResource }):
           ),
         ),
         el("p", {}, el("a", { href: "/workspace" }, text("Open your workspace"))),
+        // PA-008 (closes RL-115-F5): the contextual link from the journey
+        // where enterprise integrations become relevant — the account/
+        // workspace controls. The integrations surface itself (the SSO/
+        // SCIM/MDM statuses) lives on the workspace page.
+        el("p", {}, el("a", { href: "/workspace#integrations" }, text("Review enterprise integrations"))),
       ),
     ),
     el(

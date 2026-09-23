@@ -13,6 +13,14 @@
  *    parses to the honest null section - RL-LOCK-017), with its mirrored
  *    state/source vocabularies, the freshness pairing evaluated at the
  *    query instant, and the explicit absence states kept separate.
+ *  - PA-008 (closes RL-115-F5): the READ-ONLY enterprise integrations
+ *    section rides the same read additively - one status view per §8 kind
+ *    (SSO / SCIM / MDM), each with EXACTLY four honest states (configured /
+ *    not-configured / unavailable / unknown). `unavailable` is the honest
+ *    missing-backend-contract declaration; an older payload without the
+ *    section parses to the honest null section, and the surface degrades
+ *    honestly from there (never a guessed status, never a fabricated
+ *    configuration control).
  */
 import { describe, expect, it } from "vitest";
 
@@ -20,6 +28,8 @@ import {
   createInMemoryApi,
   ENTERPRISE_CONNECTOR_RESOURCE_STATES,
   ENTERPRISE_ENROLLMENT_RESOURCE_STATES,
+  ENTERPRISE_INTEGRATION_RESOURCE_KINDS,
+  ENTERPRISE_INTEGRATION_RESOURCE_STATES,
   ENTERPRISE_POLICY_RESOURCE_SOURCES,
   ENTERPRISE_POLICY_RESOURCE_STATES,
   fakeApiSeed,
@@ -89,6 +99,9 @@ describe("the enterprise workspace read contract", () => {
     // PA-007: no policy record composed either - the honest null section
     // ("not available"), DISTINCT from a record asserting absence.
     expect(workspace.policy).toBeNull();
+    // PA-008: no integration status views composed either - the honest
+    // null section the customer surface degrades honestly from.
+    expect(workspace.integrations).toBeNull();
   });
 
   it("personal-scope tenants fail closed as typed unauthorized errors", async () => {
@@ -174,6 +187,11 @@ describe("the enterprise workspace read contract", () => {
     // policy section still parses - to the honest null section (the
     // workspace surface composes no policy read; never a guessed policy).
     expect(workspace.policy).toBeNull();
+    // PA-008 additive tolerance (RL-LOCK-017): an OLDER payload without the
+    // integrations section parses the same way - the honest null section
+    // the surface degrades honestly from (every kind renders the honest
+    // unavailable state; never a guessed status).
+    expect(workspace.integrations).toBeNull();
   });
 
   it("parses the explicit policy absence states and the stale freshness pairing (PA-007)", () => {
@@ -209,5 +227,127 @@ describe("the enterprise workspace read contract", () => {
     });
     expect(stale.policy?.state).toBe("configured");
     expect(stale.policy?.freshness.freshnessState).toBe("STALE");
+  });
+});
+
+describe("the enterprise integrations read contract (PA-008, RL-115-F5)", () => {
+  it("reads the seeded integrations section: SSO configured + fresh, SCIM and MDM the honest unavailable declaration", async () => {
+    const client = buildClient(MEMBER_ACTOR, TENANT);
+    const workspace = await client.getEnterpriseWorkspace();
+    const integrations = workspace.integrations;
+    expect(integrations).not.toBeNull();
+    expect(integrations?.length).toBe(3);
+    const byKind = new Map((integrations ?? []).map((view) => [view.kind, view]));
+    // The closed kind vocabulary renders verbatim, one view per kind.
+    expect([...byKind.keys()].sort()).toEqual([...ENTERPRISE_INTEGRATION_RESOURCE_KINDS].sort());
+    // SSO: the honest happy-path world - configured, with its summary and
+    // the freshness pairing evaluated at the query instant (09:45 < 10:00).
+    const sso = byKind.get("sso");
+    expect(ENTERPRISE_INTEGRATION_RESOURCE_STATES).toContain(sso?.state);
+    expect(sso?.state).toBe("configured");
+    expect(sso?.summary).toContain("identity provider");
+    expect(sso?.freshness.freshnessState).toBe("FRESH");
+    expect(sso?.freshness.observedAt).toBe("2025-01-06T09:00:00.000Z");
+    expect(sso?.freshness.freshUntil).toBe("2025-01-06T10:00:00.000Z");
+    // SCIM and MDM: the honest missing-backend-contract declaration - no
+    // invented status, no observation (UNKNOWN freshness), no content.
+    for (const kind of ["scim", "mdm"] as const) {
+      const view = byKind.get(kind);
+      expect(view?.state).toBe("unavailable");
+      expect("summary" in (view ?? {})).toBe(false);
+      expect(view?.freshness.freshnessState).toBe("UNKNOWN");
+      expect(view?.freshness.observedAt).toBeNull();
+    }
+  });
+
+  it("the mirrored kind and state vocabularies stay closed and four-state", () => {
+    expect(ENTERPRISE_INTEGRATION_RESOURCE_KINDS).toEqual(["sso", "scim", "mdm"]);
+    expect(ENTERPRISE_INTEGRATION_RESOURCE_STATES).toEqual([
+      "configured",
+      "not-configured",
+      "unavailable",
+      "unknown",
+    ]);
+  });
+
+  it("parses the explicit honest states, including the unavailable declaration", () => {
+    const workspace = parseEnterpriseWorkspaceResource({
+      presentedAt: "2025-01-06T09:45:00.000Z",
+      organization: null,
+      enrollment: null,
+      connector: null,
+      integrations: [
+        {
+          kind: "scim",
+          state: "not-configured",
+          freshness: { observedAt: "2025-01-06T09:00:00.000Z", receivedAt: "2025-01-06T09:00:00.000Z", freshUntil: "2025-01-06T10:00:00.000Z", freshnessState: "FRESH" },
+        },
+        {
+          kind: "mdm",
+          state: "unknown",
+          freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" },
+        },
+      ],
+    });
+    expect(workspace.integrations?.length).toBe(2);
+    expect(workspace.integrations?.[0]?.state).toBe("not-configured");
+    expect("summary" in (workspace.integrations?.[0] ?? {})).toBe(false);
+    expect(workspace.integrations?.[1]?.state).toBe("unknown");
+    expect(workspace.integrations?.[1]?.freshness.freshnessState).toBe("UNKNOWN");
+  });
+
+  it("the integrations parser fails closed: unknown kind, out-of-vocabulary state, unknown field, duplicate kind", () => {
+    const base = {
+      presentedAt: "2025-01-06T09:45:00.000Z",
+      organization: null,
+      enrollment: null,
+      connector: null,
+    };
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: [
+          { kind: "ldap", state: "configured", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: [
+          { kind: "sso", state: "active", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: [
+          { kind: "sso", state: "configured", protocol: "oidc", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: [
+          { kind: "sso", state: "unavailable", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+          { kind: "sso", state: "unknown", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: { kind: "sso", state: "unknown", freshness: { observedAt: null, receivedAt: null, freshUntil: null, freshnessState: "UNKNOWN" } },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseEnterpriseWorkspaceResource({
+        ...base,
+        integrations: null,
+        unexpected: true,
+      }),
+    ).toThrow();
   });
 });
