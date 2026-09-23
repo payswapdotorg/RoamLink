@@ -279,7 +279,17 @@ export function applicationShell(input: ApplicationShellInput): HtmlFragment {
       el(
         "div",
         { class: "shell-header-inner" },
-        el("a", { class: "shell-title", href: input.homeHref }, text(input.appTitle)),
+        // RL-114-F1 (closed by PA-004): the app title is the DOCUMENT h1 —
+        // an h1-wrapped anchor, mirroring the admin shell's siteHeader h1
+        // (components.ts pageShell). The anchor keeps its semantics (href +
+        // the shell-title class); the wrapper is reset in WARM_SHELL_STYLES
+        // (.shell-title-wrap) so the rendered result carries the anchor's
+        // size/weight discipline, never the browser's h1 default.
+        el(
+          "h1",
+          { class: "shell-title-wrap" },
+          el("a", { class: "shell-title", href: input.homeHref }, text(input.appTitle)),
+        ),
         el("div", { class: "shell-header-status" }, input.connectivityIndicator),
       ),
     ),
@@ -316,6 +326,7 @@ body { background: #faf8f5; color: #2d2a26; }
 .shell-skip-link:focus { left: 0.5rem; top: 0.5rem; }
 .shell-header { background: #fffdf9; border-bottom: 1px solid #e8e2da; }
 .shell-header-inner { max-width: 72rem; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; flex-wrap: wrap; gap: 0.6rem 1.5rem; align-items: center; justify-content: space-between; }
+.shell-title-wrap { margin: 0; font-size: 1.15rem; font-weight: 700; }
 .shell-title { font-size: 1.15rem; font-weight: 700; color: #2d2a26; text-decoration: none; letter-spacing: -0.01em; }
 .shell-header-status { min-width: 0; flex: 1 1 16rem; }
 .shell-body { max-width: 72rem; margin: 0 auto; padding: 1.25rem; display: block; }
@@ -331,7 +342,7 @@ body { background: #faf8f5; color: #2d2a26; }
 .shell-indicator-detail { margin: 0; color: #8a8078; font-size: 0.82rem; }
 .shell-indicator-facts { display: none; margin: 0; padding: 0; list-style: none; color: #6f665e; font-size: 0.8rem; }
 .shell-indicator[data-expanded-facts="true"] .shell-indicator-facts { display: block; flex-basis: 100%; }
-.shell-indicator-link { font-size: 0.82rem; color: #5f5347; }
+.shell-indicator-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.82rem; color: #5f5347; }
 .shell-indicator[data-shell-connectivity="evidenced-fresh"] .shell-indicator-mark { color: #1e7a46; }
 .shell-indicator[data-shell-connectivity="evidenced-stale"] .shell-indicator-mark { color: #a16207; }
 .shell-indicator[data-shell-connectivity="evidenced-unknown"] .shell-indicator-mark,

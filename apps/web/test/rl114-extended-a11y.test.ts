@@ -17,20 +17,26 @@
  * VERIFICATION-ONLY DISCIPLINE (the threat-model-verification.md precedent):
  * this suite records findings as PINNED assertions over the current
  * observable behavior, so the eventual fixes flip explicit assertions.
- * No src file is touched by this work item. The findings recorded here:
+ * The findings recorded here and their disposition:
  *
- *  RL-114-F1 — the customer web shell renders the app title as a plain
- *    anchor, so NO rendered web document contains an <h1>: every document's
- *    heading hierarchy starts at h2. (Pinned below in "heading hierarchy".)
- *  RL-114-F2 — heading-level skips on the edge paths: the Connectivity
- *    center's evidence/technical disclosure panels render <h4> under an
- *    <h2> context (h2->h4 skip); read-failure bodies and mutation-result
- *    panels lead with an <h3> before any <h1>/<h2> exists.
- *  RL-114-F3 — the 44px touch-target floor covers buttons, inputs, the
- *    disclosure summary, the nav families and the card-style action links,
- *    but NOT the generic in-content action links (home fact-card links,
- *    goal/device card links, journey "Open ..." links) nor the shell
- *    indicator's "Connectivity details" link.
+ *  RL-114-F1 — CLOSED by PA-004 (the web document a11y contract): the
+ *    customer web shell renders the app title as an h1-WRAPPED anchor
+ *    (packages/app-kit/src/ui/shell.ts applicationShell:
+ *    h1.shell-title-wrap > a.shell-title — the same document-h1 discipline
+ *    as the admin shell's siteHeader h1), so every rendered web document
+ *    carries exactly one h1 and every hierarchy starts there. (Proven
+ *    below in "heading hierarchy".)
+ *  RL-114-F2 — CLOSED by PA-004: no level skips remain anywhere. The
+ *    Connectivity center's evidence/technical disclosure panels render
+ *    h3 section-level subject headings (h2 section > h3 panel subject —
+ *    the pinned h2->h4 skip is gone), and the read-failure +
+ *    mutation-result panel headings are document-body-level h2s under
+ *    the shell h1 (they precede the page's own h2).
+ *  RL-114-F3 — CLOSED by PA-004: the 44px touch-target floor reaches
+ *    every interactive family — the generic in-content action links
+ *    (home fact-card links, goal/device card links, journey "Manage
+ *    goals" links) and the shell indicator's "Connectivity details"
+ *    link (floored in WARM_SHELL_STYLES alongside the nav families).
  *  RL-114-F4 — RESOLVED by PA-003 (orchestrator decision, Option B): the
  *    /notifications page is deliberately compatibility-only. Zero inbound
  *    links (no nav destination, More-sheet entry or in-page link) is now
@@ -48,6 +54,7 @@ import {
   createInMemoryApi,
   fakeApiSeed,
   RoamLinkApiClient,
+  WARM_SHELL_STYLES,
   type FakeApiSeed,
   type FakeTenantSeed,
   type HttpTransport,
@@ -237,48 +244,56 @@ export function selectorsWith44px(css: string): string[] {
 // --------------------------------------------------------------------------------
 
 describe("RL-114 semantic heading hierarchy (spec/ux-architecture.md §14)", () => {
-  it("FINDING RL-114-F1 (pinned): no rendered web document contains an h1 — every hierarchy starts at h2", async () => {
-    // The application shell renders the app title as `<a class="shell-title">`
-    // (packages/app-kit/src/ui/shell.ts applicationShell), so the page-level
-    // h2 from pageHeading() is the FIRST heading of every document. The §14
-    // rule "semantic headings" wants an h1 per document. Pinned as-is; the
-    // shell fix (title becomes the h1) flips every assertion in this test.
+  it("VERIFIED RL-114-F1 (closed by PA-004): every rendered web document carries exactly one h1 — the shell title", async () => {
+    // PA-004 closed RL-114-F1: the application shell renders the app title
+    // as an h1-wrapped anchor (packages/app-kit/src/ui/shell.ts
+    // applicationShell: h1.shell-title-wrap > a.shell-title — the same
+    // document-h1 discipline as the admin shell's siteHeader h1), so the
+    // shell h1 is the FIRST heading of every document and each page's own
+    // h2 nests under it. The assertions flipped from the pinned absence
+    // (h1Count 0 / firstLevel 2) to the closed contract below.
     const { app } = buildApp();
     for (const renderCase of RENDER_CASES) {
       const document = await app.renderDocument(renderCase.request);
       const inventory = headingInventory(document);
-      expect(inventory.h1Count, `${renderCase.name}: h1 count`).toBe(0);
-      expect(inventory.firstLevel, `${renderCase.name}: first heading level`).toBe(2);
+      expect(inventory.h1Count, `${renderCase.name}: h1 count`).toBe(1);
+      expect(inventory.firstLevel, `${renderCase.name}: first heading level`).toBe(1);
+      // The h1 is the shell title wrapper and the anchor keeps its full
+      // semantics (class + href + the app title text).
+      expect(document, `${renderCase.name}: the h1-wrapped shell title`).toContain(
+        '<h1 class="shell-title-wrap"><a class="shell-title" href="/">RoamLink</a></h1>',
+      );
     }
   });
 
-  it("no OTHER level skips exist beyond the pinned RL-114-F2 connectivity disclosure skip", async () => {
+  it("VERIFIED RL-114-F2 (closed by PA-004): no level skips exist anywhere — the connectivity disclosure skip is gone", async () => {
     const { app } = buildApp();
     const skipsByCase = new Map<string, readonly string[]>();
     for (const renderCase of RENDER_CASES) {
       const inventory = headingInventory(await app.renderDocument(renderCase.request));
       if (inventory.skips.length > 0) skipsByCase.set(renderCase.name, inventory.skips);
     }
-    // FINDING RL-114-F2 (pinned): the Connectivity center's evidence and
-    // technical disclosure panels render h4 subject headings directly under
-    // the h2 section context — the FIRST h4 after the h2 section heading is
-    // a skipped level (h2->h4). Every other surface is skip-free.
-    expect([...skipsByCase.entries()]).toEqual([["connectivity", ["h2->h4"]]]);
+    // PA-004 closed RL-114-F2: the Connectivity center's evidence and
+    // technical disclosure panels render h3 subject headings under the h2
+    // section context (h2 section > h3 panel subject) — the pinned h2->h4
+    // skip is gone, and no other surface skips a heading level.
+    expect([...skipsByCase.entries()]).toEqual([]);
   });
 
-  it("FINDING RL-114-F2 (pinned): read-failure bodies lead with an h3 before any h1/h2 exists", async () => {
+  it("VERIFIED RL-114-F2 (closed by PA-004): read-failure bodies lead with the shell h1, then the panel h2", async () => {
     const { app } = buildApp({ transport: unavailableTransport() });
     for (const renderCase of RENDER_CASES.filter((c) => c.reads)) {
       const document = await app.renderDocument(renderCase.request);
       const inventory = headingInventory(document);
-      // The typed error panel's "The request failed" is an h3 and it is the
-      // only heading on a failed read (no h1 from the shell — RL-114-F1).
-      expect(inventory.firstLevel, `${renderCase.name}: first heading on failed read`).toBe(3);
-      expect(document).toContain(">The request failed</h3>");
+      // The shell h1 comes first; the typed error panel's "The request
+      // failed" is a document-body-level h2 under it — never a bare h3
+      // leading the document.
+      expect(inventory.firstLevel, `${renderCase.name}: first heading on failed read`).toBe(1);
+      expect(document).toContain(">The request failed</h2>");
     }
   });
 
-  it("FINDING RL-114-F2 (pinned): a surfaced mutation result leads with the pipeline h3", async () => {
+  it("VERIFIED RL-114-F2 (closed by PA-004): a surfaced mutation result leads with the panel h2 under the shell h1", async () => {
     const { app } = buildApp();
     const withResult = await app.renderDocument({
       page: "intents",
@@ -287,9 +302,13 @@ describe("RL-114 semantic heading hierarchy (spec/ux-architecture.md §14)", () 
         error: new Error("unexpected"),
       },
     });
-    // The mutation-result panel renders BEFORE the page body, so its h3
-    // ("The request failed" / "Command acknowledged") precedes the page h2.
-    expect(headingInventory(withResult).firstLevel).toBe(3);
+    // The mutation-result panel renders BEFORE the page body, so its h2
+    // ("The request failed" / "Command acknowledged") follows the shell h1
+    // and precedes the page h2 — document-body level, never a mis-nested h3.
+    const inventory = headingInventory(withResult);
+    expect(inventory.firstLevel).toBe(1);
+    expect(inventory.levels[1]).toBe(2);
+    expect(withResult).toContain(">The request failed</h2>");
     // The panel itself explains honestly (no raw dump): unknown errors are
     // reduced to a generic sentence, never third-party error text.
     expect(withResult).toContain("An unexpected error occurred (details suppressed");
@@ -410,36 +429,68 @@ describe("RL-114 touch-target coverage on all interactive elements (§14)", () =
     );
   });
 
-  it("FINDING RL-114-F3 (pinned): generic in-content action links have no 44px touch-target floor", async () => {
-    // The known-good `a` floors are exactly the shell nav families plus the
-    // card/escape link families. Everything else — the home fact-card action
-    // links ("Review your goal", "Open Activity", ...), the goal/device card
-    // links ("Open this device"), the journey "Manage goals" links and the
-    // shell indicator's "Connectivity details" link — is inline text with no
-    // minimum size. Pinned as-is; a floor rule (or per-family rules) flips it.
+  it("VERIFIED RL-114-F3 (closed by PA-004): every generic in-content action-link family carries the 44px touch-target floor", async () => {
+    // PA-004 closed RL-114-F3: the floor now reaches EVERY generic
+    // in-content action-link family the finding named — the home fact-card
+    // action links ("Review your goal", "Open Activity", ...), the goal/
+    // device card links ("Open this device") and the journey "Manage
+    // goals" links — plus the shell indicator's "Connectivity details"
+    // link (floored in the shell layer, WARM_SHELL_STYLES). The assertions
+    // flipped from the pinned absence to the closed floor contract below.
     const { app } = buildApp();
     const document = await app.renderDocument({ page: "home" });
 
-    // The shell indicator link exists on every page and has no 44px rule.
+    // The shell indicator link exists on every page — and now carries its
+    // own 44px rule in the shell layer, alongside the two nav families.
     expect(document).toContain('class="shell-indicator-link"');
+    expect(selectorsWith44px(WARM_SHELL_STYLES)).toEqual(
+      expect.arrayContaining([
+        ".shell-indicator-link",
+        ".shell-sidebar-nav a",
+        ".shell-bottom-nav a",
+      ]),
+    );
 
-    // No generic `a { ... min-height }` rule exists in either stylesheet.
+    // No generic `a { ... min-height }` rule exists in either stylesheet:
+    // the floors stay per-family, never a blanket anchor rule.
     expect(WEB_APP_STYLES).not.toMatch(/(^|\n)\s*a\s*\{[^}]*min-height/);
 
-    // The exact current set of floored anchor selectors is frozen here: the
-    // app layer floors exactly the card-style link families below — nothing
-    // else (the shell layer additionally floors its two nav families). A new
-    // floor (the fix for this finding) changes this set and flips the assert.
+    // The exact set of floored anchor selectors stays frozen here: the app
+    // layer floors the card-style families plus the generic in-content
+    // action-link families PA-004 added (the shell layer additionally
+    // floors its two nav families + the indicator link above). Losing a
+    // floor or inventing a new unfloored anchor family flips this assert.
     // PA-003 (RL-115-F8) added the `.order-link` family (the Orders-table
-    // journey links) to this set; the finding itself STANDS: the generic
-    // in-content action links named above still have no floor.
+    // journey links); PA-004 (RL-114-F3) added `.home-fact-action a`,
+    // `.goal-card a` and `.journey-action a` (the journey "Manage goals"
+    // links join the existing family under its real selector).
     const anchorFloors = selectorsWith44px(WEB_APP_STYLES).filter((s) =>
       s.includes(" a") || ANCHOR_ELEMENT_CLASSES.has(s),
     );
-    expect(anchorFloors).toEqual([".more-item-link", ".order-link", ".support-escape a"]);
-    expect(WEB_APP_STYLES).toContain(".home-fact-action a { font-weight: 600; }");
-    expect(WEB_APP_STYLES).not.toContain(".home-fact-action a { font-weight: 600; min-height");
-    expect(WEB_APP_STYLES).not.toContain(".goal-card a {");
+    expect(anchorFloors).toEqual([
+      ".goal-card a",
+      ".home-fact-action a",
+      ".journey-action a",
+      ".more-item-link",
+      ".order-link",
+      ".support-escape a",
+    ]);
+    // The floored families carry the house floor mechanism exactly
+    // (inline-flex + vertical alignment + min-height, same as the
+    // card-style families) — and the goal-card family exists at all.
+    expect(WEB_APP_STYLES).toContain(
+      ".home-fact-action a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }",
+    );
+    expect(WEB_APP_STYLES).toContain(
+      ".journey-action a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }",
+    );
+    expect(WEB_APP_STYLES).toContain(".goal-card a {");
+    // The rendered journey links actually carry the floored family class
+    // (the "Manage goals" links on the device detail and workspace surfaces).
+    const device = await app.renderDocument({ page: "device", params: { deviceId: PHONE_ID } });
+    expect(device).toContain('class="journey-action"');
+    const workspace = await app.renderDocument({ page: "workspace" });
+    expect(workspace).toContain('class="journey-action"');
   });
 });
 
