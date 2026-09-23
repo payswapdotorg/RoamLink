@@ -194,7 +194,10 @@ export function mutationResultPanel(result: MutationFlowResult): HtmlFragment {
       "div",
       { class: "panel ok", "data-mutation-result": "ok", "data-command-id": ack.commandId },
       fragment(
-        el("h3", {}, text("Command acknowledged")),
+        // RL-114-F2 (closed by PA-004): the mutation-result panel heading is
+        // a DOCUMENT-BODY-LEVEL heading — it precedes the page's own h2, so
+        // it is an h2 under the shell h1 (never an h3 skipping past h2).
+        el("h2", {}, text("Command acknowledged")),
         el(
           "p",
           { class: "muted" },
@@ -227,7 +230,9 @@ export function errorPanel(error: unknown): HtmlFragment {
         "data-error-reason": clientError.reason,
       },
       fragment(
-        el("h3", {}, text("The request failed")),
+        // RL-114-F2 (closed by PA-004): document-body-level heading (h2) —
+        // see mutationResultPanel above.
+        el("h2", {}, text("The request failed")),
         el(
           "p",
           {},
@@ -243,7 +248,7 @@ export function errorPanel(error: unknown): HtmlFragment {
     "div",
     { class: "panel error", "data-mutation-result": "error", "data-error-kind": "unknown" },
     fragment(
-      el("h3", {}, text("The request failed")),
+      el("h2", {}, text("The request failed")),
       el(
         "p",
         {},

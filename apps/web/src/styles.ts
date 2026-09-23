@@ -8,6 +8,14 @@
  * PA-003 (RL-115-F8): `.order-link` is the Orders-table journey-link family
  * — the same card-style action-link discipline (and 44px touch-target
  * floor) as `.support-escape a` and `.more-item-link`.
+ *
+ * PA-004 (RL-114-F3): the 44px touch-target floor reaches EVERY generic
+ * in-content action-link family — `.home-fact-action a` (the home fact-card
+ * actions), `.goal-card a` (the goal/device card links) and `.journey-action
+ * a` (the journey trailing links, the "Manage goals" family) — with the
+ * same floor mechanism as the card-style families (min-height + the
+ * inline-flex/vertical-alignment discipline), so the floor never breaks the
+ * surrounding layout.
  */
 export const WEB_APP_STYLES = `
 h2 { font-size: 1.15rem; margin: 1.25rem 0 0.5rem; }
@@ -51,7 +59,7 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .home-fact-primary { font-size: 1.02rem; font-weight: 600; margin: 0.2rem 0; }
 .home-fact-muted { color: #6f665e; font-size: 0.9rem; margin: 0.25rem 0; }
 .home-fact-action { margin: 0.5rem 0 0; }
-.home-fact-action a { font-weight: 600; }
+.home-fact-action a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
 .home-fact-list { margin: 0.3rem 0; padding-left: 1.1rem; }
 .home-fact-list li { margin: 0.25rem 0; font-size: 0.92rem; }
 .home-getting-started { background: #f6f1e8; border: 1px solid #e3d8c6; border-radius: 12px; padding: 1rem 1.1rem; margin-top: 1.25rem; }
@@ -99,7 +107,7 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .disclosure summary { cursor: pointer; padding: 0.75rem 1rem; min-height: 44px; box-sizing: border-box; font-weight: 600; color: #4d453e; }
 .disclosure summary:hover { color: #2d2a26; }
 .disclosure > *:not(summary) { padding: 0 1rem 0.9rem; }
-.disclosure > h4:first-of-type { margin: 0.4rem 0 0; padding-top: 0; }
+.disclosure > h3:first-of-type { margin: 0.4rem 0 0; padding-top: 0; }
 .support-escape { margin: 0.75rem 0 0.25rem; }
 .support-escape a { display: inline-flex; align-items: center; min-height: 44px; padding: 0.35rem 0.9rem; background: #fdfbf7; border: 1px solid #d9c9a8; border-radius: 8px; font-weight: 600; text-decoration: none; }
 .support-escape a:hover { border-color: #c9b989; }
@@ -122,6 +130,7 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .goal-card { background: #fff; border: 1px solid #e8e2da; border-radius: 10px; padding: 0.85rem 1rem; }
 .goal-card h3 { margin: 0 0 0.3rem; }
 .goal-card p { margin: 0.2rem 0; }
+.goal-card a { display: inline-flex; align-items: center; min-height: 44px; }
 .goal-preferences { color: #4d453e; }
 .preference-list { border: 1px solid #e8e2da; border-radius: 10px; padding: 0.6rem 0.8rem; margin: 0.6rem 0; display: grid; gap: 0.25rem; }
 .preference-option { display: flex; gap: 0.55rem; align-items: center; min-height: 44px; font-size: 0.95rem; }
@@ -131,7 +140,7 @@ form input[type="text"], form select { display: block; width: 100%; max-width: 2
 .fallback-list li { margin: 0.25rem 0; }
 /* PA-06 connector enrollment flow (the guided action on the workspace) */
 .journey-action { margin: 0.35rem 0 0; }
-.journey-action a { font-weight: 600; }
+.journey-action a { display: inline-flex; align-items: center; min-height: 44px; font-weight: 600; }
 .journey-stage[data-stage-state="complete"] { border-left-color: #7fae8f; }
 .journey-stage[data-stage-state="complete"] .journey-state { color: #1e5e3a; }
 .journey-stage[data-stage-state="current"] { border-left-color: #d9b45c; }

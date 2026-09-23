@@ -1415,7 +1415,9 @@ function activeGoalsSection(intents: readonly ExperienceIntentResource[]): HtmlF
               ),
             ),
           ),
-      el("p", {}, el("a", { href: pagePath("intents") }, text("Manage goals"))),
+      // PA-004 (RL-114-F3): the journey trailing link joins the floored
+      // `.journey-action a` family (the 44px touch-target floor).
+      el("p", { class: "journey-action" }, el("a", { href: pagePath("intents") }, text("Manage goals"))),
     ),
   );
 }

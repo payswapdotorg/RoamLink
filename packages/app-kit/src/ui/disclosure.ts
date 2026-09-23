@@ -99,7 +99,10 @@ function evidenceSubjectPanel(subject: SubjectConnectivityResource): HtmlFragmen
       "section",
       { class: "panel", "data-evidence-subject": subject.subjectId },
       fragment(
-        el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
+        // RL-114-F2 (closed by PA-004): the disclosure panel subject heading
+        // is a section-level heading — h2 section > h3 panel subject — never
+        // an h4 that would skip a level under the h2 context.
+        el("h3", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
         el(
           "p",
           { class: "muted", "data-evidence-present": "false" },
@@ -113,7 +116,7 @@ function evidenceSubjectPanel(subject: SubjectConnectivityResource): HtmlFragmen
     "section",
     { class: "panel", "data-evidence-subject": subject.subjectId, "data-evidence-present": "true" },
     fragment(
-      el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
+      el("h3", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
       el(
         "dl",
         { class: "fact-list" },
@@ -166,7 +169,7 @@ function technicalSubjectPanel(subject: SubjectConnectivityResource): HtmlFragme
     "section",
     { class: "panel", "data-technical-subject": subject.subjectId },
     fragment(
-      el("h4", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
+      el("h3", {}, text(`${subject.subjectType} ${subject.subjectId}`)),
       subject.evidence === null
         ? el("p", { class: "muted" }, text("No evidence record is linked yet."))
         : el(

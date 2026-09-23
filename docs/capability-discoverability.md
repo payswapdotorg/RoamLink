@@ -140,6 +140,34 @@ CAP-B-REFUNDS is VERIFIED below with its closure evidence; the flipped
 assertions live in the same suites that pinned the gap. With this closure
 the audit records ZERO open GAP rows; all other findings stand unchanged.
 
+**Post-audit update (PA-004 — Web Document A11y Contract):** the web lane
+of RL-114 is CLOSED. F1 (the missing document h1), F2 (the heading-level
+skips) and F3 (the 44px touch-target floor gaps) are fixed on the customer
+web surface through the SHARED app-kit builders: the application shell
+renders the app title as an h1-wrapped anchor (h1.shell-title-wrap >
+a.shell-title — the admin shell's own document-h1 discipline; the wrapper
+is reset in WARM_SHELL_STYLES so the rendered result keeps the anchor's
+size/weight discipline, never the browser's h1 default —
+`packages/app-kit/src/ui/shell.ts`); the disclosure panel subjects are h3
+section-level headings (h2 section > h3 panel subject) and the read-error +
+mutation-result panel headings are document-body-level h2s under the shell
+h1 (`packages/app-kit/src/ui/disclosure.ts` + `components.ts` — both
+builders shared with the admin console, whose suite carries no heading pins
+and stays green in the full gate); and the 44px floor reaches every generic
+in-content action-link family (`.home-fact-action a`, `.goal-card a` and
+`.journey-action a` — the journey "Manage goals" links join the existing
+family — in `apps/web/src/styles.ts`; `.shell-indicator-link` in
+WARM_SHELL_STYLES alongside the nav families), all through the existing
+floor mechanism (min-height + the inline-flex/vertical-alignment
+discipline). The pinned assertions in
+`apps/web/test/rl114-extended-a11y.test.ts` are flipped to the closed
+expectations (the PA-009/PA-010 convention: the probes keep their finding
+references and assert the FIXED contract). The section 6 cross-reference
+rows below carry the closure evidence. With this closure RL-114 stands at
+zero open findings: F4 was RESOLVED as the designed Option B contract by
+PA-003, the mobile lane (F5/F6/F7) was CLOSED by PA-005, and the web lane
+(F1/F2/F3) is CLOSED here. All other findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -834,9 +862,9 @@ here for one-stop reading (full reproducers in the suites):
 
 | Finding | Surface | One-line record | Pinned in |
 |---------|---------|-----------------|-----------|
-| RL-114-F1 | web | No rendered web document contains an `<h1>` (shell title is an anchor); every hierarchy starts at h2 | `apps/web/test/rl114-extended-a11y.test.ts` |
-| RL-114-F2 | web | Level skips on edge paths: Connectivity's h2→h4 disclosure panels; read-failure and mutation-result bodies lead with h3 | same |
-| RL-114-F3 | web | The 44px floor skips generic in-content action links and the shell indicator link | same |
+| RL-114-F1 | web | **CLOSED by PA-004**: every rendered web document carries exactly one h1 — the shell title is an h1-wrapped anchor (`h1.shell-title-wrap > a.shell-title`, mirroring the admin shell's siteHeader h1), so every hierarchy starts at the shell h1 and the page h2s nest under it; the wrapper is reset in WARM_SHELL_STYLES so the rendered result keeps the anchor's size/weight discipline (no browser-default h1 regression) — `packages/app-kit/src/ui/shell.ts` | `apps/web/test/rl114-extended-a11y.test.ts` (flipped) |
+| RL-114-F2 | web | **CLOSED by PA-004**: zero level skips on every rendered surface — the Connectivity disclosure subjects are h3 panel headings (h2 section > h3 subject; the pinned h2->h4 skip is gone) and the read-error + mutation-result panel headings are document-body-level h2s under the shell h1 (`packages/app-kit/src/ui/disclosure.ts` + `components.ts`, the shared builders — the admin suite stays green) | same (flipped) |
+| RL-114-F3 | web | **CLOSED by PA-004**: the 44px floor reaches every interactive family — the generic in-content action links (`.home-fact-action a`, `.goal-card a`, `.journey-action a`: the journey "Manage goals" links join the existing family) plus the shell indicator link (`.shell-indicator-link`, floored in WARM_SHELL_STYLES with the nav families), all through the existing floor mechanism (min-height + inline-flex + vertical alignment) — `apps/web/src/styles.ts` + `packages/app-kit/src/ui/shell.ts` | same (flipped) |
 | RL-114-F4 | web | RESOLVED by PA-003 (Option B): `/notifications` is compatibility-only BY DESIGN — zero inbound links is the contract, the page carries the visible compatibility-role note, Activity is the sole narrative surface | same |
 | RL-114-F5 | mobile | **CLOSED by PA-005**: the edge document shell carries the a11y layer — a skip link to the `main` landmark (the document's first anchor), a `:focus-visible` outline contract, a `prefers-reduced-motion` guard, a 44px floor on every interactive family (bottom-nav links + skip link), and `env(safe-area-inset-*)` on the header and the labelled bottom navigation (app-kit `bottomNav`: `nav[aria-label]` > ul > li > a, the same four legs) — `apps/mobile/src/views.ts` `MOBILE_EDGE_STYLES` + `mobileDocument` | `apps/mobile/test/rl114-mobile-document-contract.test.ts` (flipped) |
 | RL-114-F6 | mobile | **CLOSED by PA-005**: every screen renders its nav-fragment target id (`id="now"/"capabilities"/"controls"/"outbox"` on the leg headings), so all four nav anchors resolve in any composition that renders the screens; the hosted composition pattern (all four legs in one document, `tests/e2e/test/hosted-offline-edge-enterprise.test.ts`) resolves every fragment link, skip link included | same (flipped) |
@@ -844,8 +872,9 @@ here for one-stop reading (full reproducers in the suites):
 
 The RL-114 VERIFIED contracts (loading/error/empty per surface, badge text pairing,
 per-leg mobile document contract, guidance pairing) are the green suites referenced
-above. The mobile lane (F5/F6/F7) is CLOSED by PA-005; the web lane (F1/F2/F3)
-remains open for its own work order.
+above. The mobile lane (F5/F6/F7) is CLOSED by PA-005; the web lane (F1/F2/F3) is
+CLOSED by PA-004 — RL-114 stands at zero open findings (F4 is the RESOLVED Option B
+contract from PA-003).
 
 ## 7. How to run
 
