@@ -293,6 +293,15 @@ export interface FakeReconciliationJobSeed {
  * the connector record its provisioning vocabulary (drift-guarded by
  * tests/architecture). Absent sections render as the honest not-started
  * state on the workspace surface.
+ *
+ * PA-007 (closes RL-115-F7): the organization policy read mirrors
+ * packages/enterprise's policy read vocabulary (state + source,
+ * drift-guarded by tests/architecture) with its freshness FACTS (observed /
+ * received / fresh-until - the fake evaluates the freshness STATE at the
+ * query instant, exactly like the device observation freshness). Absent
+ * policy renders as the honest null section ("not available"); a seeded
+ * `not-configured`/`unknown` record renders those explicit absence states
+ * (never a guess, never a collapsed absence).
  */
 export interface FakeEnterpriseEnrollmentSeed {
   readonly enrollmentId: string;
@@ -321,9 +330,42 @@ export interface FakeEnterpriseConnectorSeed {
   readonly revokedAt?: string;
 }
 
+export interface FakeEnterprisePolicySeed {
+  readonly policyId: string;
+  readonly state: "configured" | "not-configured" | "unknown";
+  readonly source: "organization-administration";
+  readonly policyVersion?: string;
+  readonly summary?: string;
+  readonly effectiveAt?: string;
+  /** The observation facts; the fake evaluates the state at the query instant. */
+  readonly freshness?: FakeFreshnessSeed;
+}
+
+/**
+ * PA-008 (closes RL-115-F5): the enterprise integration status fixtures
+ * mirror packages/enterprise's integration kind + four-state vocabularies
+ * (drift-guarded by tests/architecture). The seeded default is the honest
+ * wave-2 world: SSO carries a present, configured read (with a fresh
+ * observation), while SCIM and MDM carry the honest `unavailable`
+ * declaration - the enterprise integration API exposes no status read for
+ * those kinds yet, so the fake declares it instead of inventing a status.
+ * Scenario seeds derive the not-configured / unknown / stale worlds by
+ * copy + override.
+ */
+export interface FakeEnterpriseIntegrationSeed {
+  readonly integrationId: string;
+  readonly kind: "sso" | "scim" | "mdm";
+  readonly state: "configured" | "not-configured" | "unavailable" | "unknown";
+  readonly summary?: string;
+  /** The observation facts; the fake evaluates the state at the query instant. */
+  readonly freshness?: FakeFreshnessSeed;
+}
+
 export interface FakeEnterpriseSeed {
   readonly enrollment?: FakeEnterpriseEnrollmentSeed;
   readonly connector?: FakeEnterpriseConnectorSeed;
+  readonly policy?: FakeEnterprisePolicySeed;
+  readonly integrations?: readonly FakeEnterpriseIntegrationSeed[];
 }
 
 /**
@@ -499,6 +541,56 @@ export function fakeApiSeed(): FakeApiSeed {
             updatedAt: "2024-06-01T00:12:00.000Z",
             provisionedAt: "2024-06-01T00:12:00.000Z",
           },
+          // PA-007 (closes RL-115-F7): the seeded org carries a PRESENT
+          // organization policy read - configured upstream by the
+          // organization's administration, with a version, a human summary
+          // and a fresh observation (the honest happy-path world; scenario
+          // seeds derive the absent/stale/unknown worlds by copy + override).
+          policy: {
+            policyId: "pppppppp-0000-4000-8000-000000000001",
+            state: "configured",
+            source: "organization-administration",
+            policyVersion: "2025-01",
+            summary:
+              "Roam on approved networks with a capped daily spend; privacy comes first and location is never tracked.",
+            effectiveAt: "2024-07-01T00:00:00.000Z",
+            freshness: {
+              observedAt: T0,
+              receivedAt: T0,
+              freshUntil: FAKE_SEED_CLOCK.freshUntil,
+            },
+          },
+          // PA-008 (closes RL-115-F5): the seeded org carries the honest
+          // enterprise integration statuses - SSO is configured upstream
+          // (a fresh observation + a human summary), while SCIM and MDM
+          // carry the honest `unavailable` declaration (the enterprise
+          // integration API exposes no status read for those kinds yet;
+          // scenario seeds derive the other state worlds by copy +
+          // override).
+          integrations: [
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000001",
+              kind: "sso",
+              state: "configured",
+              summary:
+                "Sign in to RoamLink through your organization's identity provider instead of a separate password.",
+              freshness: {
+                observedAt: T0,
+                receivedAt: T0,
+                freshUntil: FAKE_SEED_CLOCK.freshUntil,
+              },
+            },
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000002",
+              kind: "scim",
+              state: "unavailable",
+            },
+            {
+              integrationId: "iiiiiiii-0000-4000-8000-000000000003",
+              kind: "mdm",
+              state: "unavailable",
+            },
+          ],
         },
         devices: [
           {

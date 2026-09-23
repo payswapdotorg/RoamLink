@@ -21,6 +21,23 @@
  *    closed vocabulary with the observation + user-guided degradation floor,
  *    plus managed-edge device enrollment records (the landing shape of the
  *    RL-062 capability-snapshot publication).
+ *  - ORGANIZATION POLICY READ (./policy.ts): the READ-ONLY organization
+ *    policy read record (PA-007, closes RL-115-F7). Organization policy is
+ *    enterprise-level configuration managed upstream; this record surfaces
+ *    the current observed policy state (configured / not-configured /
+ *    unknown with first-class freshness) and deliberately owns NO policy
+ *    command or write path - RoamLink never duplicates connectivity policy
+ *    authority (RL-LOCK-003/004/005).
+ *  - ENTERPRISE INTEGRATION STATUS READ (./integrations.ts): the READ-ONLY
+ *    SSO/SCIM/MDM integration status record (PA-008, closes RL-115-F5).
+ *    Enterprise integrations are organization-level configuration owned by
+ *    the organization's own identity/device infrastructure; this record
+ *    surfaces the current observed status of each §8 integration kind with
+ *    EXACTLY four honest states (configured / not-configured / unavailable
+ *    / unknown - `unavailable` is the missing-backend-contract declaration:
+ *    the enterprise integration API exposes no status read for that kind
+ *    yet) and deliberately owns NO integration command, OAuth/SCIM/MDM
+ *    configuration flow or write path.
  *  - CUSTOMER WEBHOOKS (./webhooks.ts): the RoamLink-side webhook contract -
  *    emitted ONLY from validated RoamLink durable state transitions
  *    (RL-LOCK-009), authenticated with HMAC-SHA256 signatures and replay
@@ -44,6 +61,8 @@ export * from "./federation.js";
 export * from "./api-keys.js";
 export * from "./api-key-service.js";
 export * from "./connectors.js";
+export * from "./policy.js";
+export * from "./integrations.js";
 export * from "./webhooks.js";
 export * from "./onboarding.js";
 export * from "./stores.js";

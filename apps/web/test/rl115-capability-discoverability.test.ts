@@ -36,8 +36,21 @@
  * console nav now carries the "SLO health" entry to /ops/slo; CAP-SLO
  * flipped GAP -> VERIFIED(proxy), proven by the admin suite's render tests
  * and the flipped structural guard — the customer surface stays SLO-free
- * BY DESIGN, §13). The closure probes below carry the flipped
- * expectations; the remaining GAP probes still pin the open findings.
+ * BY DESIGN, §13). RL-115-F7 is CLOSED (PA-007 — the organization policy
+ * READ MODEL rides the workspace contract: CAP-E-POLICY flipped GAP ->
+ * VERIFIED with the policy summary section rendering the current policy
+ * record — source, version, freshness pairing — and the absence states
+ * staying EXPLICIT contract states, never a UI shrug). RL-115-F5 is
+ * CLOSED (PA-008 — the enterprise integrations surface: CAP-E-SSO-SCIM-MDM
+ * flipped GAP -> VERIFIED with the workspace's Enterprise integrations
+ * section rendering the SSO/SCIM/MDM statuses from the READ MODEL with
+ * EXACTLY four honest states — configured / not-configured / unavailable /
+ * unknown — where `unavailable` is the honest missing-backend-contract
+ * state, never a fabricated control; the section composes no configuration
+ * affordance at all, and a workspace composing no integrations read
+ * degrades honestly with the support escape). The closure probes
+ * below carry the flipped expectations; the remaining GAP probes still
+ * pin the open findings.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -94,6 +107,56 @@ function buildApp(options?: { readonly seed?: FakeApiSeed; readonly actor?: stri
     ids: new DeterministicUuidGenerator(40_000),
   });
   return { app: new CustomerWebApp({ client }), client, fake, clock };
+}
+
+/**
+ * PA-007 (closes RL-115-F7): a workspace composing NO policy section (the
+ * honest not-available world — the read model exists, this surface exposes
+ * no record).
+ */
+function policyNotAvailableSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { enrollment, connector } = tenant.enterprise ?? {};
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(enrollment !== undefined ? { enrollment } : {}),
+      ...(connector !== undefined ? { connector } : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+/**
+ * PA-007 (closes RL-115-F7): a policy record asserting NO policy is
+ * configured upstream (the honest not-configured world — an explicit
+ * contract state, never a guess).
+ */
+function policyNotConfiguredSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...tenant.enterprise,
+      policy: {
+        policyId: "pppppppp-0000-4000-8000-000000000002",
+        state: "not-configured",
+        source: "organization-administration",
+        freshness: {
+          observedAt: "2025-01-06T09:00:00.000Z",
+          receivedAt: "2025-01-06T09:00:00.000Z",
+          freshUntil: "2025-01-06T10:00:00.000Z",
+        },
+      },
+    },
+  };
+  return { ...seed, tenants };
 }
 
 /** The honest empty world (first-run customer). */
@@ -468,9 +531,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-E-POLICY",
     capability: "Organization-level policies and policy summary",
     spec: "spec/architecture.md §8; spec/ux-architecture.md §12 (policy summary)",
-    verdict: "GAP",
+    verdict: "VERIFIED",
+    entry: { page: "workspace", mustRender: ['data-policy-summary="configured"', "Policy summary"] },
+    contextualLink: { from: "workspace", href: "#policy-summary", labelContains: "Review the policy summary" },
+    explanatoryView: { page: "workspace", mustRender: ['data-policy-source="true"', 'data-policy-version="true"', "Policy read: "] },
+    recovery: { page: "workspace", mustRender: ['data-policy-support-reachability="true"'] },
     gapNote:
-      "the workspace page honestly renders the not-available state (no org-policy read model exists); there is no policy view AND no management path — the gap is the page's own recorded honest state",
+      "was RL-115-F7 (GAP: the page rendered only its own honest absence — no org-policy read model existed); closed by PA-007 — the organization policy READ MODEL rides the workspace contract (mirroring the enterprise domain's policy record: source, version, freshness) and the promised summary section is real: the current policy renders with its freshness pairing, and the absence states stay as EXPLICIT contract states (not-configured / unknown / not-available — never a UI shrug, never collapsed); the section is READ-ONLY — policy is organization-level configuration managed upstream (the available user action names where management lives; RoamLink offers no policy editor, creating no second policy authority)",
   },
   {
     id: "CAP-E-CONNECTOR-ENROLLMENT",
@@ -488,8 +555,13 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-E-SSO-SCIM-MDM",
     capability: "SSO/SCIM/MDM integrations",
     spec: "spec/architecture.md §8",
-    verdict: "GAP",
-    gapNote: "zero UX vocabulary for SSO/SCIM/MDM on any surface (web, mobile, admin)",
+    verdict: "VERIFIED",
+    entry: { page: "workspace", mustRender: ['data-integrations="true"', "Enterprise integrations", "Single sign-on (SSO)", "User provisioning (SCIM)", "Device management (MDM)"] },
+    contextualLink: { from: "settings", href: "/workspace#integrations", labelContains: "Review enterprise integrations" },
+    explanatoryView: { page: "workspace", mustRender: ['data-integration="sso"', 'data-integration-state="configured"', "Integration read: ", "requires the enterprise integration API"] },
+    recovery: { page: "workspace", mustRender: ['data-support-escape="true"', "Get help with integrations"] },
+    gapNote:
+      "was RL-115-F5 (GAP: zero UX vocabulary for SSO/SCIM/MDM on any surface); closed by PA-008 — the workspace's Enterprise integrations section renders the SSO/SCIM/MDM statuses from the READ MODEL (the app contract's mirrored integrations section) with EXACTLY four honest states: configured / not-configured / unavailable / unknown. `unavailable` is the honest missing-backend-contract state ('requires the enterprise integration API' + an explanation, never a fabricated control — the section composes no form, button or command flow: no OAuth dance, no SCIM endpoint fields, no MDM enrollment forms); the settings page carries the contextual link; a workspace composing no integrations read degrades honestly (every kind renders the honest unavailable state + the support escape)",
   },
   {
     id: "CAP-E-AUDIT",
@@ -799,14 +871,6 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     }
   });
 
-  it("GAP CAP-E-SSO-SCIM-MDM (RL-115-F5): zero SSO/SCIM/MDM vocabulary on any rendered surface", async () => {
-    const { app } = buildApp();
-    for (const page of ["workspace", "settings", "more"] as const) {
-      const html = await app.renderDocument({ page });
-      expect(html).not.toMatch(/SSO|SCIM|MDM/i);
-    }
-  });
-
   it("VERIFIED CAP-D-COMPAT (RL-115-F6, closed by PA-010): the surface is the admin console's integration-health page; the customer surface stays compatibility-free by design", async () => {
     const { app } = buildApp();
     // PA-010 added NO customer-surface vocabulary (§13: admin and
@@ -836,13 +900,14 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
   //  below — "RL-115 closure probes (PA-003)" — when every Orders-table row
   //  gained its delivery-progress journey link.)
 
-  it("GAP CAP-E-POLICY (RL-115-F7): the policy summary renders its own honest not-available state", async () => {
-    const { app } = buildApp();
-    const workspace = await app.renderDocument({ page: "workspace" });
-    expect(workspace).toContain('data-policy-gap="true"');
-    expect(workspace).toContain("Not available yet");
-    expect(workspace).toMatch(/data-workspace-step="policy"[^>]*>[\s\S]{0,400}?Not available yet/);
-  });
+  // (RL-115-F7's GAP probe was flipped by PA-007 into the closure probe
+  //  below — "RL-115 closure probes (PA-007)" — when the organization
+  //  policy read model made the promised summary section real.)
+
+  // (RL-115-F5's GAP probe was flipped by PA-008 into the closure probe
+  //  below — "RL-115 closure probes (PA-008)" — when the enterprise
+  //  integrations surface made the SSO/SCIM/MDM statuses visible with
+  //  honest states.)
 });
 
 // --------------------------------------------------------------------------------
@@ -903,6 +968,151 @@ describe("RL-115 closure probes (PA-003)", () => {
     const empty = await fresh.app.renderDocument({ page: "notifications" });
     expect(empty).toContain('data-compatibility-role="true"');
     expect(empty).toContain('data-notifications-empty="true"');
+  });
+});
+
+// --------------------------------------------------------------------------------
+// The closure probes (PA-007 — RL-115-F7: the org-policy read model makes
+// the promised policy summary real; fixes flip explicit assertions)
+// --------------------------------------------------------------------------------
+
+describe("RL-115 closure probes (PA-007)", () => {
+  it("VERIFIED CAP-E-POLICY (RL-115-F7 closed): the policy summary renders from the read model, and the absence stays an explicit contract state", async () => {
+    const { app } = buildApp();
+    const workspace = await app.renderDocument({ page: "workspace" });
+    // The present world: the current policy record renders — the summary
+    // statement, its source, its version — with the freshness pairing.
+    expect(workspace).toContain('data-policy-summary="configured"');
+    expect(workspace).toContain('data-policy-statement="true"');
+    expect(workspace).toContain("Roam on approved networks");
+    expect(workspace).toContain('data-policy-source="true"');
+    expect(workspace).toContain("organization-administration");
+    expect(workspace).toContain('data-policy-version="true"');
+    expect(workspace).toContain("Policy read: ");
+    expect(workspace).toContain('data-freshness="FRESH"');
+    // The journey step derives from the read (complete on the seeded,
+    // fresh world) and carries the §15 contextual link to the section.
+    expect(workspace).toContain('data-workspace-step="policy" data-workspace-step-state="complete"');
+    expect(workspace).toContain('href="#policy-summary"');
+    expect(workspace).toContain("Review the policy summary");
+    // THE FLIP: the old gap marker ("data-policy-gap" — the page's own
+    // honest shrug) is GONE from the seeded world; the summary is real.
+    expect(workspace).not.toContain('data-policy-gap="true"');
+    // The READ-ONLY discipline: the available user action names where
+    // policy management lives (upstream), never a policy editor here
+    // (RoamLink creates no second policy authority).
+    expect(workspace).toContain('data-policy-authority="true"');
+    expect(workspace).not.toMatch(/data-flow="(edit|update|set)-policy"|Configure policy|Edit policy|Set policy/);
+    // The honest absence STAYS — now as explicit contract states: a
+    // workspace composing no policy section renders not-available...
+    const notAvailable = buildApp({ seed: policyNotAvailableSeed() });
+    const absentHtml = await notAvailable.app.renderDocument({ page: "workspace" });
+    expect(absentHtml).toContain('data-policy-summary="not-available"');
+    expect(absentHtml).toContain('data-policy-absent="true"');
+    expect(absentHtml).toContain('data-workspace-step="policy" data-workspace-step-state="not-available"');
+    expect(absentHtml).not.toContain('data-policy-statement="true"');
+    // ...and a record asserting no policy upstream renders the explicit
+    // not-configured state (never a guessed policy, never a collapsed
+    // absence).
+    const notConfigured = buildApp({ seed: policyNotConfiguredSeed() });
+    const noneHtml = await notConfigured.app.renderDocument({ page: "workspace" });
+    expect(noneHtml).toContain('data-policy-summary="not-configured"');
+    expect(noneHtml).toContain('data-policy-absent="true"');
+    expect(noneHtml).toContain("No organization policy is configured yet.");
+    expect(noneHtml).not.toContain('data-policy-statement="true"');
+  });
+});
+
+// --------------------------------------------------------------------------------
+// The closure probes (PA-008 — RL-115-F5: the enterprise integrations
+// surface makes the SSO/SCIM/MDM statuses visible with honest states;
+// fixes flip explicit assertions)
+// --------------------------------------------------------------------------------
+
+/**
+ * PA-008 (closes RL-115-F5): a workspace composing NO integrations section
+ * (the pre-PA-008 wire, RL-LOCK-017 additive tolerance) — the honest
+ * degradation world the surface must survive without inventing statuses.
+ */
+function integrationsNotAvailableSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  const { enrollment, connector, policy } = tenant.enterprise ?? {};
+  tenants[TENANT] = {
+    ...tenant,
+    enterprise: {
+      ...(enrollment !== undefined ? { enrollment } : {}),
+      ...(connector !== undefined ? { connector } : {}),
+      ...(policy !== undefined ? { policy } : {}),
+    },
+  };
+  return { ...seed, tenants };
+}
+
+describe("RL-115 closure probes (PA-008)", () => {
+  it("VERIFIED CAP-E-SSO-SCIM-MDM (RL-115-F5 closed): the integrations surface renders the SSO/SCIM/MDM statuses with honest states — never a fabricated control", async () => {
+    const { app } = buildApp();
+    const workspace = await app.renderDocument({ page: "workspace" });
+    // THE FLIP: the vocabulary now renders (the pinned absence is gone) —
+    // the section, the heading, and all three integration rows.
+    expect(workspace).toContain('data-integrations="true"');
+    expect(workspace).toContain("Enterprise integrations");
+    for (const kind of ["sso", "scim", "mdm"] as const) {
+      expect(workspace).toContain(`data-integration="${kind}"`);
+    }
+    // The seeded world: SSO is configured (its summary + the freshness
+    // pairing)...
+    expect(workspace).toContain('data-integration="sso" data-integration-state="configured"');
+    expect(workspace).toContain("In effect: ");
+    expect(workspace).toContain("Integration read: ");
+    expect(workspace).toContain('data-freshness="FRESH"');
+    // ...while SCIM and MDM render the HONEST missing-backend-contract
+    // state with its explanation — never a fake status, never a fake
+    // control.
+    expect(workspace).toContain('data-integration="scim" data-integration-state="unavailable"');
+    expect(workspace).toContain('data-integration="mdm" data-integration-state="unavailable"');
+    expect(workspace).toContain("Unavailable — requires the enterprise integration API");
+    expect(workspace).toContain("Nothing is invented in the meantime.");
+    // THE NO-FABRICATION PIN: the integrations section composes no form,
+    // button or command flow — no OAuth dance, no SCIM endpoint fields, no
+    // MDM enrollment forms (the UI never fabricates configuration
+    // capability; no write contract backs them).
+    const section = workspace.slice(
+      workspace.indexOf('data-integrations="true"'),
+      workspace.indexOf('data-device-fleet="true"'),
+    );
+    expect(section).not.toMatch(/<form|<button|data-flow=|type="password"|<input/);
+    // The §15 contextual link: the settings page (the account/workspace
+    // controls) links the integrations section.
+    const settings = await app.renderDocument({ page: "settings" });
+    expect(settings).toMatch(
+      /<a [^>]*href="\/workspace#integrations"[^>]*>[\s\S]{0,200}?Review enterprise integrations/,
+    );
+    // The vocabulary stays bounded to the workspace entry surface: the
+    // settings/more pages carry the link, not the integration acronyms.
+    for (const page of ["settings", "more"] as const) {
+      const html = await app.renderDocument({ page });
+      expect(html, `${page}: the integration vocabulary stays on the workspace`).not.toMatch(
+        /\b(SSO|SCIM|MDM)\b/,
+      );
+    }
+    // The honest degradation: a workspace composing NO integrations read
+    // (the pre-PA-008 wire, RL-LOCK-017) renders every kind in the honest
+    // unavailable state + THE SUPPORT ESCAPE — the surface degrades
+    // honestly without the read contract, exactly as the finding's
+    // remediation demanded.
+    const noSection = buildApp({ seed: integrationsNotAvailableSeed() });
+    const degraded = await noSection.app.renderDocument({ page: "workspace" });
+    for (const kind of ["sso", "scim", "mdm"] as const) {
+      expect(degraded).toContain(`data-integration="${kind}" data-integration-state="unavailable"`);
+    }
+    expect(degraded).toContain("composes no integration status read yet");
+    expect(degraded).toContain('data-support-escape="true"');
+    expect(degraded).toContain("Get help with integrations");
+    // No invented status leaked into the degraded world.
+    expect(degraded).not.toContain('data-integration-state="configured"');
   });
 });
 

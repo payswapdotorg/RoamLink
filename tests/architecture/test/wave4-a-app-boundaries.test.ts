@@ -377,6 +377,38 @@ describe("the app contract mirrors the owning domain vocabularies (drift guards,
       ownerFile: "packages/enterprise/src/connectors.ts",
       owner: "CONNECTOR_PROVISIONING_FAILURE_REASONS",
     },
+    // PA-007 (closes RL-115-F7): the READ-ONLY organization policy read
+    // mirror - state + source vocabularies, the same discipline.
+    {
+      label: "enterprise organization policy states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_POLICY_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/policy.ts",
+      owner: "ORGANIZATION_POLICY_STATES",
+    },
+    {
+      label: "enterprise organization policy sources",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_POLICY_RESOURCE_SOURCES",
+      ownerFile: "packages/enterprise/src/policy.ts",
+      owner: "ORGANIZATION_POLICY_SOURCES",
+    },
+    // PA-008 (closes RL-115-F5): the READ-ONLY enterprise integration
+    // status mirror - kind + four-state vocabularies, the same discipline.
+    {
+      label: "enterprise integration kinds",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_INTEGRATION_RESOURCE_KINDS",
+      ownerFile: "packages/enterprise/src/integrations.ts",
+      owner: "ENTERPRISE_INTEGRATION_KINDS",
+    },
+    {
+      label: "enterprise integration states",
+      mirrorFile: "packages/app-kit/src/api/enterprise.ts",
+      mirror: "ENTERPRISE_INTEGRATION_RESOURCE_STATES",
+      ownerFile: "packages/enterprise/src/integrations.ts",
+      owner: "ENTERPRISE_INTEGRATION_STATES",
+    },
     // PA-010 (RL-115-F6): the integration-health surface vocabulary is a
     // CONTRACT MIRROR of the probe machinery's closed list (the admin console
     // renders the recorded ADCOS compatibility outcome — the vocabulary's

@@ -57,7 +57,7 @@ export interface MoneyView {
   readonly currency: string;
 }
 
-function parseFreshnessView(label: string, value: unknown): FreshnessView {
+export function parseFreshnessView(label: string, value: unknown): FreshnessView {
   const record = asObject(label, value);
   rejectUnknownFields(label, record, [
     "observedAt",
