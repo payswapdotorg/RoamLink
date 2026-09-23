@@ -112,6 +112,34 @@ structural absence guard became the presence guard), and the customer
 surfaces stay compatibility-vocabulary-free BY DESIGN. All other findings
 stand unchanged.
 
+**Post-audit update (PA-002 — Refund Read Model on the Order Journey):**
+RL-115-F4 is CLOSED by the same flip mechanism: refunds now have a customer
+surface. The order journey (`/orders/{id}`) gains a READ-ONLY refund
+section rendered from a new refund read model — a read-only record owned by
+the commerce domain (`packages/domain-commerce/src/refund-read.ts`: the
+closed `customer_refund_state` vocabulary pending / succeeded / failed /
+cancelled mirrored member-for-member from the CustomerRefund aggregate,
+never redefined, never merged with payment/invoice/order state, RL-LOCK-008;
+the closed reason-code and failure-reason vocabularies; amount + currency in
+integer minor units; the parent payment reference; first-class freshness used
+DIRECTLY from `@roamlink/contracts`; a fail-closed parse with honest-state
+invariants — a failed refund carries its typed failure reason, and only a
+failed refund does; and NO write path — refund EXECUTION lives upstream in
+commerce operations) mirrored additively through the app contract's order
+journey read (`packages/app-kit/src/api/refunds.ts`: `RefundView` and the
+mirrored vocabulary constants, drift-guarded in wave4-a; an older payload
+without the section parses to the honest null section, RL-LOCK-017). The
+page renders one row per refund with its state word, per-state fact, amount +
+currency, reason label and freshness pairing (a stale read keeps its content
+PAIRED with the stale badge — the §14 discipline), the authority note naming
+where refund execution lives, and the §15 support escape in the degraded
+worlds. The commerce surface stays refund-view-free BY DESIGN (the §2 Layer B
+split this closure pins: refund state renders on the order's own
+delivery-progress journey, next to the payments it returns money from).
+CAP-B-REFUNDS is VERIFIED below with its closure evidence; the flipped
+assertions live in the same suites that pinned the gap. With this closure
+the audit records ZERO open GAP rows; all other findings stand unchanged.
+
 ---
 
 ## 1. Verdict vocabulary and how to read the matrix
@@ -148,7 +176,7 @@ entry point), **Link** (contextual link from the journey), **View** (explanatory
 | CAP-B-CATALOG | Product catalog / customer-facing offers | Plans & Billing (`/commerce`) | More sheet → Plans & Billing | Catalog table + the "never implies connectivity delivery" rule | Support (nav + case flow) | **VERIFIED** |
 | CAP-B-ORDERS | Orders, subscriptions, entitlements | Order journey (`/orders/{id}`) | Orders table → "Open delivery progress" (per row) | Delivery-progress view (commercial vs delivery facts) | Order escape ("Get help with this") | **VERIFIED** — RL-115-F8 closed by PA-003: every Orders-table row links to its delivery-progress journey (anchor + real href + `.order-link` 44px floor; flipped probe in `apps/web/test/rl115-capability-discoverability.test.ts`, structural guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the host-composed post-payment redirect stays |
 | CAP-B-PAYMENTS-INVOICES | Payment state, invoices, pricing presentation | Order journey commercial facts | Order → "Plans & Billing" | "Commercial facts (separate)" + invoices | Support (nav + case flow) | **VERIFIED** |
-| CAP-B-REFUNDS | Refunds | NONE | NONE | NONE | Support-ref kind only | **GAP** — finding RL-115-F4 |
+| CAP-B-REFUNDS | Refunds | Order journey (`/orders/{id}`) refund section (`data-refunds`) | Orders table → "Open delivery progress" (per row) | The refund section: one row per refund (state word, per-state fact, amount + reason label, freshness pairing) + the authority note | Refund support escape ("Get help with refunds", pre-carrying the order + refund refs) in the degraded worlds; the quiet reachability note otherwise | **VERIFIED** — was RL-115-F4 (GAP); closed by PA-002 (the refund read model on the order journey: the commerce domain's READ-ONLY `RefundReadRecord` mirrored through the app contract; refund state renders from the read only — a money fact, never a delivery claim; refund EXECUTION lives upstream in commerce operations, so the surface composes no refund command; the commerce surface stays refund-view-free BY DESIGN — the §2 Layer B split) |
 
 ### §2 Layer C — RoamLink Edge
 
@@ -214,7 +242,7 @@ card carries verification freshness + the five automation levels, not per-capabi
 |----|------------|-------|------|------|----------|---------|
 | CAP-SLO | SLO health (the nine §11 product SLOs) | Admin console nav "SLO health" → `/ops/slo` (the session-gated host ops surface, RL-109) | The admin nav entry renders on every console page (denied renders included — the nav is chrome; the target holds the gate) | Host-side dashboard: real recorder state, all nine rows, multi-window burn rates, honest no-data-degraded | Read-only ops surface | **VERIFIED (proxy)** — RL-115-F2 closed by PA-009: the admin nav entry (render-level proof in `apps/admin/test/admin-app.test.ts`, structural presence guard in `tests/architecture/test/wave8-b-capability-guards.test.ts`); the customer surfaces stay SLO-free by design (§13) |
 
-**Tally:** 22 VERIFIED · 12 VERIFIED (proxy) · 1 GAP.
+**Tally:** 23 VERIFIED · 12 VERIFIED (proxy) · 0 GAP.
 (PA-003: CAP-B-ORDERS, CAP-L-COMMERCIAL and CAP-A-NOTIFICATIONS moved from
 VERIFIED (proxy) to VERIFIED. PA-001: RL-115-F1 flipped GAP -> VERIFIED —
 the eSIM management journey closed through the audit's designed flip
@@ -231,7 +259,9 @@ surface: the workspace's integrations section rendering the SSO/SCIM/MDM
 statuses from the read model with exactly four honest states. PA-010:
 RL-115-F6 closed — CAP-D-COMPAT moved GAP -> VERIFIED (proxy) via the
 admin console's Integration health page over the application contract's
-integration-health read.)
+integration-health read. PA-002: RL-115-F4 closed — CAP-B-REFUNDS moved
+GAP -> VERIFIED via the refund read model on the order journey (the LAST
+recorded GAP closes: the matrix stands at zero open findings).)
 
 ---
 
@@ -387,19 +417,103 @@ implemented exactly as bounded —
   server-side gates, support escape),
   `tests/architecture/test/wave8-b-capability-guards.test.ts` (the flipped guard).
 
-### RL-115-F4 — refunds have no customer surface (CAP-B-REFUNDS)
+### RL-115-F4 — refunds have no customer surface (CAP-B-REFUNDS) — **CLOSED by PA-002**
 
 - **Where:** `apps/web/src/pages/commerce-page.ts`, `order-journey-page.ts` vs
   `packages/domain-commerce` (refund aggregate exists) and the support-ref vocabulary
   (`refund` kind).
-- **What:** Layer B owns "customer-facing … refunds", but no surface renders refund
-  state — the commerce page shows products/orders/subscriptions, the order journey shows
-  payments/invoices; the only refund trace in the UX layer is the support-ref kind.
-- **Minimal reproducer:** the RL-115 GAP probe renders commerce + order and asserts the
-  joined text contains no "refund" (case-insensitive); the structural guard asserts no
-  refund vocabulary in the web page sources.
+- **What (the recorded gap):** Layer B owns "customer-facing … refunds", but no
+  surface rendered refund state — the commerce page shows products/orders/subscriptions,
+  the order journey showed payments/invoices; the only refund trace in the UX layer was
+  the support-ref kind.
+- **Original minimal reproducer (the pin, now flipped):** the RL-115 GAP probe
+  rendered commerce + order and asserted the joined text contains no "refund"
+  (case-insensitive); the structural guard asserted no refund view vocabulary in
+  the commerce-page/order-journey sources.
 - **Candidate remediation:** a refund read model section on the order journey (state +
   freshness, riding the projection discipline).
+- **CLOSURE (PA-002, VERIFIED):** the candidate remediation was implemented
+  exactly as bounded — a READ-ONLY refund read model section on the order
+  journey. The owning record is the commerce domain's read-only
+  `RefundReadRecord` (`packages/domain-commerce/src/refund-read.ts`): the
+  closed `customer_refund_state` vocabulary (pending / succeeded / failed /
+  cancelled — `REFUND_READ_STATES`, mirrored member-for-member from the
+  CustomerRefund aggregate's `CUSTOMER_REFUND_STATES`, never redefined, never
+  merged with payment/invoice/order state, RL-LOCK-008), the closed
+  reason-code and failure-reason vocabularies, the amount + currency in
+  integer minor units, the parent payment reference, first-class freshness
+  used DIRECTLY from @roamlink/contracts (never redefined), and a
+  fail-closed parse with honest-state invariants (a `failed` refund carries
+  its typed failure reason — and only a failed refund does; duplicate refund
+  ids reject; unknown fields reject) — and NO write path: the module owns
+  parse + vocabularies only (the authority fence is pinned by its own test);
+  refund EXECUTION lives upstream in the CustomerRefund aggregate's
+  commerce-operations machinery. The record is mirrored additively through
+  the app contract's order journey read (`packages/app-kit/src/api/refunds.ts`:
+  `RefundView` — `state`, the reason summary, the amount/currency pair, the
+  parent payment reference, the freshness pairing — plus
+  `CUSTOMER_REFUND_RESOURCE_STATES`/`REFUND_REASON_RESOURCE_CODES`/
+  `CUSTOMER_REFUND_FAILURE_RESOURCE_REASONS`, drift-guarded in wave4-a; an
+  older payload without the section parses to the honest null section,
+  RL-LOCK-017 — distinct from an empty section, which asserts the read is
+  composed and no refunds exist). The deterministic fake seeds the honest
+  world by default: the seeded order carries TWO refunds against its one
+  succeeded payment (a succeeded partial + a pending one — the
+  multi-refund partial-payment case), a second tenant carries an order with
+  NO refunds (the honest empty section), and the scenario seeds derive every
+  state × at least one refund plus the stale/unknown freshness worlds. The
+  page's `deriveRefundRows`/`refundSection` render FROM THE READ ONLY: one
+  row per refund with its state word, per-state fact, amount + currency,
+  reason label, parent payment reference and freshness pairing (a stale read
+  keeps its content PAIRED with the stale badge — the §14 discipline), the
+  authority note naming where refund EXECUTION lives (upstream, in commerce
+  operations), and the §15 recovery path: the support escape
+  ("Get help with refunds", pre-carrying the order + refund references) in
+  the degraded worlds (a failed refund, a stale/unverified read, or no
+  refund read composed at all), the quiet reachability note otherwise. THE
+  NO-FABRICATION CONTRACT: the section composes NO refund request or
+  cancellation control — no customer refund write contract backs one. The
+  commerce surface stays refund-view-free BY DESIGN (the §2 Layer B split
+  this closure pins: the commerce surface renders catalog/orders/
+  subscriptions; refund state renders on the order's own delivery-progress
+  journey, next to the payments it returns money from).
+- **Closure evidence (flipped assertions):**
+  1. `apps/web/test/rl115-capability-discoverability.test.ts` — the GAP
+     probe became the closure probe "VERIFIED CAP-B-REFUNDS (RL-115-F4,
+     closed by PA-002)": the order journey renders `data-refunds="true"`
+     with the seeded multi-refund rows (succeeded + pending state markers,
+     state words, amounts, reason labels, the freshness pairing), the
+     no-form/button/flow slice, the authority note, the commerce side KEEPS
+     its designed refund-free absence, and both honest absence worlds (the
+     explicit empty section; the not-available null-section world, which
+     renders no refund row). The inventory row CAP-B-REFUNDS flipped
+     GAP -> VERIFIED with its four §15 surfaces.
+  2. `apps/web/test/order-journey-refunds.test.ts` — the journey tests:
+     the seeded multi-refund partial payment case, EVERY state × one refund
+     (`it.each`) with its state marker + state word + per-state honest
+     fact, the money-facts separation (a refund never claims connectivity
+     delivery), the stale and unknown freshness pairings, the honest empty
+     and not-available sections, the READ-ONLY authority fence, and the
+     support escape pre-carrying the order + refund references.
+  3. `packages/domain-commerce/test/refund-read.test.ts` — the read
+     record's contract: the member-for-member mirror proofs against the
+     aggregate's vocabularies, the fail-closed parse, the honest-state
+     invariants, the section duplicate-id rejection, and the runtime
+     no-write-path export fence.
+  4. `packages/app-kit/test/refund-read.test.ts` — the mirror's contract:
+     the closed vocabularies, the additive null/empty/parse discipline, the
+     fail-closed rejections, and the fake's seeded honest worlds read
+     through the typed client (including the honest null-section
+     degradation, RL-LOCK-017).
+  5. `tests/architecture/test/wave8-b-capability-guards.test.ts` — the
+     structural guard flipped from the refund-view absence pin to the
+     CAP-B-REFUNDS presence guard (the order journey's refund view
+     vocabulary, the authority note, the freshness pairing, the
+     no-refund-write-affordance fence, and commerce-page.ts stays
+     refund-view-free BY DESIGN), plus the GAP tally expectation moved to
+     ZERO open rows; `tests/architecture/test/wave4-a-app-boundaries.test.ts`
+     — the one new drift-guard entry
+     (`CUSTOMER_REFUND_RESOURCE_STATES` ↔ `REFUND_READ_STATES`).
 
 ### RL-115-F5 — SSO/SCIM/MDM integrations have zero UX vocabulary (CAP-E-SSO-SCIM-MDM) — **CLOSED by PA-008**
 
@@ -691,8 +805,10 @@ by the page itself (F7) and the URL-only delivery-progress journey (F8). F8 has 
 been CLOSED by PA-003, F7 by PA-007 (see the finding records above) and F5 by
 PA-008 (the enterprise integrations surface — see the finding record above); F6
 (compatibility health) has since been CLOSED by PA-010 (see the finding record
-above); the other
-findings stand.
+above); and F4 (refunds) has since been CLOSED by PA-002 — the refund read
+model on the order journey (see the finding record above). With F4's closure the
+audit's LAST recorded GAP is closed: every finding now carries its closure
+record, and the matrix stands at zero open findings.
 
 ## 5. Honest verification limits (AR-009/AR-010 discipline)
 

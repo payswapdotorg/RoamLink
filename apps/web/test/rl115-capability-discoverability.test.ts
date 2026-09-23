@@ -48,7 +48,18 @@
  * unknown — where `unavailable` is the honest missing-backend-contract
  * state, never a fabricated control; the section composes no configuration
  * affordance at all, and a workspace composing no integrations read
- * degrades honestly with the support escape). The closure probes
+ * degrades honestly with the support escape). RL-115-F4 is CLOSED
+ * (PA-002 — the refund read model on the order journey: CAP-B-REFUNDS
+ * flipped GAP -> VERIFIED with the order journey's refund section rendering
+ * one row per refund from the READ MODEL — state word, per-state fact,
+ * amount + reason label, freshness pairing — in the closed
+ * customer_refund_state vocabulary mirrored through the app contract;
+ * the commerce surface stays refund-view-free BY DESIGN (the §2 Layer B
+ * split: refund state renders on the order's own delivery-progress
+ * journey, next to the payments it returns money from), and refund
+ * EXECUTION lives upstream in commerce operations — the surface composes
+ * no refund command, and an absent/null section renders the honest
+ * not-available state). The closure probes
  * below carry the flipped expectations; the remaining GAP probes still
  * pin the open findings.
  */
@@ -174,9 +185,40 @@ function freshCustomerSeed(): FakeApiSeed {
     subscriptions: [],
     payments: [],
     invoices: [],
+    // PA-002: the first-run world carries no refund fixtures either (the
+    // refund read composes with zero refunds — the honest empty world).
+    refunds: [],
     references: [],
     supportCases: [],
   };
+  return { ...seed, tenants };
+}
+
+/**
+ * PA-002 (closes RL-115-F4): the tenant composes the refund read with NO
+ * refunds (the honest EMPTY section world — distinct from the null
+ * not-available world below).
+ */
+function refundEmptySectionSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+  tenants[TENANT] = { ...tenant, refunds: [] };
+  return { ...seed, tenants };
+}
+
+/**
+ * PA-002 (closes RL-115-F4): a surface composing NO refund read (the
+ * pre-PA-002 wire, RL-LOCK-017 additive tolerance) — the honest
+ * not-available degradation world.
+ */
+function refundsNotComposedSeed(): FakeApiSeed {
+  const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+  const tenant = seed.tenants[TENANT];
+  if (tenant === undefined) throw new Error("missing tenant in seed");
+  const { refunds: _stripped, ...rest } = tenant;
+  const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants, [TENANT]: rest };
   return { ...seed, tenants };
 }
 
@@ -314,9 +356,16 @@ export const RL115_CAPABILITY_INVENTORY: readonly CapabilityRow[] = [
     id: "CAP-B-REFUNDS",
     capability: "Refunds",
     spec: "spec/architecture.md §2 Layer B ('customer-facing payment state, invoices, refunds')",
-    verdict: "GAP",
+    verdict: "VERIFIED",
+    entry: { page: "order", mustRender: ['data-refunds="true"', "Refunds"] },
+    contextualLink: { from: "commerce", href: `/orders/${SEED_ORDER_ID}`, labelContains: "Open delivery progress" },
+    explanatoryView: {
+      page: "order",
+      mustRender: ['data-refund-state="succeeded"', 'data-refund-state="pending"', "Refund read: ", 'data-refunds-authority="true"'],
+    },
+    recovery: { page: "order", mustRender: ['data-refunds-reachability="true"'] },
     gapNote:
-      "the domain owns refunds and the support-ref vocabulary carries the kind, but NO rendered surface exposes refund state — not even a read view",
+      "closed (PA-002 — RL-115-F4): the refund read model rides the order journey — one row per refund (state word, per-state fact, amount + reason label, freshness pairing) rendered from the READ MODEL (the domain's READ-ONLY RefundReadRecord mirrored through the app contract, in the closed customer_refund_state vocabulary); the commerce surface stays refund-view-free BY DESIGN (the §2 Layer B split: refund state renders on the order's own delivery-progress journey, next to the payments it returns money from); refund EXECUTION lives upstream in commerce operations — the surface composes no refund command, and an absent/null section renders the honest not-available state (an empty section renders the explicit no-refunds state)",
   },
 
   // ---- Layer C — RoamLink Edge (spec/architecture.md §2) ------------------
@@ -862,13 +911,71 @@ describe("RL-115 GAP probes (pinned, recorded — not fixed)", () => {
     // the path reference and the nav label in the admin sources.
   });
 
-  it("GAP CAP-B-REFUNDS (RL-115-F4): the commerce surface renders no refund state anywhere", async () => {
+  it("VERIFIED CAP-B-REFUNDS (RL-115-F4, closed by PA-002): the order journey exposes refund state from the read model; the commerce surface stays refund-free by design", async () => {
+    // PA-002 closed RL-115-F4 through the audit's designed flip: the refund
+    // read model rides the ORDER JOURNEY (the candidate remediation the
+    // finding recorded — "a refund read model section on the order journey
+    // (state + freshness, riding the projection discipline)"). The
+    // customer surface renders refund state from the READ ONLY, in the
+    // closed customer_refund_state vocabulary mirrored through the app
+    // contract; the commerce-page side KEEPS asserting NO refund view
+    // vocabulary — that page stays out of scope BY DESIGN (the §2 Layer B
+    // split this closure pins: the commerce surface renders
+    // catalog/orders/subscriptions; refund state renders on the order's
+    // own delivery-progress journey, next to the payments it returns
+    // money from).
     const { app } = buildApp();
-    const commerce = await app.renderDocument({ page: "commerce" });
     const order = await app.renderDocument({ page: "order", params: { orderId: SEED_ORDER_ID } });
-    for (const html of [commerce, order]) {
-      expect(html.toLowerCase()).not.toContain("refund");
-    }
+    // THE FLIP: the refund vocabulary now renders (the pinned absence is
+    // gone) — the section, the heading, one row per seeded refund (the
+    // multi-refund partial payment case) with the state words, amounts,
+    // reason labels and the freshness pairing.
+    expect(order).toContain('data-refunds="true"');
+    expect(order).toContain('data-refund-state="succeeded"');
+    expect(order).toContain('data-refund-state="pending"');
+    expect(order).toMatch(/data-state-word="succeeded"[^<]*>Succeeded/);
+    expect(order).toMatch(/data-state-word="pending"[^<]*>Pending/);
+    expect(order).toContain("Refund 5.00 USD");
+    expect(order).toContain("Reason: You asked for this refund");
+    expect(order).toContain("Refund read: ");
+    expect(order).toContain('data-freshness="FRESH"');
+    // THE NO-FABRICATION PIN: the refund section composes no form, button
+    // or command flow — refund EXECUTION lives upstream, in commerce
+    // operations (the authority note names it; no customer refund write
+    // contract backs any control).
+    const section = order.slice(
+      order.indexOf('data-refunds="true"'),
+      order.indexOf('data-connectivity-chain="true"'),
+    );
+    expect(section).not.toMatch(/<form|<button|data-flow=|<input/);
+    expect(order).toContain('data-refunds-authority="true"');
+    expect(order).toContain("commerce operations, upstream of this journey");
+    // The commerce-page side KEEPS its designed absence: no refund view
+    // vocabulary anywhere on that surface.
+    const commerce = await app.renderDocument({ page: "commerce" });
+    expect(commerce.toLowerCase()).not.toContain("refund");
+    // The honest absence worlds: an order with NO refunds renders the
+    // EXPLICIT empty section (a contract state, never a collapsed
+    // absence)...
+    const emptyWorld = buildApp({ seed: refundEmptySectionSeed() });
+    const empty = await emptyWorld.app.renderDocument({
+      page: "order",
+      params: { orderId: SEED_ORDER_ID },
+    });
+    expect(empty).toContain('data-refunds="empty"');
+    expect(empty).toContain("No refunds are recorded for this order.");
+    // ...and a surface composing NO refund read (the pre-PA-002 wire,
+    // RL-LOCK-017) renders the honest not-available state — never a
+    // fabricated refund.
+    const notComposed = buildApp({ seed: refundsNotComposedSeed() });
+    const absent = await notComposed.app.renderDocument({
+      page: "order",
+      params: { orderId: SEED_ORDER_ID },
+    });
+    expect(absent).toContain('data-refunds="not-available"');
+    expect(absent).toContain("not part of this read yet");
+    expect(absent).toContain("nothing is invented in the meantime");
+    expect(absent).not.toContain('data-refund-id=');
   });
 
   it("VERIFIED CAP-D-COMPAT (RL-115-F6, closed by PA-010): the surface is the admin console's integration-health page; the customer surface stays compatibility-free by design", async () => {
