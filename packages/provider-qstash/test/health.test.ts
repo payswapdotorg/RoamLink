@@ -80,13 +80,16 @@ describe("createQStashHealthCheck (RL-100)", () => {
 });
 
 describe("UpstashQStashClient probe wire parity (RL-100)", () => {
-  it("probes GET {base}/v2/messages?count=1 with the bearer credential (read-only)", async () => {
+  it("probes GET {base}/v2/events with the bearer credential (read-only)", async () => {
     const protocol = createQStashPublishProtocol({ token: TOKEN });
     const client = new UpstashQStashClient({ token: TOKEN, fetchLike: protocol.fetchLike });
     await expect(client.probe()).resolves.toBeUndefined();
     expect(protocol.probes).toHaveLength(1);
     expect(protocol.probes[0]?.method).toBe("GET");
-    expect(protocol.probes[0]?.url).toBe("https://qstash.upstash.io/v2/messages?count=1");
+    // LIVE-CONFIRMED probe route (PA-017 2026-09-24 evidence): the events
+    // route answers 200 on the live service (the old
+    // /v2/messages?count=1 pin answers 405).
+    expect(protocol.probes[0]?.url).toBe("https://qstash.upstash.io/v2/events");
     expect(protocol.publishes).toHaveLength(0); // no message created
   });
 

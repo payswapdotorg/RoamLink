@@ -2,14 +2,22 @@
  * The Upstash QStash REST client (RL-097) - the hosted implementation of
  * the {@link DurableJobDeliveryPort}.
  *
- * Wire contract (QStash publish API, single-site pin):
- *  - `POST {baseUrl}/v2/messages/{destination}` with
- *    `Authorization: Bearer <token>` and the JSON payload body;
+ * Wire contract (QStash publish API, single-site pin; LIVE-CONFIRMED by
+ * the PA-017 2026-09-24 evidence):
+ *  - `POST {baseUrl}/v2/publish/{destination}` with
+ *    `Authorization: Bearer <token>` and the JSON payload body - the
+ *    destination is carried with its scheme LITERAL in the path (the
+ *    fully-percent-encoded form is refused 400 by the live service), and
+ *    the live service pre-flight DNS-validates the destination's host at
+ *    publish time (an unresolvable host is refused with a typed 400
+ *    before anything is enqueued). The OLD pinned route
+ *    `POST /v2/messages/{destination}` answers 405 text/plain on the
+ *    live service - corrected here;
  *  - `Upstash-Deduplication-Id: <jobId>` carries the caller's idempotency
  *    key (RL-LOCK-014) - QStash dedupes windowed duplicates;
  *  - `Upstash-Delay: <seconds>` carries a bounded deliver-after hint;
- *  - success: `{ "messageId": "<id>" }`; failure: typed
- *    {@link QStashProviderError} with the provider text SUPPRESSED
+ *  - success: 201 + `{ "messageId": "<id>" }` (single field); failure:
+ *    typed {@link QStashProviderError} with the provider text SUPPRESSED
  *    (RL-LOCK-016).
  *
  * Retry semantics are the QStash server's responsibility (it retries
@@ -17,9 +25,9 @@
  * this client is deliberately transport-only. Receiver endpoints MUST
  * verify the Upstash-Signature header before acting (see the verifier).
  *
- * Honest wire note (AR-009): exact route/headers must be confirmed
- * against a real QStash account at RL-100+; everything is single-sited
- * here so drift is a contained fix.
+ * Wire note (AR-009, retired by the PA-017 live evidence): the
+ * route/headers above are confirmed against a real QStash account;
+ * everything is single-sited here so any future drift is a contained fix.
  */
 import { ValidationError } from "@roamlink/contracts";
 import {
@@ -64,6 +72,19 @@ export class QStashProviderError extends Error {
 
 interface PublishResponse {
   messageId?: unknown;
+}
+
+/**
+ * Encodes a destination for the LIVE publish path: the route carries the
+ * destination's scheme LITERALLY (`/v2/publish/https://host/path` - the
+ * fully-percent-encoded form is refused 400 by the live service), so ONLY
+ * the characters that would break the outer URL structure are
+ * percent-encoded (`?` -> %3F, `#` -> %23); scheme, slashes, colons and
+ * the rest stay literal (the live service parses - and pre-flight
+ * DNS-validates - the host from the literal form).
+ */
+function encodePublishDestination(destination: string): string {
+  return destination.replaceAll("?", "%3F").replaceAll("#", "%23");
 }
 
 export class UpstashQStashClient implements DurableJobDeliveryPort, TransportProbePort {
@@ -115,6 +136,11 @@ export class UpstashQStashClient implements DurableJobDeliveryPort, TransportPro
     }
   }
 
+  /**
+   * Publishes over the LIVE route `POST /v2/publish/{destination}` (201 +
+   * `{"messageId"}`; pre-flight DNS validation on the destination's
+   * host - see the wire contract above for the corrected-law details).
+   */
   async enqueue(request: JobEnqueueRequest): Promise<JobEnqueueReceipt> {
     if (request === null || typeof request !== "object") {
       throw new ValidationError("JobEnqueueRequest must be an object", {
@@ -142,7 +168,7 @@ export class UpstashQStashClient implements DurableJobDeliveryPort, TransportPro
       });
     }
 
-    const url = `${this.#baseUrl}/v2/messages/${encodeURIComponent(request.destination)}`;
+    const url = `${this.#baseUrl}/v2/publish/${encodePublishDestination(request.destination)}`;
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.#token}`,
       "content-type": "application/json",
@@ -191,19 +217,19 @@ export class UpstashQStashClient implements DurableJobDeliveryPort, TransportPro
   }
 
   /**
-   * The READ-ONLY transport probe (RL-100): `GET {baseUrl}/v2/messages?count=1`
-   * with the publish credential. Reachability is the ONLY claim: any 2xx
-   * resolves (the body is intentionally not parsed - the probe reads
-   * nothing it acts on); non-2xx and connection/timeout failures reject
-   * with the provider text SUPPRESSED (RL-LOCK-016). No message is
-   * created, no provider state is mutated.
-   *
-   * AR-009 honest wire note: the exact read route must be confirmed
-   * against a real QStash account at the operator phase (RL-118); the
-   * route lives ONLY here so drift is a contained fix.
+   * The READ-ONLY transport probe (RL-100): `GET {baseUrl}/v2/events`
+   * with the publish credential (LIVE-CONFIRMED by the PA-017 2026-09-24
+   * evidence: the events route answers 200; the OLD pinned route
+   * `GET /v2/messages?count=1` answers 405 on the live service).
+   * Reachability is the ONLY claim: any 2xx resolves (the body is
+   * intentionally not parsed - the probe reads nothing it acts on);
+   * non-2xx and connection/timeout failures reject with the provider
+   * text SUPPRESSED (RL-LOCK-016). No message is created, no provider
+   * state is mutated. The route lives ONLY here so drift is a contained
+   * fix.
    */
   async probe(): Promise<void> {
-    const url = `${this.#baseUrl}/v2/messages?count=1`;
+    const url = `${this.#baseUrl}/v2/events`;
     let response: Response;
     try {
       response = await this.#doFetch(url, {

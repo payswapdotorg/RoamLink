@@ -34,7 +34,7 @@ import {
   validateDestination,
   validateJobId,
 } from "./port.js";
-import { renderQStashSignatureHeader } from "./verifier.js";
+import { deterministicQStashJti, renderQStashSignatureHeader } from "./verifier.js";
 
 export interface InMemoryJobDeliveryQueueOptions {
   /** REQUIRED explicit clock (deterministic deliveries). */
@@ -268,18 +268,20 @@ export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort, Transpo
       if (!isLive(job.state) || job.deliverNotBeforeMs > this.#nowMs()) continue;
       job.attempts += 1;
       attempts += 1;
+      const sentAtMs = this.#nowMs();
       const delivery: JobDelivery = {
         jobId: job.jobId,
         messageId: job.messageId,
         destination: job.destination,
         payload: job.payload,
         attempt: job.attempts,
-        sentAtMs: this.#nowMs(),
-        signatureHeader: renderQStashSignatureHeader(
-          this.#signingKey,
-          Math.floor(this.#nowMs() / 1000),
-          job.payload,
-        ),
+        sentAtMs,
+        // Live claim shape (PA-017): sub = the delivery's destination,
+        // jti deterministic per (iat, body) - the fake stays reproducible.
+        signatureHeader: renderQStashSignatureHeader(this.#signingKey, Math.floor(sentAtMs / 1000), job.payload, {
+          sub: job.destination,
+          jti: deterministicQStashJti(Math.floor(sentAtMs / 1000), job.payload),
+        }),
       };
       try {
         const status = await receiver(delivery);

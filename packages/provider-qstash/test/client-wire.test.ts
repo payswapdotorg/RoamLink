@@ -7,6 +7,12 @@
  * LIVE publish API (read-only probe + health composition, publish
  * round-trip, the signed receiver round-trip that retires AR-009's
  * standing wire note); with the keys absent they SKIP with named reasons.
+ * The live legs follow the PA-017 live-wire evidence (2026-09-24): the
+ * corrected publish route POST /v2/publish/{destination} (scheme literal
+ * in the path, 201 + {"messageId"}, pre-flight DNS validation on the
+ * destination's host), the corrected probe route GET /v2/events, and the
+ * LIVE-CONFIRMED JWT signature scheme (single JWT, HS256, three base64url
+ * segments; body claim = base64url-with-padding(SHA-256(raw body)); iat->exp 300s window).
  */
 import { describe, expect, it } from "vitest";
 import { inspect } from "node:util";
@@ -159,11 +165,16 @@ const LIVE_RUN_ID = Date.now().toString(36);
 
 /**
  * The battery's SINK destination: an RFC 2606 `.invalid` hostname can
- * NEVER resolve, so nothing beyond the operator's own QStash account is
- * ever contacted — the publish round-trip legs assert the transport
- * contract (route, headers, receipt), never live delivery. The delay is
- * pinned to the client's maximum (24h) so no delivery is attempted while
- * the battery runs.
+ * NEVER resolve. LIVE TRUTH (PA-017, 2026-09-24 evidence): the live
+ * publish API pre-flight DNS-validates destinations at publish time, so
+ * the `.invalid` sink is REFUSED with a typed 400 - it can never be
+ * enqueued on the live wire. The live publish legs therefore target the
+ * battery's own documented receiver (a destination the battery itself
+ * defines) with the maximum 24h delay, so nothing delivers during the
+ * run - the transport contract is still asserted on route/headers/
+ * receipt, never live delivery. When no receiver is configured the leg
+ * keeps the sink and the live service's refusal surfaces as the honest
+ * provider-error (never a silent pass).
  */
 const SINK_DESTINATION = "https://receiver.invalid/roamlink-transport-battery";
 
@@ -259,10 +270,18 @@ describe("the live QStash wire legs (env-gated, PA-013)", () => {
       const client = liveClient();
       const jobId = `pa013-live-wire-${LIVE_RUN_ID}`;
       const payload = { kind: "transport-battery-probe", run: LIVE_RUN_ID };
-      // First publish: the pinned route + headers over the live wire.
+      // LIVE TRUTH (PA-017): the live publish API pre-flight DNS-validates
+      // destinations, so the `.invalid` sink is refused at publish time
+      // (typed 400). Target the battery's own documented receiver when
+      // configured (max 24h delay - nothing delivers during the run);
+      // else keep the sink and let the refusal surface as the honest
+      // provider-error.
+      const publishTarget = RECEIVER_URL !== "" ? RECEIVER_URL : SINK_DESTINATION;
+      // First publish: the LIVE route (POST /v2/publish/{destination}) +
+      // headers over the live wire.
       const first = await client.enqueue({
         jobId,
-        destination: SINK_DESTINATION,
+        destination: publishTarget,
         payload,
         deliverAfterMs: 86_400_000,
       });
@@ -275,7 +294,7 @@ describe("the live QStash wire legs (env-gated, PA-013)", () => {
       // failure — a live drift here is a surfaced real-wire finding).
       const replay = await client.enqueue({
         jobId,
-        destination: SINK_DESTINATION,
+        destination: publishTarget,
         payload,
         deliverAfterMs: 86_400_000,
       });
@@ -335,9 +354,9 @@ describe("the live QStash wire legs (env-gated, PA-013)", () => {
       });
       const verdict = verifier.verify({ signatureHeader, body: captured.body, receivedAtMs: Date.now() });
       const outcome = underCurrent.ok
-        ? "VERIFIED against the pinned scheme (header grammar t=<unix-seconds>,v1=<hex>; HMAC-SHA256-hex over '<t>.<rawBody>') with the CURRENT signing key"
+        ? "VERIFIED against the live wire scheme (single JWT, HS256 over '<b64uHeader>.<b64uPayload>'; body claim = base64url-with-padding(SHA-256(raw body)); iat→exp 300s window) with the CURRENT signing key"
         : underNext.ok
-          ? "VERIFIED against the pinned scheme (header grammar t=<unix-seconds>,v1=<hex>; HMAC-SHA256-hex over '<t>.<rawBody>') with the NEXT signing key (rotation window)"
+          ? "VERIFIED against the live wire scheme (single JWT, HS256 over '<b64uHeader>.<b64uPayload>'; body claim = base64url-with-padding(SHA-256(raw body)); iat→exp 300s window) with the NEXT signing key (rotation window)"
           : `REJECTED by the pinned verifier (code: ${verdict.ok ? "unreachable" : verdict.code}) - a real-wire drift to surface and fix within the owned surface`;
       // The value-free canonicalization outcome (the evidence record).
       console.log(`[RL-097/PA-013] live QStash signature canonicalization: ${outcome}`);
