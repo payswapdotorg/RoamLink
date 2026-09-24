@@ -114,6 +114,42 @@ schema. When RL-090 lands:
 3. Verify failure semantics once per environment; do not ship a health
    endpoint that has never failed.
 
+### 6.1 Real-run verification record (PA-011, 2026-09-23)
+
+The DATABASE_URL-gated persistence batteries ran for real against the
+operator-provided Neon PostgreSQL (the **PRIMARY** durable target, over
+its direct endpoint; the **SCRATCH** database named by
+`ROAMLINK_BACKUP_SCRATCH_DATABASE_URL` stays reserved for the RL-111
+backup battery and was not exercised in this run). PRIMARY was verified
+read-only BEFORE any battery ran: it was empty and never migrated (no
+ledger, no public tables), so the batteries' documented
+down-to-empty/up-from-empty cycles destroyed no operator data — §5's
+ordering (migrations over the direct endpoint, clean application from
+empty state, idempotent re-runs) was executed exactly. Outcomes, one line
+per battery (labels and counts only — zero credential values,
+RL-LOCK-016):
+
+- `packages/persistence-postgres/test/concurrency-real.test.ts` (RL-106):
+  **7/7 passed, 0 skipped** — the two-connection invariants (READ
+  COMMITTED isolation boundary, `FOR UPDATE SKIP LOCKED` disjoint
+  claiming, SAVEPOINT-fenced enqueue races, the delivered-outcome vs
+  `recoverInFlight` exactly-once race, stranded-claim re-ownership)
+  proven on the real pool.
+- `packages/persistence-postgres/test/rollback-roundtrip.test.ts`
+  (RL-112): **3/3 passed, 0 skipped** — RT-4 up → representative data →
+  down-to-base → up on the real pool, the ledger consistent end to end.
+- `tests/deployment/test/recovery-battery.test.ts` (RL-110): **8/8
+  passed, 0 skipped** — the DATABASE_URL-gated real leg ran: the
+  authenticated cron kick recovered the stranded claims and advanced the
+  inbox backlog beyond one bounded batch against real SQL.
+
+Zero real-wire fixes were required: every adapter assumption held on the
+live wire (the only observation is the documented node-postgres warning
+that `sslmode=require` is treated as `verify-full` — a stricter default,
+not a failure). PRIMARY's post-run state: fully migrated
+(`0001`–`0004` applied, digest-current) holding the recovery battery's
+seeded rows.
+
 ## 7. Backup/export path (deployment.md §2 requirement)
 
 - Minimum viable: scheduled logical export (Neon console or

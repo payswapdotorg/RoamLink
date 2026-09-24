@@ -115,6 +115,22 @@ verify clean application from empty state + idempotent re-runs
 (`tests/deployment` migration-recovery expectations), record the ledger
 hash.
 
+Real-run evidence (PA-011, 2026-09-23): the ordering above was executed
+and recorded against the operator-provided PostgreSQL (the PRIMARY
+durable target, over its direct endpoint; verified read-only empty and
+never migrated before the run). The RL-112 round-trip battery
+(`packages/persistence-postgres/test/rollback-roundtrip.test.ts`) passed
+3/3 with the DATABASE_URL-gated RT-4 leg RUN (no skip): migrateUp from
+empty → representative data → migrateDown to base → migrateUp, with the
+ledger consistent end to end (exactly the migration set, digest-current,
+ascending) — clean application from empty state plus the idempotent
+re-application, proven on the real engine. The RL-106 concurrency suite
+(7/7 passed, 0 skipped) and the RL-110 recovery battery's real leg (8/8
+passed, 0 skipped) passed on the same database in the same run, with
+zero real-wire fixes. Labels and counts only — zero credential values
+(RL-LOCK-016); the full per-battery record lives in
+`neon-provisioning.md` §6.1.
+
 ## 6. Verify health (real, not fake — deployment.md §7)
 
 The composed readiness surface (RL-100) exposes the per-dependency truth
@@ -342,6 +358,21 @@ smoke decide acceptance, not prose judgment.
   (migrations ledger manifest drift-free; stuck-outbox recovery and inbox
   batch progression exercised; smoke output recorded with the rolled-back
   SHA).
+
+Real-run evidence (PA-011, 2026-09-23): the RL-112 real-pool round-trip
+leg (RT-4) is no longer operator-pending — it ran and PASSED against the
+operator-provided PostgreSQL (the PRIMARY durable target, over its direct
+endpoint, verified read-only empty before the run): the baseline down
+migrations were exercised on the real engine and behaved exactly as §9.2
+pins (the down-to-base cycle drops the data tables; the forward
+re-application converges the ledger to exactly the migration set,
+digest-current). The deliberate down-migration in this run was
+operator-commanded (the PA-011 work order) and destroyed only the
+batteries' own seeded rows — the honest non-survivable case RT-2 encodes.
+In the same run the RL-106 concurrency suite (7/7, 0 skipped) and the
+RL-110 recovery battery's real leg (8/8, 0 skipped) passed on the same
+database, zero real-wire fixes. Full record: `neon-provisioning.md` §6.1
+(labels and counts only — zero credential values, RL-LOCK-016).
 
 ## 10. Honest-gaps discipline (AR-009)
 
