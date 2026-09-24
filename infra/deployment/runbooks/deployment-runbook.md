@@ -50,6 +50,17 @@ Follow `neon-provisioning.md` in full. Summary:
    correct configuration (Redis is optional for correctness).
 4. Remember the bounded-accelerator rule: no durable business state, ever.
 
+Real-account provision note (PA-013, 2026-09-24): the operator delivered
+and VERIFIED the Upstash Redis REST credentials for this phase (URL +
+token, exported into the run shell ONLY — never written into any file,
+per §3's discipline). The accelerator's env-gated real-wire legs then ran
+against that account (`packages/provider-redis` env-health: the pinned
+REST envelope end to end, the fixed-window limiter's real TTL behavior,
+health composition) together with the runtime-hardening
+limiter-under-load leg — outcomes in §7's real-run record. Every key
+the batteries touch is run-scoped and carries a mandatory TTL: the
+bounded-accelerator law held on the live service.
+
 ### 2.3 Upstash QStash (retryable async delivery) — OPTIONAL
 
 1. In the Upstash console create/copy the QStash credentials for the
@@ -62,6 +73,20 @@ Follow `neon-provisioning.md` in full. Summary:
    host (receivers verify every delivery BEFORE acting — RL-097).
 4. Register the receiver URLs the host exposes (webhook/projector
    endpoints must be HTTPS and reachable by QStash).
+
+Real-account provision note (PA-013, 2026-09-24): the QStash surface
+(`QSTASH_TOKEN` + the current/next signing keys, optional `QSTASH_URL`)
+was NOT delivered in this phase (requested in the operator thread; it
+may arrive in a later run). The live QStash wire legs are BUILT and
+env-gated in `packages/provider-qstash/test/client-wire.test.ts`: the
+read-only probe + health composition, the publish round-trip (dedupe
+id + bounded delay headers, over an RFC 2606 `.invalid` sink so no
+party beyond the operator's own account is ever contacted), and the
+signed receiver round-trip that retires AR-009's standing wire note
+(the receiver mechanism — an HTTPS capture endpoint under
+`QSTASH_LIVE_RECEIVER_URL`, readable via plain GET — is documented in
+the battery). They SKIP with their named reasons until the operator
+configures the keys; AR-009's wire note stays OPEN.
 
 ### 2.4 Cloudflare R2 (large artifacts) — OPTIONAL
 
@@ -206,6 +231,52 @@ list and the no-lie law) and needs NO secrets and NO customer data:
 - [ ] A stuck-outbox recovery exercise and an inbox backlog progression
       beyond one batch (deployment.md §7 items; the RL-093/RL-094 fixes
       are the implementation authority).
+
+Real-run evidence (PA-013, 2026-09-24): the Redis row above is no
+longer operator-pending for the accelerator's transport legs — they ran
+for real against the operator-provided Upstash Redis REST account
+(credentials exported env-only, per §3). Outcomes, one line per battery
+(labels and counts only — zero credential values, RL-LOCK-016):
+
+- `packages/provider-redis` env-health (RL-096, env-gated): **4/4
+  passed, 0 skipped** — the pinned REST envelope end to end on the
+  live service (PING, byte-exact SET/GET, SET NX, PTTL countdown, real
+  expiry at the TTL boundary, DEL idempotence, the pinned EVAL
+  increment with its guaranteed TTL), the fixed-window limiter's real
+  TTL behavior (epoch-aligned boundary counting; rollover into a fresh
+  bucket key carrying its own TTL), health composition over the live
+  port, and credential redaction (RL-LOCK-016).
+- `packages/provider-redis` full package: **43/43 passed, 0 skipped**
+  (39 deterministic + the 4 real-wire legs).
+- `tests/deployment/test/runtime-hardening.test.ts` (RL-096/RL-107):
+  **10 passed | 1 named skip (11)** — the deterministic cores green AND
+  the Redis-gated real leg RAN: the distributed fixed-window limiter
+  admitted EXACTLY maxCost (25 of 50 concurrent takes) over the live
+  accelerator (atomic increments, real TTLs — the per-window admission
+  law proven under concurrent load). The one skip is the QStash-gated
+  escalation leg, with its named reason (the QStash env surface is not
+  configured — keys pending operator delivery).
+- `packages/provider-qstash` client-wire (RL-097, env-gated live legs):
+  **9 passed | 3 named skips (12)** — the deterministic wire battery
+  green; the live legs (read-only probe + health composition, publish
+  round-trip with the dedupe/delay headers, the signed receiver
+  round-trip) SKIP with the named reason: the QStash env surface is
+  not configured. Canonicalization outcome: NOT YET RECORDED — the
+  live signature canonicalization (AR-009's standing wire note)
+  executes when the operator delivers the QStash keys; the battery's
+  receiver mechanism (`QSTASH_LIVE_RECEIVER_URL`) is documented in the
+  test file.
+
+Real-wire fixes this run surfaced and landed (inside the owned surface,
+`packages/provider-redis`; every corrected law pins the LIVE wire
+truth, none weakened — all existing deterministic legs stayed green):
+the pinned EVAL command array was missing the REQUIRED numkeys count —
+the real Redis EVAL wire shape is `EVAL script numkeys key [key...] arg
+[arg...]`, and the live service answers HTTP 400 to the numkeys-less
+form. The client now sends `["EVAL", <pinned script>, "1", <key>,
+<amount>, <ttlMs>]`, the shared in-memory engine parses (and fail-closed
+validates) the same real shape, and the in-memory fake sends the
+byte-identical array — ONE wire shape everywhere.
 
 ## 8. Final deployment checks (deployment.md §7 gate)
 

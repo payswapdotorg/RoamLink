@@ -13,12 +13,26 @@
  *  - PROBE FAIL-CLOSED (RL-108): the production ADCOS probe is honest-
  *    not-configured when the env is absent (exit-distinct, never blocking
  *    local/CI), and when configured it applies the fail-closed state —
- *    an incompatible endpoint refuses mutations diagnosably.
+ *    an incompatible endpoint refuses mutations diagnosably;
+ *  - ENV-GATED REAL LEGS (PA-013): the distributed limiter under live
+ *    load over the operator-provided Upstash Redis accelerator, and the
+ *    RL-107 escalation kick over the live QStash publish API — absent
+ *    keys produce the NAMED skips (the AR-010 operator-phase discipline).
  */
 import { describe, expect, it } from "vitest";
 import { DeterministicClock } from "@roamlink/testkit";
+import { nowUtc } from "@roamlink/contracts";
 import { createInMemoryPersistence } from "@roamlink/persistence";
-import { InMemoryJobDeliveryQueue } from "@roamlink/provider-qstash";
+import {
+  InMemoryJobDeliveryQueue,
+  tryParseQStashEnv,
+  UpstashQStashClient,
+} from "@roamlink/provider-qstash";
+import {
+  DistributedFixedWindowLimiter,
+  tryParseUpstashRedisEnv,
+  UpstashRedisRestClient,
+} from "@roamlink/provider-redis";
 import { FakeAdcos } from "../../../packages/integration/test/fake-adcos.js";
 
 import {
@@ -283,4 +297,142 @@ describe("RL-108 pin: the production ADCOS probe is honest and fail-closed", () 
       "unknown",
     ]);
   });
+});
+
+// --------------------------------------------------------------------------------
+// The env-gated REAL legs (PA-013): the real limiter under load over the
+// operator-provided Upstash Redis accelerator (UPSTASH_REDIS_REST_URL +
+// UPSTASH_REDIS_REST_TOKEN) and the RL-107 escalation path's real transport
+// over the operator-provided QStash account (QSTASH_* keys). Absent keys ->
+// the NAMED skips below (the AR-010 operator-phase discipline; CI stays
+// green with the deterministic cores above). The batteries' skip messages
+// and per-leg details live in `packages/provider-redis/test/env-health.test.ts`
+// and `packages/provider-qstash/test/client-wire.test.ts` (Legs 1+2 of the
+// PA-013 transport batteries); these legs are the deployment-plane pins:
+// admission under CONCURRENT load and the maintenance kick over the real
+// publish API.
+// --------------------------------------------------------------------------------
+
+const REDIS_PARSED = tryParseUpstashRedisEnv(process.env);
+const REDIS_CONFIG = REDIS_PARSED.ok ? REDIS_PARSED.config : undefined;
+
+if (!REDIS_CONFIG) {
+  console.log(
+    "[RL-096/PA-013] SKIPPING the real limiter-under-load leg: the Upstash Redis env surface is not fully configured " +
+      "(UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN). The leg runs in the operator phase against the live " +
+      "accelerator (atomic fixed-window admission under concurrent load, real TTLs) — this skip is named, never a " +
+      "silent pass.",
+  );
+}
+
+const redisReal = REDIS_CONFIG ? it : it.skip;
+const RUN_ID = Date.now().toString(36);
+
+describe("RL-096/PA-013 real leg: the distributed limiter under live load", () => {
+  redisReal(
+    "admits exactly maxCost under concurrent load over the live accelerator (atomic increments, real TTL)",
+    async () => {
+      const config = REDIS_CONFIG;
+      if (!config) throw new Error("unreachable: the gate above decides these legs");
+      const port = new UpstashRedisRestClient({ baseUrl: config.baseUrl, token: config.token });
+      const windowMs = 60_000;
+      const maxCost = 25;
+      const keyPrefix = `ratelimit:pa013:${RUN_ID}`;
+      const limiter = new DistributedFixedWindowLimiter({ windowMs, maxCost, keyPrefix }, port);
+      const subject = "load-1";
+      // ONE caller instant -> ONE epoch-aligned bucket BY CONSTRUCTION (the
+      // bucket derives purely from `at`), so the concurrent burst counts
+      // against a single window key regardless of wire timing.
+      const at = new Date().toISOString();
+      const decisions = await Promise.all(
+        Array.from({ length: 50 }, () => limiter.tryTake(subject, 1, at)),
+      );
+      const allowed = decisions.filter((decision) => decision.allowed).length;
+      const denied = decisions.filter(
+        (decision): decision is Extract<typeof decision, { allowed: false }> => !decision.allowed,
+      );
+      // Atomicity on the live wire: the pinned EVAL increment assigns a
+      // distinct count to every caller, so exactly maxCost are admitted —
+      // a lost update would over-admit, a race would double-count.
+      expect(allowed).toBe(maxCost);
+      expect(denied).toHaveLength(50 - maxCost);
+      for (const decision of denied) {
+        expect(decision.remaining).toBe(0);
+        expect(decision.retryAfterMs).toBeGreaterThan(0);
+        expect(decision.retryAfterMs).toBeLessThanOrEqual(windowMs);
+      }
+      // The window key carries a real TTL (bounded state self-destructs).
+      const bucket = Math.floor(Date.parse(at) / windowMs);
+      const ttl = await port.timeToLiveMs(`${keyPrefix}:${subject}:${bucket}`);
+      expect(ttl).not.toBeNull();
+      expect(ttl as number).toBeGreaterThan(0);
+      expect(ttl as number).toBeLessThanOrEqual(windowMs);
+    },
+    60_000,
+  );
+});
+
+const QSTASH_PARSED = tryParseQStashEnv(process.env);
+const QSTASH_CONFIG = QSTASH_PARSED.ok ? QSTASH_PARSED.config : undefined;
+
+if (!QSTASH_CONFIG) {
+  console.log(
+    "[RL-097/PA-013] SKIPPING the escalation-path real-transport leg: the QStash env surface is not configured " +
+      "(QSTASH_TOKEN, QSTASH_CURRENT_SIGNING_KEY, QSTASH_NEXT_SIGNING_KEY, optional QSTASH_URL). The leg runs in " +
+      "the operator phase against the live publish API (the RL-107 event-driven maintenance kick over the real " +
+      "transport) — this skip is named, never a silent pass.",
+  );
+}
+
+const qstashReal = QSTASH_CONFIG ? it : it.skip;
+
+/** UTC `yyyymmdd` stamp mirroring the maintenance module's per-day ids. */
+function utcDateStamp(at: string): string {
+  const date = new Date(at);
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${date.getUTCFullYear()}${month}${day}`;
+}
+
+describe("RL-107/PA-013 real leg: the escalation kick over the live transport", () => {
+  qstashReal(
+    "enqueues its deterministic per-day jobs through the REAL publish API",
+    async () => {
+      const config = QSTASH_CONFIG;
+      if (!config) throw new Error("unreachable: the gate above decides these legs");
+      const client = new UpstashQStashClient({
+        token: config.token,
+        ...(config.baseUrl !== null ? { baseUrl: config.baseUrl } : {}),
+      });
+      const persistence = createInMemoryPersistence();
+      // The battery's destination: the operator-configured maintenance
+      // receiver when present (the production wiring reads the same key),
+      // else the battery's RFC 2606 `.invalid` sink — a hostname that can
+      // NEVER resolve, so nothing beyond the operator's own QStash account
+      // is contacted (the leg proves the ENQUEUE transport contract; the
+      // signed delivery round-trip is the client-wire battery's receiver
+      // leg). The per-day ids make any same-day replay a transport-side
+      // duplicate — durable idempotency stays the LEDGER's job (RL-LOCK-014).
+      const destination =
+        process.env.ROAMLINK_MAINTENANCE_DESTINATION?.trim() ||
+        "https://receiver.invalid/roamlink-transport-battery";
+      const result = await runDailyMaintenance({
+        persistence,
+        asyncDelivery: client,
+        asyncDestination: destination,
+        now: () => nowUtc(),
+      });
+      expect(result.mode).toBe("enqueued");
+      if (result.mode !== "enqueued") return;
+      const day = utcDateStamp(new Date().toISOString());
+      expect(result.jobs.map((job) => job.jobId).sort()).toEqual([
+        `maintenance-daily-${day}-inbox`,
+        `maintenance-daily-${day}-outbox`,
+      ]);
+      for (const job of result.jobs) {
+        expect(job.accepted).toBe(true);
+      }
+    },
+    60_000,
+  );
 });

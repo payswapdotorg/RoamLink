@@ -84,9 +84,13 @@ export class InMemoryEphemeralCoordination implements EphemeralCoordinationPort 
       });
     }
     this.#assertCapacity(key);
+    // The REAL EVAL wire shape (numkeys before the key list — see
+    // engine.evalFixedWindowIncrement; live-confirmed by PA-013): the fake
+    // and the REST client send byte-identical command arrays.
     const count = this.#engine.exec([
       "EVAL",
       FIXED_WINDOW_INCREMENT_LUA,
+      "1",
       key,
       String(amount),
       String(ttlMs),
