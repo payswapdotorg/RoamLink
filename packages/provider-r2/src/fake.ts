@@ -3,7 +3,6 @@
  * no network. Used for tests and local development - never durable state
  * (the durable source of truth stays Neon/PostgreSQL; R2 holds artifacts).
  */
-import { createHash } from "node:crypto";
 import { ValidationError } from "@roamlink/contracts";
 import {
   type ObjectGetResult,
@@ -17,6 +16,7 @@ import {
   validateMetadata,
   validateObjectKey,
 } from "./port.js";
+import { md5Hex } from "./sigv4.js";
 
 export interface InMemoryObjectStorageOptions {
   readonly bounds?: Partial<ObjectStorageBounds>;
@@ -45,7 +45,9 @@ export class InMemoryObjectStorage implements ObjectStoragePort {
     validateObjectKey(request.key);
     const bytes = validateBodySize(request.body, this.#bounds.maxObjectBytes);
     validateMetadata(request.metadata);
-    const etag = createHash("sha256").update(bytes).digest("hex");
+    // The fake models the LIVE S3/R2 wire (PA-012): a single-part object's
+    // ETag is the MD5 of its bytes.
+    const etag = md5Hex(bytes);
     this.#objects.set(request.key, {
       body: bytes,
       ...(request.contentType !== undefined ? { contentType: request.contentType } : {}),

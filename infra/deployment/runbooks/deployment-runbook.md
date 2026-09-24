@@ -226,6 +226,29 @@ Before calling the environment ready, ALL of:
       deployed origin: `BASE_URL=... pnpm smoke` exit 0, output recorded
       with the deployed commit SHA (a lying dependency blocks this gate).
 
+Real-run evidence (PA-012, 2026-09-24): the backup/restore row above is
+no longer operator-pending for the R2 leg — the RL-111 battery
+(`tests/deployment/test/backup-restore-real.test.ts`) ran against the
+operator-provided pair (PRIMARY Neon PostgreSQL as the export source
+over its direct endpoint — NO DDL on it; the SCRATCH database
+migrated AND wiped by the battery as the restore target; the R2
+bucket as the content-addressed store) and PASSED **2/2 with 0
+skips**: export through the public reader contracts →
+content-addressed upload (the md5 ETag wire law, byte-identical
+read-back, the manifest naming the sha-256 digests) → scratch restore
+→ the B-series laws (digest-identical records, surviving dedupe keys
+with DUPLICATE replay, continuing versions via CAS, terminal-outbox
+records never re-enqueued, the audit chain verifying post-round-trip).
+A same-state re-run passed 2/2 again (the battery is re-runnable). The
+run surfaced and fixed real-wire assumptions in the R2 adapter within
+the owned surface (md5 ETags, the xmlns ListObjectsV2 envelope, weak
+validators on compressed GETs, idempotent DELETE semantics) — every
+corrected law pins the live wire truth, none weakened. The R2
+scoped-credential surface was exercised in the same phase by the
+adapter's env-gated real-wire legs (`packages/provider-r2` env-health:
+39/39, 0 skipped). Full record: `neon-provisioning.md` §7.1 (labels
+and counts only — zero credential values, RL-LOCK-016).
+
 ### 8.1 The executable demo-acceptance gate (RL-117)
 
 The §8 checklist is COMPOSED AND DECIDED by one command:

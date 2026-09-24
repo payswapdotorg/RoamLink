@@ -19,6 +19,17 @@ export function sha256Hex(data: string | Uint8Array): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+/**
+ * MD5 hex digest — the S3-compatible ETag convention. The live R2 wire
+ * (confirmed by the PA-012 operator-phase run) returns the MD5 of the
+ * stored bytes as the ETag of a single-part PUT/GET and inside
+ * ListObjectsV2 `<ETag>` elements; this helper pins that wire law in one
+ * place for the client, the fakes and the contract battery.
+ */
+export function md5Hex(data: string | Uint8Array): string {
+  return createHash("md5").update(data).digest("hex");
+}
+
 function hmac(key: Buffer | string, data: string): Buffer {
   return createHmac("sha256", key).update(data, "utf8").digest();
 }

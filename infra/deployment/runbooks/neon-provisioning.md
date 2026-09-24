@@ -160,6 +160,82 @@ seeded rows.
   ready; the deployment checks in `../runbooks/deployment-runbook.md` §8
   gate on it.
 
+### 7.1 Real-run verification record (PA-012, 2026-09-24)
+
+The R2-gated backup/export battery ran for real against the
+operator-provided pair: the **PRIMARY** Neon PostgreSQL (the §6.1
+database — fully migrated `0001`–`0004`, holding PA-011's recovery
+rows; the battery performs NO DDL on it) as the export SOURCE, the
+**SCRATCH** database named by `ROAMLINK_BACKUP_SCRATCH_DATABASE_URL`
+(migrated AND wiped by the battery, per the disposable contract) as the
+restore target, and the operator-provided R2 bucket as the
+content-addressed object store. Both legs of
+`tests/deployment/test/backup-restore-real.test.ts` (RL-111) ran with
+the gates satisfied — **2/2 passed, 0 skipped** (leg A 12.2s, leg B
+27.5s over the WAN; a same-state re-run passed 2/2 again in 31.5s,
+proving the battery re-runnable against a dirty source + scratch).
+
+B-series laws proven on the real pair (the same laws as the
+deterministic reference, `test/backup-restore.test.ts`):
+
+- **Leg A (export → content-addressed R2 upload):** the export through
+  the PUBLIC reader contracts is JSON-serializable end to end; every
+  exported outbox payload digests exactly to its recorded
+  `payload_digest` (sha-256); the exported audit chain VERIFIES and
+  detects tampering; the canonical digest is stable across the JSON
+  round-trip; the snapshot + manifest land in the bucket under
+  CONTENT-ADDRESSED keys (manifest shape: one `data-plane-snapshot`
+  object naming the snapshot's full sha-256 digest + sizeBytes — the
+  key carries the sha-256 prefix, per-run digests re-derivable by
+  re-running; counts = exported repositories/outbox/inbox); the
+  single-part PUT ETag equals the MD5 of the stored bytes (the live S3
+  wire law — see the real-wire fixes below); reads back from the real
+  bucket are byte-identical; the LIST names the object; the bucket is
+  tidied (delete).
+- **Leg B (scratch restore → the B-series laws):** the snapshot put/get
+  through real R2 is byte-identical; the SCRATCH is migrated with the
+  REAL infra/migrations and wiped before the restore; records restore
+  at their recorded versions (optimistic-concurrency tokens continue);
+  ADMITTED inbox dedupe keys are re-admitted; UNSETTLED outbox
+  obligations are re-enqueued while terminal records NEVER are (the
+  restored terminal key reads null, the unsettled reads PENDING);
+  restored records are digest-identical to the source (id, version,
+  canonical digest); a replayed admission is DUPLICATE (dedupe keys
+  survive); CAS at the recorded version succeeds and advances (the
+  restored state is writable); the audit chain still VERIFIES after
+  the real round-trip (source → reader contracts → JSON → R2 →
+  restore).
+
+Real-wire fixes this run surfaced and landed (all inside the owned
+surface, `packages/provider-r2` + the battery; every corrected law pins
+the LIVE wire truth, none weakened): the single-part ETag is the MD5
+content digest (not sha-256 — content addressing stays the key's job);
+the ListObjectsV2 envelope carries the S3 `xmlns` declaration and
+32-hex MD5 ETags (the strict parser was corrected to the real shapes);
+compressible GETs may arrive gzip-encoded with a WEAK `W/"<md5>"`
+validator (the client now requests the identity representation and
+normalizes the weak prefix); S3 DELETE is idempotent-success for absent
+keys (the port's boolean semantics were corrected to "confirmed
+absent"); and the battery itself is now re-entrant/re-runnable
+(idempotent seeding, tag-scoped outbox fixture keys, tag-scoped audit
+export, scratch wipe before restore — the pool-draining hang the
+first real run surfaced is documented in the battery header). The
+adapter's own env-gated real-wire legs ran in the same phase
+(`packages/provider-r2` env-health: 39/39, 0 skipped — signing,
+bucket addressing, the md5 ETag law, list parsing, health
+composition).
+
+Post-run state (labels and counts only — zero credential values,
+RL-LOCK-016): PRIMARY unchanged in schema (ledger `0001`–`0004`,
+digest-current), holding the battery's accumulated fixtures
+(read-only census: `ops-backup-verification=6` records,
+`ops-backup-verification-audit=9`, outbox 8 rows, inbox 8 rows —
+alongside PA-011's recovery rows); SCRATCH migrated (`0001`–`0004`)
+and holding the last run's restored state (6 marker records, 3 audit,
+3 PENDING unsettled obligations, 2 admissions) — disposable by
+contract. The R2 bucket was tidied (the battery deletes its objects);
+zero credential values, zero skips, zero failures.
+
 ## 8. Known limits / honest gaps (AR-009)
 
 - This runbook was authored WITHOUT a real Neon account in the build

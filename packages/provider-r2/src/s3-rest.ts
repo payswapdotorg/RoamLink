@@ -2,24 +2,34 @@
  * The S3-compatible REST client (RL-098) - the hosted implementation of
  * the {@link ObjectStoragePort} against Cloudflare R2's S3-compatible API.
  *
- * Wire contract (single-site pin):
+ * Wire contract (single-site pin, live-confirmed by the PA-012
+ * operator-phase run against a real R2 bucket):
  *  - endpoint `https://<accountId>.r2.cloudflarestorage.com`, bucket in
  *    the path (`/{bucket}/{key}`), service `s3`, region `auto`;
  *  - AWS SigV4 header auth for PUT/GET/DELETE and ListObjectsV2
  *    (`list-type=2`); SigV4 query (presigned) URLs for direct transfers;
- *  - GET of an absent object (404) is a VALID answer (null), never an
- *    error - absence is a state, not a failure;
- *  - ListObjectsV2's XML is parsed by a STRICT closed-shape parser
+ *  - the ETag of a single-part PUT/GET is the MD5 hex digest of the
+ *    stored bytes (quoted on the header, `&quot;`-escaped in list XML) —
+ *    NOT the sha-256 content digest; content addressing stays the KEY's
+ *    job (the sha-256 rides the content-addressed key + the manifest);
+ *  - GET of an absent object (404 + NoSuchKey XML) is a VALID answer
+ *    (null), never an error - absence is a state, not a failure;
+ *  - DELETE of an existing object answers 204;
+ *  - ListObjectsV2's XML root carries the S3 xmlns declaration
+ *    (`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+ *    and is parsed by a STRICT closed-shape parser
  *    (Key/Size/ETag/IsTruncated/NextContinuationToken only) that fails
  *    closed on anything unexpected;
  *  - provider failures surface as typed {@link S3ProviderError} with
  *    SUPPRESSED provider text (RL-LOCK-016).
  *
- * Honest wire note (AR-009): the S3 REST semantics are pinned from the
- * published S3/R2 documentation; live confirmation against a real R2
- * account is the RL-100+ phase. The client is exercised in tests by an
- * in-memory S3-compatible server that VALIDATES SigV4 signatures, so the
- * signing path is verified end-to-end without the network.
+ * Wire note (AR-009, retired for the R2 leg by PA-012): the S3 REST
+ * semantics above were originally pinned from the published S3/R2
+ * documentation and an in-memory SigV4-validating server; the PA-012
+ * operator-phase run confirmed them LIVE (signing, bucket addressing,
+ * the md5 ETag law, the xmlns list envelope, 404/204 statuses) and the
+ * two wrong assumptions it surfaced (sha-256-shaped ETags, an
+ * xmlns-intolerant list envelope) were corrected in this client.
  */
 import { ValidationError } from "@roamlink/contracts";
 import {
@@ -34,7 +44,7 @@ import {
   validateMetadata,
   validateObjectKey,
 } from "./port.js";
-import { presignUrl, sha256Hex, signHeaderAuth } from "./sigv4.js";
+import { presignUrl, md5Hex, signHeaderAuth } from "./sigv4.js";
 
 export const R2_DEFAULT_REGION = "auto";
 export const R2_SERVICE = "s3";
@@ -68,6 +78,18 @@ export class S3ProviderError extends Error {
 }
 
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}$/;
+
+/**
+ * Normalizes a wire ETag header onto the port's etag semantic (the md5 hex
+ * digest of the stored bytes): strips the optional weak-validator prefix
+ * (`W/` — the live edge serves compressed representations with weak
+ * validators, live-confirmed by PA-012) and the quoting. Null when the
+ * provider sent no header at all.
+ */
+function normalizeWireEtag(value: string | null): string | null {
+  if (value === null) return null;
+  return value.replace(/^W\//, "").replace(/"/g, "");
+}
 
 function formatAmzDate(date: Date): string {
   const iso = date.toISOString();
@@ -146,7 +168,10 @@ export class S3ObjectStorageClient implements ObjectStoragePort {
     validateMetadata(request.metadata);
     const bytes = validateBodySize(request.body, this.#bounds.maxObjectBytes);
     const response = await this.#signedRequest("PUT", request.key, bytes, request.contentType);
-    const etag = response.headers.get("etag")?.replace(/"/g, "") ?? sha256Hex(bytes);
+    // The live wire answers the MD5 of the stored bytes (S3 single-part
+    // ETag law); the fallback models the same convention for hypothetical
+    // etag-less responses so the port's etag stays ONE semantic everywhere.
+    const etag = normalizeWireEtag(response.headers.get("etag")) ?? md5Hex(bytes);
     return { key: request.key, etag, sizeBytes: bytes.byteLength };
   }
 
@@ -161,7 +186,7 @@ export class S3ObjectStorageClient implements ObjectStoragePort {
     return {
       body,
       ...(response.headers.get("content-type") !== null ? { contentType: response.headers.get("content-type") as string } : {}),
-      etag: response.headers.get("etag")?.replace(/"/g, "") ?? sha256Hex(body),
+      etag: normalizeWireEtag(response.headers.get("etag")) ?? md5Hex(body),
       sizeBytes: body.byteLength,
     };
   }
@@ -263,6 +288,14 @@ export class S3ObjectStorageClient implements ObjectStoragePort {
         method,
         headers: {
           host,
+          // The byte-storage client wants the IDENTITY representation: the
+          // live edge compresses compressible content types when the client
+          // advertises encoding support and then answers a WEAK validator
+          // (W/"<md5>") for the compressed representation (live-confirmed by
+          // PA-012). Identity keeps the transfer raw and the ETag strong;
+          // `normalizeWireEtag` remains the safety net. Unsigned header — no
+          // SigV4 canonicalization impact.
+          "accept-encoding": "identity",
           "x-amz-content-sha256": signed.payloadHash,
           "x-amz-date": signed.amzDate,
           authorization: signed.authorizationHeader,
@@ -279,12 +312,15 @@ export class S3ObjectStorageClient implements ObjectStoragePort {
 }
 
 /**
- * STRICT ListObjectsV2 XML parser (closed shape): ListBucketResult with
- * IsTruncated, optional NextContinuationToken and Contents entries of
- * Key/Size/ETag only. Anything else fails closed (value-free).
+ * STRICT ListObjectsV2 XML parser (closed shape): ListBucketResult (the
+ * real S3/R2 root carries the xmlns declaration — tolerated as part of
+ * the pinned wire shape) with IsTruncated, optional
+ * NextContinuationToken and Contents entries of Key/Size/ETag only, the
+ * ETag being the md5 hex digest the live wire returns. Anything else
+ * fails closed (value-free).
  */
 export function parseListBucketResult(xml: string): ObjectListPage {
-  const envelope = /<ListBucketResult>([\s\S]*)<\/ListBucketResult>/.exec(xml);
+  const envelope = /<ListBucketResult[^>]*>([\s\S]*)<\/ListBucketResult>/.exec(xml);
   if (envelope === null) {
     throw new S3ProviderError("response-unusable", null, "the LIST response is not a ListBucketResult document (failing closed)");
   }
@@ -308,7 +344,7 @@ export function parseListBucketResult(xml: string): ObjectListPage {
     const entry = match[1] ?? "";
     const key = /<Key>([^<]+)<\/Key>/.exec(entry)?.[1];
     const size = /<Size>(\d+)<\/Size>/.exec(entry)?.[1];
-    const etag = /<ETag>&?quot;?([0-9a-f]{64})&?quot;?<\/ETag>/.exec(entry)?.[1];
+    const etag = /<ETag>(?:W\/)?&?quot;?([0-9a-f]{32})&?quot;?<\/ETag>/.exec(entry)?.[1];
     if (key === undefined || size === undefined || etag === undefined) {
       throw new S3ProviderError("response-unusable", null, "a LIST Contents entry lacks Key/Size/ETag (failing closed)");
     }
