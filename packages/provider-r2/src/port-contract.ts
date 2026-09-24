@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { ValidationError } from "@roamlink/contracts";
+import { md5Hex } from "./sigv4.js";
 import type { ObjectStoragePort } from "./port.js";
 
 export interface ObjectStorageContractContext {
@@ -28,7 +29,10 @@ export function defineObjectStorageContract(
         contentType: "application/json",
       });
       expect(put.sizeBytes).toBe(body.byteLength);
-      expect(put.etag).toMatch(/^[0-9a-f]{64}$/);
+      // The S3-compatible wire law (live-confirmed against R2 by PA-012):
+      // a single-part PUT's ETag IS the MD5 content digest of the stored
+      // bytes — the provider computed it from what it actually stored.
+      expect(put.etag).toBe(md5Hex(body));
       const fetched = await port.get("exports/org-1/2026/01/abcdef0123456789-export.json");
       expect(fetched).not.toBeNull();
       expect(Buffer.from(fetched?.body ?? new Uint8Array()).toString("utf8")).toBe("diagnostic export payload");
@@ -36,7 +40,14 @@ export function defineObjectStorageContract(
       expect(fetched?.etag).toBe(put.etag);
       await expect(port.delete("exports/org-1/2026/01/abcdef0123456789-export.json")).resolves.toBe(true);
       await expect(port.get("exports/org-1/2026/01/abcdef0123456789-export.json")).resolves.toBeNull();
-      await expect(port.delete("exports/org-1/2026/01/abcdef0123456789-export.json")).resolves.toBe(false);
+      // DELETE is idempotent-success on the S3 wire — an absent key also
+      // confirms (live-confirmed against R2 by PA-012; S3's documented
+      // DeleteObject contract) — so the UNIVERSAL law is resolution without
+      // error plus continued absence; the boolean carries the adapter's best
+      // knowledge (the in-memory fake knows absence; an S3 wire cannot).
+      const absentDelete = await port.delete("exports/org-1/2026/01/abcdef0123456789-export.json");
+      expect(typeof absentDelete).toBe("boolean");
+      await expect(port.get("exports/org-1/2026/01/abcdef0123456789-export.json")).resolves.toBeNull();
     });
 
     it("answers get() of an absent object with null (absence is a state)", async () => {

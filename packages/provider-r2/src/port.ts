@@ -95,7 +95,15 @@ export interface ObjectStoragePort {
   put(request: ObjectPutRequest): Promise<ObjectPutResult>;
   /** Null when the object does not exist (absence is a valid answer). */
   get(key: string): Promise<ObjectGetResult | null>;
-  /** True when something was deleted. */
+  /**
+   * True when the adapter confirmed the deletion. S3-compatible wires
+   * confirm IDEMPOTENTLY — an absent key also answers success (the S3
+   * DeleteObject contract, live-confirmed against R2 by PA-012) — so `true`
+   * means "confirmed absent", never "previously existed"; adapters with
+   * local knowledge (the in-memory fake) may answer `false` for an
+   * already-absent key. Either way the key is guaranteed absent once the
+   * promise resolves.
+   */
   delete(key: string): Promise<boolean>;
   list(options?: ObjectListOptions): Promise<ObjectListPage>;
   /** Bounded-time presigned URL for direct browser/service transfers. */

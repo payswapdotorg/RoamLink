@@ -42,6 +42,23 @@
  *
  * No credential ever lands in a committed file: everything is env-only
  * (RL-LOCK-016), and failures never echo connection strings or keys.
+ *
+ * PA-012 real-wire corrections (live-confirmed against the operator's R2
+ * bucket + PostgreSQL pair, 2026-09-24):
+ *  - the ETag of a single-part R2 PUT is the MD5 of the stored bytes (the
+ *    S3 wire law), NOT the sha-256 content digest — content addressing
+ *    stays the KEY's job; the etag laws below pin the md5 wire law;
+ *  - the battery is RE-ENTRANT and RE-RUNNABLE: a real run executes leg A
+ *    then leg B in ONE process against the SAME source (the legs share
+ *    SOURCE_TAG), and the operator phase re-runs the battery against the
+ *    same primary — so every seed step is idempotent (read-before-write
+ *    pre-checks; port-level idempotency for outbox enqueue and inbox
+ *    admission; the terminal outbox fixture is only claimed/delivered
+ *    while non-terminal), the outbox fixture keys are TAG-SCOPED (fresh
+ *    obligations per run), the exported audit section is scoped to this
+ *    run's chain, and the SCRATCH is wiped (its three data tables) before
+ *    the restore — the scratch is disposable by contract (migrated and
+ *    wiped by this battery; the migration ledger is never touched).
  */
 import { describe, expect, it } from "vitest";
 import { Pool } from "pg";
@@ -59,7 +76,7 @@ import {
   type PostgresPersistence,
   type SqlDriver,
 } from "@roamlink/persistence-postgres";
-import { S3ObjectStorageClient, buildContentAddressedKey, tryParseR2Env } from "@roamlink/provider-r2";
+import { S3ObjectStorageClient, buildContentAddressedKey, md5Hex, tryParseR2Env } from "@roamlink/provider-r2";
 import type { ObjectStoragePort } from "@roamlink/provider-r2";
 import { InMemoryAuditLog, verifyAuditChain } from "@roamlink/audit";
 
@@ -136,10 +153,21 @@ const realScratch = hasSource && scratchIsDistinct() ? it : it.skip;
 
 const MARKER_REPOSITORY = "ops-backup-verification";
 const AUDIT_REPOSITORY = "ops-backup-verification-audit";
-const OUTBOX_UNSETTLED_KEY = "ops-backup-verification-unsettled";
-const OUTBOX_TERMINAL_KEY = "ops-backup-verification-terminal";
+const OUTBOX_UNSETTLED_KEY_PREFIX = "ops-backup-verification-unsettled";
+const OUTBOX_TERMINAL_KEY_PREFIX = "ops-backup-verification-terminal";
 const INBOX_DEDUPE_KEY = "ops-backup-verification-dedupe-1";
 const SOURCE_TAG = `rl111-${Date.now().toString(36)}`;
+/**
+ * TAG-SCOPED outbox fixture keys (the PA-012 re-runnability law): every
+ * run seeds FRESH unsettled/terminal obligations (a fixed key would
+ * digest-conflict with a prior run's tag-carrying payload), while the two
+ * legs of ONE run share them idempotently (the port's enqueue answers
+ * ALREADY_ENQUEUED for the same key + payload digest). The restore's
+ * prefix filter (`ops-backup-verification*`) still gathers every run's
+ * unsettled obligations, and the laws below read THIS run's keys.
+ */
+const OUTBOX_UNSETTLED_KEY = `${OUTBOX_UNSETTLED_KEY_PREFIX}-${SOURCE_TAG}`;
+const OUTBOX_TERMINAL_KEY = `${OUTBOX_TERMINAL_KEY_PREFIX}-${SOURCE_TAG}`;
 
 function wireMigrations(): void {
   setMigrationFileAccess({
@@ -166,16 +194,31 @@ async function openSource(): Promise<{
   };
 }
 
-/** Seeds the battery's OWN marker data through the PUBLIC write ports. */
+/**
+ * Seeds the battery's OWN marker data through the PUBLIC write ports —
+ * IDEMPOTENTLY (the PA-012 re-entrancy law): a real run executes leg A then
+ * leg B in one process against the same source, and the operator phase
+ * re-runs the battery against the same primary, so every fixture is seeded
+ * only when absent and the outbox/inbox fixtures rely on their port-level
+ * idempotency (ALREADY_ENQUEUED / DUPLICATE are the designed answers, never
+ * errors). The laws assert round-trip fidelity, not seed freshness.
+ */
 async function seedMarkerData(persistence: PostgresPersistence): Promise<void> {
-  const unit = await persistence.begin();
-  await unit.records(MARKER_REPOSITORY).insert(`marker-${SOURCE_TAG}-1`, { kind: "battery", revision: 1 });
-  await unit
-    .records(MARKER_REPOSITORY)
-    .compareAndSwap(`marker-${SOURCE_TAG}-1`, 1, { kind: "battery", revision: 2 });
-  await unit.records(MARKER_REPOSITORY).insert(`marker-${SOURCE_TAG}-2`, { kind: "battery", revision: 1 });
-  await unit.commit();
+  // The marker records (read-before-write: the other leg of this run — or a
+  // crashed prior leg — may already have committed them).
+  const markerOne = await persistence.records(MARKER_REPOSITORY).get(`marker-${SOURCE_TAG}-1`);
+  if (markerOne === null) {
+    const unit = await persistence.begin();
+    await unit.records(MARKER_REPOSITORY).insert(`marker-${SOURCE_TAG}-1`, { kind: "battery", revision: 1 });
+    await unit
+      .records(MARKER_REPOSITORY)
+      .compareAndSwap(`marker-${SOURCE_TAG}-1`, 1, { kind: "battery", revision: 2 });
+    await unit.records(MARKER_REPOSITORY).insert(`marker-${SOURCE_TAG}-2`, { kind: "battery", revision: 1 });
+    await unit.commit();
+  }
 
+  // The UNSETTLED obligation (enqueue is port-idempotent: ALREADY_ENQUEUED
+  // for the same key + payload digest).
   const outboxUnit = await persistence.begin();
   await outboxUnit.outbox.enqueue({
     idempotencyKey: OUTBOX_UNSETTLED_KEY,
@@ -183,22 +226,31 @@ async function seedMarkerData(persistence: PostgresPersistence): Promise<void> {
     createdAt: new Date().toISOString(),
   });
   await outboxUnit.commit();
-  // A TERMINAL record: the restore law says it is NEVER re-enqueued.
-  const terminalUnit = await persistence.begin();
-  await terminalUnit.outbox.enqueue({
-    idempotencyKey: OUTBOX_TERMINAL_KEY,
-    payload: { effect: "rl111-marker-terminal", tag: SOURCE_TAG },
-    createdAt: new Date().toISOString(),
-  });
-  await terminalUnit.commit();
-  const claim = await persistence.begin();
-  await claim.outbox.claimDue(new Date().toISOString(), 5);
-  await claim.commit();
-  const settle = await persistence.begin();
-  await settle.outbox.markDelivered(OUTBOX_TERMINAL_KEY, new Date().toISOString());
-  await settle.commit();
 
-  // Exactly-once admission: the key is occupied ONCE on the source.
+  // A TERMINAL record: the restore law says it is NEVER re-enqueued. Seeded
+  // (claimed + delivered) only while it is not already terminal — terminal
+  // states have no outgoing edges (the state machine stays closed), and a
+  // prior leg of this run has typically already delivered it.
+  const terminal = await persistence.outbox.get(OUTBOX_TERMINAL_KEY);
+  if (terminal?.deliveryState !== "DELIVERED") {
+    const terminalUnit = await persistence.begin();
+    await terminalUnit.outbox.enqueue({
+      idempotencyKey: OUTBOX_TERMINAL_KEY,
+      payload: { effect: "rl111-marker-terminal", tag: SOURCE_TAG },
+      createdAt: new Date().toISOString(),
+    });
+    await terminalUnit.commit();
+    const claim = await persistence.begin();
+    await claim.outbox.claimDue(new Date().toISOString(), 5);
+    await claim.commit();
+    const settle = await persistence.begin();
+    await settle.outbox.markDelivered(OUTBOX_TERMINAL_KEY, new Date().toISOString());
+    await settle.commit();
+  }
+
+  // Exactly-once admission: the key is occupied ONCE on the source (a
+  // replay from the other leg of this run — or a prior run — is DUPLICATE,
+  // the designed idempotent answer).
   const inboxUnit = await persistence.begin();
   const admission = await inboxUnit.inbox.admit({
     source: "rl111-battery",
@@ -210,8 +262,13 @@ async function seedMarkerData(persistence: PostgresPersistence): Promise<void> {
   await inboxUnit.commit();
 }
 
-/** The audit chain the battery persists as records (plain form, JSON-safe). */
-async function seedAuditChain(): Promise<ReturnType<InMemoryAuditLog["events"]>> {
+/**
+ * Seeds the battery's audit chain as records — idempotently (the other leg
+ * of this run may already have committed this tag's chain; read-before-write).
+ */
+async function seedAuditChain(persistence: PostgresPersistence): Promise<void> {
+  const head = await persistence.records(AUDIT_REPOSITORY).get(`audit-${SOURCE_TAG}-0`);
+  if (head !== null) return;
   const audit = new InMemoryAuditLog({
     eventIdGenerator: (() => {
       let counter = 0;
@@ -228,7 +285,12 @@ async function seedAuditChain(): Promise<ReturnType<InMemoryAuditLog["events"]>>
       occurredAt: new Date().toISOString(),
     });
   }
-  return audit.events();
+  const events = await audit.events();
+  const unit = await persistence.begin();
+  for (const [index, event] of (events as unknown as { toPlain(): Record<string, unknown> }[]).entries()) {
+    await unit.records(AUDIT_REPOSITORY).insert(`audit-${SOURCE_TAG}-${index}`, event.toPlain() as never);
+  }
+  await unit.commit();
 }
 
 /** The canonical-state export (plain, JSON-serializable; the reader-contract shapes). */
@@ -253,18 +315,26 @@ interface DataPlaneExport {
   }[];
 }
 
-/** The canonical-state export through the PUBLIC reader contracts. */
-async function exportDataPlane(persistence: PostgresPersistence, auditRecords: readonly Record<string, unknown>[]): Promise<DataPlaneExport> {
+/**
+ * The canonical-state export through the PUBLIC reader contracts. The audit
+ * section is scoped to THIS run's chain (`audit-<SOURCE_TAG>-*`): the
+ * source accumulates prior runs' chains (the battery is re-runnable), and
+ * the round-trip's subject is this run's chain — the export, the restore and
+ * the audit law all see exactly the three records this run seeded.
+ */
+async function exportDataPlane(persistence: PostgresPersistence): Promise<DataPlaneExport> {
   const markerRecords = (await persistence.records(MARKER_REPOSITORY).list()).map((record) => ({
     recordId: record.recordId,
     version: record.version,
     value: record.value,
   }));
-  const auditStored = (await persistence.records(AUDIT_REPOSITORY).list()).map((record) => ({
-    recordId: record.recordId,
-    version: record.version,
-    value: record.value,
-  }));
+  const auditStored = (await persistence.records(AUDIT_REPOSITORY).list())
+    .filter((record) => record.recordId.startsWith(`audit-${SOURCE_TAG}-`))
+    .map((record) => ({
+      recordId: record.recordId,
+      version: record.version,
+      value: record.value,
+    }));
   const outbox = (await persistence.outbox.list()).map((record) => ({
     idempotencyKey: record.idempotencyKey,
     deliveryState: record.deliveryState,
@@ -285,7 +355,7 @@ async function exportDataPlane(persistence: PostgresPersistence, auditRecords: r
     tag: SOURCE_TAG,
     records: {
       [MARKER_REPOSITORY]: markerRecords,
-      [AUDIT_REPOSITORY]: auditStored.length > 0 ? auditStored : auditRecords.map((value, index) => ({ recordId: `audit-${SOURCE_TAG}-${index}`, version: 1, value })),
+      [AUDIT_REPOSITORY]: auditStored,
     },
     outbox,
     inbox,
@@ -350,14 +420,9 @@ describe("RL-111 leg A: real export + content-addressed R2 upload (DATABASE_URL 
       }
 
       await seedMarkerData(source.persistence);
-      const auditEvents = await seedAuditChain();
-      const auditUnit = await source.persistence.begin();
-      for (const [index, event] of (auditEvents as unknown as { toPlain(): Record<string, unknown> }[]).entries()) {
-        await auditUnit.records(AUDIT_REPOSITORY).insert(`audit-${SOURCE_TAG}-${index}`, event.toPlain() as never);
-      }
-      await auditUnit.commit();
+      await seedAuditChain(source.persistence);
 
-      const snapshot = await exportDataPlane(source.persistence, []);
+      const snapshot = await exportDataPlane(source.persistence);
       const throughJson = assertExportLaws(snapshot);
       const snapshotJson = JSON.stringify(throughJson, null, 2);
       const snapshotDigest = sha256Hex(snapshotJson);
@@ -378,7 +443,12 @@ describe("RL-111 leg A: real export + content-addressed R2 upload (DATABASE_URL 
         body: snapshotJson,
         contentType: "application/json",
       });
-      expect(put.etag).toBe(snapshotDigest); // the etag IS the content digest
+      // The REAL wire law (live-confirmed by PA-012): a single-part R2 PUT's
+      // ETag IS the MD5 content digest of the stored bytes — the provider
+      // computed it from what it actually stored. (Content addressing is
+      // the KEY's job: the sha-256 rides the content-addressed key and the
+      // manifest below.)
+      expect(put.etag).toBe(md5Hex(snapshotJson));
 
       // The manifest NAMES the digests (the operator's recovery index).
       const manifest = {
@@ -404,7 +474,7 @@ describe("RL-111 leg A: real export + content-addressed R2 upload (DATABASE_URL 
         at: snapshot.takenAt,
       });
       const manifestPut = await port.put({ key: manifestKey, body: manifestJson, contentType: "application/json" });
-      expect(manifestPut.etag).toBe(manifestDigest);
+      expect(manifestPut.etag).toBe(md5Hex(manifestJson)); // the md5 ETag wire law
 
       // Byte-identical reads back from the real bucket.
       const fetched = await port.get(dataKey);
@@ -446,13 +516,8 @@ describe("RL-111 leg B: restore into a scratch database (DATABASE_URL + R2 + scr
         return;
       }
       await seedMarkerData(source.persistence);
-      const auditEvents = await seedAuditChain();
-      const auditUnit = await source.persistence.begin();
-      for (const [index, event] of (auditEvents as unknown as { toPlain(): Record<string, unknown> }[]).entries()) {
-        await auditUnit.records(AUDIT_REPOSITORY).insert(`audit-${SOURCE_TAG}-${index}`, event.toPlain() as never);
-      }
-      await auditUnit.commit();
-      const snapshot = await exportDataPlane(source.persistence, []);
+      await seedAuditChain(source.persistence);
+      const snapshot = await exportDataPlane(source.persistence);
       assertExportLaws(snapshot);
 
       // The manifest rides the real bucket (the operator's recovery path:
@@ -473,7 +538,14 @@ describe("RL-111 leg B: restore into a scratch database (DATABASE_URL + R2 + scr
       expect(roundTripped).toBe(snapshotJson); // byte-identical from real R2
       const restoredSnapshot = JSON.parse(roundTripped) as DataPlaneExport;
 
-      // SCRATCH: migrate with the REAL infra/migrations (disposable, derived).
+      // SCRATCH: migrate with the REAL infra/migrations (disposable, derived),
+      // then WIPE its three data tables — the scratch is disposable by
+      // contract ("migrated and wiped by this battery"; the runbook's
+      // "verify a restore into a scratch branch"): a prior run's restored
+      // rows must never collide with this run's restore (records are never
+      // silently overwritten) and the audit law counts exactly this run's
+      // restored chain. The migration LEDGER is never touched (migrateUp
+      // stays idempotent); only the battery's own data tables are cleared.
       wireMigrations();
       const scratchPool = new Pool({ connectionString: SCRATCH_DATABASE_URL, max: 3 });
       const scratchDriver = createPgDriver(scratchPool);
@@ -483,6 +555,9 @@ describe("RL-111 leg B: restore into a scratch database (DATABASE_URL + R2 + scr
         close: () => scratchPool.end(),
       };
       await createPostgresMigrationRunner({ driver: scratchDriver }).migrateUp();
+      for (const table of ["roamlink_records", "roamlink_outbox", "roamlink_inbox"]) {
+        await scratchDriver.query(`DELETE FROM ${table}`);
+      }
 
       // RESTORE through the public ports: named repositories at their
       // recorded versions (optimistic-concurrency tokens continue).

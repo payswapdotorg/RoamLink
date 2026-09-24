@@ -9,9 +9,9 @@
  * key derivation) without any dependency on the client's internals and
  * without any network.
  */
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { buildCanonicalQueryString, deriveSigningKey, sha256Hex } from "../src/index.js";
+import { buildCanonicalQueryString, deriveSigningKey, md5Hex, sha256Hex } from "../src/index.js";
 
 export interface S3ServerOptions {
   readonly bucket: string;
@@ -71,7 +71,9 @@ export function createS3CompatibleServer(options: S3ServerOptions): {
       if (providedHash !== null && providedHash !== "UNSIGNED-PAYLOAD" && providedHash !== sha256Hex(body)) {
         return xmlResponse(400, { Code: "BadDigest" });
       }
-      const etag = createHash("sha256").update(body).digest("hex");
+      // The fake models the LIVE R2 wire (PA-012): the single-part ETag is
+      // the MD5 of the stored bytes.
+      const etag = md5Hex(body);
       const contentType = new Headers(init?.headers).get("content-type") ?? undefined;
       objects.set(key, { body, etag, ...(contentType !== undefined ? { contentType } : {}) });
       return new Response(null, { status: 200, headers: { etag: `"${etag}"` } });
@@ -96,21 +98,31 @@ export function createS3CompatibleServer(options: S3ServerOptions): {
         ? `<NextContinuationToken>${Buffer.from(String(start + maxKeys), "utf8").toString("base64url")}</NextContinuationToken>`
         : "";
       return xmlResponse(200, {
-        raw: `<ListBucketResult><Name>${options.bucket}</Name><IsTruncated>${truncated}</IsTruncated>${nextToken}${entries}</ListBucketResult>`,
+        // The real S3/R2 ListObjectsV2 root carries the xmlns declaration
+        // (live-confirmed by PA-012) — the fake models the same wire shape.
+        raw: `<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>${options.bucket}</Name><IsTruncated>${truncated}</IsTruncated>${nextToken}${entries}</ListBucketResult>`,
       });
     }
 
     if (method === "GET" && key.length > 0) {
       const object = objects.get(key);
       if (object === undefined) return xmlResponse(404, { Code: "NoSuchKey" });
+      // The real edge may serve GETs of compressible content as a compressed
+      // representation with a WEAK validator (W/"<md5>", live-confirmed by
+      // PA-012) even though PUT answers strong — the fake models that form so
+      // the client's etag normalization is pinned deterministically.
       return new Response(Buffer.from(object.body), {
         status: 200,
-        headers: { etag: `"${object.etag}"`, ...(object.contentType !== undefined ? { "content-type": object.contentType } : {}) },
+        headers: { etag: `W/"${object.etag}"`, ...(object.contentType !== undefined ? { "content-type": object.contentType } : {}) },
       });
     }
 
     if (method === "DELETE" && key.length > 0) {
-      return new Response(null, { status: objects.delete(key) ? 204 : 404 });
+      // The real S3/R2 wire (live-confirmed by PA-012): DeleteObject is
+      // IDEMPOTENT-SUCCESS — an absent key also answers 204 (S3's documented
+      // contract; absence is indistinguishable from deletion on the wire).
+      objects.delete(key);
+      return new Response(null, { status: 204 });
     }
 
     return xmlResponse(400, { Code: "InvalidRequest" });
