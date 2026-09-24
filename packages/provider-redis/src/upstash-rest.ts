@@ -157,7 +157,18 @@ export class UpstashRedisRestClient implements EphemeralCoordinationPort {
         details: [{ path: "amount", issue: "out of bounds" }],
       });
     }
-    const result = await this.#request(["EVAL", FIXED_WINDOW_INCREMENT_LUA, key, String(amount), String(ttlMs)]);
+    // The REAL EVAL wire shape (live-confirmed by PA-013 against the
+    // operator's Upstash account): EVAL script numkeys key [key...] arg
+    // [arg...] — the numkeys count is REQUIRED before the key list; the
+    // live service rejects the command with HTTP 400 when it is absent.
+    const result = await this.#request([
+      "EVAL",
+      FIXED_WINDOW_INCREMENT_LUA,
+      "1",
+      key,
+      String(amount),
+      String(ttlMs),
+    ]);
     if (typeof result !== "number") return this.#unusable("EVAL");
     return { count: result, firstIncrement: result === amount };
   }

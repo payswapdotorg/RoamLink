@@ -134,19 +134,29 @@ export class InMemoryRedisEngine {
    *   INCRBY key amount; if the key has no expiry, PEXPIRE it; return the
    *   count. The stand-in and the production Upstash path execute the
    *   same script text, exported as FIXED_WINDOW_INCREMENT_LUA.
+   *
+   * Wire shape (live-confirmed by PA-013): the REAL EVAL command array
+   * carries the numkeys count between the script and the key list
+   * (`EVAL script numkeys key [key...] arg [arg...]`); this package pins
+   * exactly ONE key, so numkeys is always 1 — the engine validates it
+   * and refuses anything else (fail closed on shape drift).
    */
   private evalFixedWindowIncrement(command: readonly string[]): number {
     const script = this.arg(command, 1);
     if (script !== FIXED_WINDOW_INCREMENT_LUA) {
       throw new Error("ERR unsupported script (this package pins exactly one)");
     }
-    const key = this.arg(command, 2, "ERR wrong number of arguments");
-    const amount = Number(this.arg(command, 3, "ERR wrong number of arguments"));
+    const numKeys = this.arg(command, 2, "ERR wrong number of arguments");
+    if (!/^\d+$/.test(numKeys) || Number(numKeys) !== 1) {
+      throw new Error("ERR wrong number of keys (this package pins exactly one key)");
+    }
+    const key = this.arg(command, 3, "ERR wrong number of arguments");
+    const amount = Number(this.arg(command, 4, "ERR wrong number of arguments"));
     if (!Number.isInteger(amount) || amount < 1) throw new Error("ERR invalid increment amount");
     const count = this.incrBy(key, amount);
     const entry = this.live(key);
     if (entry !== null && entry.expiresAtMs === null) {
-      const ttlMs = Number(this.arg(command, 4, "ERR wrong number of arguments"));
+      const ttlMs = Number(this.arg(command, 5, "ERR wrong number of arguments"));
       if (!Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("ERR invalid expire time");
       this.#entries.set(key, { value: entry.value, expiresAtMs: this.nowMs() + ttlMs });
     }
