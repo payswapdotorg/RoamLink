@@ -1,10 +1,13 @@
 /**
  * The in-memory QStash publish-API stand-in (RL-097 test harness).
  *
- * A fetch handler speaking the pinned wire contract (POST
- * /v2/messages/{destination}, Bearer auth, Upstash-Deduplication-Id,
- * JSON {messageId} response) with failure injection - so the REAL client
- * path runs in contract tests with zero network.
+ * A fetch handler speaking the pinned LIVE wire contract (PA-017
+ * 2026-09-24 evidence: POST /v2/publish/{destination} with the scheme
+ * LITERAL in the path, Bearer auth, Upstash-Deduplication-Id, JSON
+ * {messageId} response; GET /v2/events probe - the old
+ * /v2/messages/{destination} publish and /v2/messages?count=1 probe pins
+ * answer 405 on the live service) with failure injection - so the REAL
+ * client path runs in contract tests with zero network.
  */
 import type { FetchLike } from "../src/index.js";
 
@@ -59,17 +62,19 @@ export function createQStashPublishProtocol(options: QStashProtocolOptions): {
     if (auth !== `Bearer ${options.token}`) {
       return jsonResponse(401, { error: "Unauthorized" });
     }
-    // The read-only probe route (RL-100): GET {base}/v2/messages?count=1.
-    const probePrefix = `${baseUrl}/v2/messages`;
+    // The read-only probe route (RL-100, LIVE-CONFIRMED PA-017): GET
+    // {base}/v2/events (the old /v2/messages?count=1 pin answers 405 on
+    // the live service).
+    const probePrefix = `${baseUrl}/v2/events`;
     if (url.startsWith(probePrefix) && (init?.method ?? "GET") === "GET") {
       probes.push({ url, method: "GET", authorized: true });
       if (rejectNext.count > 0) {
         rejectNext.count -= 1;
         return jsonResponse(rejectNext.status, { error: "rate limited (simulated)" });
       }
-      return jsonResponse(200, { messages: [], cursor: null });
+      return jsonResponse(200, { events: [] });
     }
-    const prefix = `${baseUrl}/v2/messages/`;
+    const prefix = `${baseUrl}/v2/publish/`;
     if (!url.startsWith(prefix)) {
       return jsonResponse(404, { error: "not found" });
     }

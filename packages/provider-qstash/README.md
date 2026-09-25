@@ -50,12 +50,20 @@ webhook admission / scheduled work
   -> failures retry with backoff -> dead-letter -> explicit redrive
 ```
 
-## Honest wire-contract notes (AR-009)
+## Wire-contract notes (AR-009 — retired by the PA-017 live evidence)
 
 The client pins the publish route/headers and the verifier pins the
-signature scheme (`t=<sec>,v1=<hex>`, HMAC-SHA256-hex over `<t>.<body>`)
-in SINGLE sites, matching the provider's published contract. Live
-confirmation against a real QStash account is the operator's RL-100+
-phase (no cloud credentials exist in the build sandbox). Drift is a
-contained, fully-tested correction — receivers and enqueuers depend only
-on this package's surface.
+signature scheme in SINGLE sites. Both are LIVE-CONFIRMED (PA-017,
+2026-09-24 evidence, real runs against the operator's QStash account):
+publish is `POST /v2/publish/{destination}` (the destination's scheme
+carried LITERAL in the path; pre-flight DNS validation on the host; 201 +
+`{"messageId"}` — the old `/v2/messages/{destination}` pin answers 405),
+the read-only probe is `GET /v2/events` (the old
+`/v2/messages?count=1` pin answers 405), and the signature header is ONE
+JWT (HS256, three base64url segments `<header>.<payload>.<signature>`;
+the payload's `body` claim is base64url WITH padding of SHA-256(raw body)
+— Go's `base64.URLEncoding`, per the PA-017 live capture (the first
+capture's digest happened to contain no `+`/`/`, which hid the alphabet);
+`iat`→`exp` is a 300s window). Drift is a contained, fully-tested
+correction — receivers and enqueuers depend only on this package's
+surface.

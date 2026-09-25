@@ -278,6 +278,59 @@ form. The client now sends `["EVAL", <pinned script>, "1", <key>,
 validates) the same real shape, and the in-memory fake sends the
 byte-identical array — ONE wire shape everywhere.
 
+Real-run evidence (PA-017, 2026-09-24): the QStash row above is no longer
+operator-pending — the operator delivered the QStash account keys (token +
+current/next signing keys; credentials env-only per §3, never in files)
+and the built env-gated legs ran against the LIVE publish API. Outcomes,
+one line per battery (labels and counts only — zero credential values,
+RL-LOCK-016):
+
+- `packages/provider-qstash` client-wire (RL-097, env-gated live legs):
+  **12/12 passed, 0 skipped** — all three live legs RAN with zero named
+  skips: the read-only probe + health composition (the live read surface
+  `GET /v2/events`, composed healthy), the publish round-trip (route,
+  dedupe/delay headers, the 201/`messageId` receipt), and the signed
+  receiver round-trip through the battery's documented receiver mechanism
+  (`QSTASH_LIVE_RECEIVER_URL`, an HTTPS capture endpoint; the only
+  payloads were the battery's synthetic transport probes — never
+  business-looking). Canonicalization outcome (value-free, verbatim):
+  VERIFIED against the live wire scheme (single JWT, HS256 over
+  '<b64uHeader>.<b64uPayload>'; body claim =
+  base64url-with-padding(SHA-256(raw body)); iat→exp 300s window) with the
+  CURRENT signing key — this retires AR-009's standing QStash wire note.
+- `tests/deployment/test/runtime-hardening.test.ts` (RL-107):
+  **10 passed | 1 named skip (11)** — the deterministic cores green AND
+  the QStash-gated escalation leg RAN (no named skip for the QStash
+  surface): the RL-107 event-driven maintenance kick enqueued its
+  deterministic per-day jobs (maintenance-daily-<date>-inbox/outbox)
+  through the REAL publish API with accepted receipts, and both kicks
+  were captured delivered at the battery's receiver. The one skip is the
+  Redis-gated limiter-under-load leg (the Upstash Redis env surface is
+  not part of this delivery), with its named reason.
+
+Real-wire fixes this run surfaced and landed (inside the owned surface,
+`packages/provider-qstash`; every corrected law pins the LIVE wire
+truth, none weakened — all existing deterministic legs stayed green at
+the exact baseline count): the read-only probe route is `GET /v2/events`
+(the pinned `GET /v2/messages?count=1` answers 405 method-not-allowed on
+the live service); the publish route is `POST /v2/publish/{destination}`
+with the destination's scheme LITERAL in the path (the pinned
+`POST /v2/messages/{percent-encoded destination}` answers 405 text/plain,
+and the live service rejects the fully-percent-encoded publish form with
+a typed 400); the live service pre-flight DNS-validates destinations at
+publish time (an RFC 2606 `.invalid` sink is refused with a typed 400 —
+the battery's live publish legs therefore target the battery's own
+documented receiver with the maximum 24h delay, keeping the
+never-live-delivery-during-the-run law); and the signature
+canonicalization is a single HS256 JWT whose `body` claim is
+base64url-WITH-PADDING (Go URLEncoding) of SHA-256(raw body) — the first
+live capture's alphabet-collision-free digest hid the
+standard-vs-url-safe difference; the law is now pinned with an
+alphabet-crossing fixture. Clean-shell re-runs reproduced both battery
+outcomes, and the full deterministic gate of record re-ran clean at the
+exact baseline (45 packages, 2640 passed | 21 skipped, 0 failed; lint,
+typecheck and architecture clean).
+
 ## 8. Final deployment checks (deployment.md §7 gate)
 
 Before calling the environment ready, ALL of:
