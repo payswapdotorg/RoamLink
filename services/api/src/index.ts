@@ -24,6 +24,12 @@
  *  - `commands.ts`    the durable command ingestion: header-envelope
  *    validation, tenant authorization, idempotency-key dedupe, the stored
  *    command ledger + outbox enqueue in ONE real unit of work;
+ *  - `read-models.ts` the composed business read models (PA-019, closes
+ *    F-016-2): the identity-backed reads (users, organizations) and the
+ *    durable command-ledger / reconciliation-job projections (devices,
+ *    experience-intents (+versions), payments, connectivity, support-cases,
+ *    reconciliation-jobs) over the service's bound state, plus the
+ *    named-reason kept-501 table for the routes with no composed source;
  *  - `http.ts`        RoamLinkError -> HTTP mapping (mirrors the app-kit
  *    fake API's statuses; unknown failures fail closed).
  *
@@ -35,6 +41,7 @@ export * from "./http.js";
 export * from "./readiness.js";
 export * from "./envelope.js";
 export * from "./commands.js";
+export * from "./read-models.js";
 export * from "./rate-limit.js";
 export * from "./edge.js";
 export * from "./api-service.js";

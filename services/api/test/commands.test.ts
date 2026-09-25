@@ -268,20 +268,57 @@ describe("GET /v1/commands/{commandId} (the stored-command view)", () => {
   });
 });
 
-describe("reads not composed on the real runtime", () => {
-  it("answers spec read routes with the typed 501 (never invented data)", async () => {
+describe("the composed read routes and the honestly-kept 501s (PA-019)", () => {
+  it("answers composed read routes with real bound state and kept routes with the typed 501 (never invented data)", async () => {
     const world = createTestWorld();
     await world.administration.registerUser(1);
     const token = await loginUser(world, 1);
-    for (const path of ["/v1/devices", "/v1/connectivity", "/v1/orders", "/v1/notifications"]) {
+    const userId = userIdFromSeed(1);
+
+    // The COMPOSED routes serve the real (accepted-only) ledger state: the
+    // projections are honestly empty because no executed command exists.
+    const devices = await world.service.handle({
+      method: "GET",
+      path: "/v1/devices",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-roamlink-actor-id": `usr:${userId}`,
+        "x-roamlink-tenant-id": tenantOf(1),
+      },
+    });
+    expect(devices.status).toBe(200);
+    expect(JSON.parse(devices.body as string)).toEqual([]);
+    const connectivity = await world.service.handle({
+      method: "GET",
+      path: "/v1/connectivity",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-roamlink-actor-id": `usr:${userId}`,
+        "x-roamlink-tenant-id": tenantOf(1),
+      },
+    });
+    expect(connectivity.status).toBe(200);
+    expect(JSON.parse(connectivity.body as string)).toEqual({
+      presentedAt: "2026-01-15T08:30:00.000Z",
+      subjects: [],
+      deviceObservations: [],
+    });
+
+    // The routes with NO composed source keep the typed 501 with their
+    // named reasons (recorded in the read-models route table).
+    for (const path of ["/v1/orders", "/v1/notifications"]) {
       const response = await world.service.handle({
         method: "GET",
         path,
-        headers: { authorization: `Bearer ${token}` },
+        headers: {
+          authorization: `Bearer ${token}`,
+          "x-roamlink-actor-id": `usr:${userId}`,
+          "x-roamlink-tenant-id": tenantOf(1),
+        },
       });
-      expect(response.status).toBe(501);
+      expect(response.status, path).toBe(501);
       const body = JSON.parse(response.body as string);
-      expect(body.reason).toBe("READ_MODEL_NOT_COMPOSED");
+      expect(body.reason, path).toBe("READ_MODEL_NOT_COMPOSED");
     }
   });
 

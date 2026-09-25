@@ -5,10 +5,15 @@
  *
  * The commerce journey's frozen law is pinned END TO END here: the real
  * runtime accepts the purchase and payment commands durably (202, ledger +
- * outbox), the delivery-progress view honestly refuses its reads instead of
- * rendering a payment-success page, and the four-stage command pipeline is
- * readable from the durable stored-command view with ONLY the accepted
- * stage reached — payment success never collapses into delivery (RL-LOCK-008).
+ * outbox), the commerce and order pages honestly fail closed (their read
+ * sets include the product/order read models, which keep the typed 501 —
+ * no catalog or price facts exist in the bound state, and prices are never
+ * invented) instead of rendering a payment-success page, and the four-stage
+ * command pipeline is readable from the durable stored-command view with
+ * ONLY the accepted stage reached — payment success never collapses into
+ * delivery (RL-LOCK-008). The support destination composes (PA-019): the
+ * case read serves the real empty registry while the case commands stay
+ * durable.
  */
 import { describe, expect, it } from "vitest";
 
@@ -19,7 +24,7 @@ import { bootHostedJourney } from "../src/host.js";
 const VARIANT_ID = "05050505-0000-4000-8000-000000000005";
 
 describe("RL-113 hosted journey: activity explanation", () => {
-  it("keeps the activity narrative fail-closed while the read-marking command stays durable", async () => {
+  it("keeps the activity narrative fail-closed (the notification read model keeps its named 501) while the read-marking command stays durable", async () => {
     const journey = await bootHostedJourney({ seed: 0x0c1, email: "activity@example.com" });
     try {
       const activityPage = await journey.app.renderDocument({ page: "activity" });
@@ -29,8 +34,9 @@ describe("RL-113 hosted journey: activity explanation", () => {
       expect(activityPage).toContain('href="/activity"');
 
       // The read-marking command is accepted durably (the notification read
-      // model itself is not composed, so the flow's target id is the
-      // customer's own deterministic reference — accepted != executed).
+      // model honestly keeps its typed 501 — no notification store is bound
+      // on this runtime — so the flow's target id is the customer's own
+      // deterministic reference; accepted != executed).
       const notificationId = "06060606-0000-4000-8000-000000000006";
       const marked = await journey.app.markNotificationReadFlow(
         { notificationId },
@@ -52,7 +58,11 @@ describe("RL-113 hosted journey: purchase", () => {
   it("accepts the order + payment commands durably and refuses to render a payment-success delivery page", async () => {
     const journey = await bootHostedJourney({ seed: 0x0c2, email: "purchase@example.com" });
     try {
-      // Entry point + discoverability: the Plans & Billing destination.
+      // Entry point + discoverability: the Plans & Billing destination
+      // still fails closed — its read set includes the product and order
+      // read models, which honestly keep their typed 501s (the catalog and
+      // the order price facts are not in the bound state; prices are never
+      // invented).
       const commercePage = await journey.app.renderDocument({ page: "commerce" });
       expect(commercePage).toContain('data-error-kind="unavailable"');
       expect(commercePage).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
@@ -76,8 +86,10 @@ describe("RL-113 hosted journey: purchase", () => {
       expect(await persistence.outbox.count("PENDING")).toBe(2);
 
       // THE DELIVERY-PROGRESS LAW: the order journey page (the route the
-      // customer lands on after paying) fails closed on its reads — it
-      // NEVER renders payment success as connectivity delivery.
+      // customer lands on after paying) fails closed on its reads (the
+      // order detail read honestly keeps its typed 501 — the price facts
+      // are not in the bound state) — it NEVER renders payment success as
+      // connectivity delivery.
       const orderPage = await journey.app.renderDocument({
         page: "order",
         params: {
@@ -168,15 +180,17 @@ describe("RL-113 hosted journey: delivery", () => {
 });
 
 describe("RL-113 hosted journey: support", () => {
-  it("files the correlated support case durably while the case list stays honestly uncomposed", async () => {
+  it("files the correlated support case durably while the case list renders the real empty registry", async () => {
     const journey = await bootHostedJourney({ seed: 0x0c4, email: "support@example.com" });
     try {
-      // Entry point: the Support destination renders fail-closed (the case
-      // read model is not composed) but stays discoverable everywhere.
+      // Entry point: the Support destination now renders from the COMPOSED
+      // case read (PA-019) — the real empty case registry (no executed
+      // create commands), with the case-filing form ready.
       const supportPage = await journey.app.renderDocument({ page: "support" });
-      expect(supportPage).toContain('data-error-kind="unavailable"');
-      expect(supportPage).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      expect(supportPage).toContain('data-empty="true"');
+      expect(supportPage).toContain("No support cases to show.");
       expect(supportPage).toContain(">Support</a>");
+      expect(supportPage).not.toContain('data-mutation-result="error"');
 
       // The escape hatch's ACTION completes: the case command (with typed
       // related references riding along for triage) is durably accepted.

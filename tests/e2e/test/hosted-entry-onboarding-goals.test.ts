@@ -12,10 +12,14 @@
  *           -> REAL PostgreSQL (pglite) + the REAL infra/migrations
  *
  * The honest terrain (asserted, never decorated): the real runtime
- * composes the durable COMMAND plane and the principal/session reads;
- * every business read model answers the typed 501
- * READ_MODEL_NOT_COMPOSED, and every page fails closed into the typed
- * error panel instead of rendering invented state.
+ * composes the durable COMMAND plane, the principal/session reads, and
+ * the PA-019 command-ledger read projections. No command has executed on
+ * this composition, so the device/goal read models serve their real EMPTY
+ * state and those pages render the real empty journey content; pages whose
+ * read set includes a kept-501 route (the home page needs the notification
+ * read model) still fail closed into the typed READ_MODEL_NOT_COMPOSED
+ * panel — and versioned flows fail closed on the honest 404 instead of
+ * issuing blind commands. Nothing is invented either way.
  */
 import { describe, expect, it } from "vitest";
 
@@ -51,13 +55,13 @@ function expectShellChrome(html: string): void {
   for (const label of MOBILE_NAV_LABELS) {
     expect(html).toContain(`>${label}</a>`);
   }
-  // The persistent indicator derives ONLY from the authoritative read: on
-  // the real runtime the read honestly refuses, so the shell says so.
-  expect(html).toContain('data-shell-connectivity="unverifiable"');
-  expect(html).toContain("Cannot confirm right now");
-  expect(html).toContain(
-    "RoamLink could not read the authoritative connectivity state. Nothing is claimed either way.",
-  );
+  // The persistent indicator derives ONLY from the authoritative read: the
+  // composed connectivity read succeeds over the real (empty) ledger
+  // projection, so the shell states the honest no-reference state — a real
+  // claim of nothing, never an unverifiable shrug and never success.
+  expect(html).toContain('data-shell-connectivity="no-reference"');
+  expect(html).toContain("No active connectivity reference");
+  expect(html).toContain("nothing is currently set up to deliver connectivity");
   // The escape hatch into the connectivity center is rendered from every page.
   expect(html).toContain('href="/connectivity"');
 }
@@ -101,8 +105,9 @@ describe("RL-113 hosted journey: entry (land -> sign in -> Home)", () => {
 
       const html = await journey.app.renderDocument({ page: "home" });
       expectShellChrome(html);
-      // The Home body fails closed: the home read set (connectivity,
-      // intents, devices, notifications) is not composed on this runtime.
+      // The Home body still fails closed: its read set includes the
+      // notification read model, which honestly keeps its typed 501 (no
+      // notification store is bound on this runtime — the named skip).
       expectFailClosedRead(html);
       // ...and no journey vocabulary is fabricated anywhere in the document.
       expect(html).not.toContain("data-journey-stage");
@@ -119,15 +124,27 @@ describe("RL-113 hosted journey: entry (land -> sign in -> Home)", () => {
       // unauthenticated read is refused 401 before any read model answer.
       const refused = await journey.v1Raw({ method: "GET", path: "/v1/devices", headers: {} });
       expect(refused.status).toBe(401);
-      // The authenticated read answers the typed 501 (honest unavailability).
-      const honest = await journey.v1({
+      // The authenticated read now serves the COMPOSED real projection
+      // (PA-019): the ledger holds accepted-only commands — accepted is not
+      // executed — so the device list is the honest EMPTY state, never a
+      // 501 and never an invented device.
+      const devices = await journey.v1({
         method: "GET",
         path: "/v1/devices",
         headers: { "x-roamlink-actor-id": journey.identity.actorId, "x-roamlink-tenant-id": journey.identity.tenantId },
       });
-      expect(honest.status).toBe(501);
-      const body = JSON.parse(honest.body ?? "{}") as Record<string, unknown>;
-      expect(body["reason"]).toBe("READ_MODEL_NOT_COMPOSED");
+      expect(devices.status).toBe(200);
+      expect(JSON.parse(devices.body ?? "{}")).toEqual([]);
+      // The connectivity read composes the same real empty aggregate.
+      const connectivity = await journey.v1({
+        method: "GET",
+        path: "/v1/connectivity",
+        headers: { "x-roamlink-actor-id": journey.identity.actorId, "x-roamlink-tenant-id": journey.identity.tenantId },
+      });
+      expect(connectivity.status).toBe(200);
+      const overview = JSON.parse(connectivity.body ?? "{}") as Record<string, unknown>;
+      expect(overview["subjects"]).toEqual([]);
+      expect(overview["deviceObservations"]).toEqual([]);
       // The webhook signing keys are configured but no delivery was made:
       // the durable inbox is empty (admission is the only ingress).
       const persistence = createPostgresPersistence(journey.composition.driver);
@@ -191,9 +208,14 @@ describe("RL-113 hosted journey: first-run onboarding", () => {
       expect(deviceStep).toContain('data-stage="executed" data-reached="false"');
       expect(deviceStep).toContain('data-stage="delivered" data-reached="false"');
       expect(deviceStep).toContain('data-stage="billable-final" data-reached="false"');
-      // The device-picker step still fails closed on its device-list read
-      // (the wizard never invents enrolled devices to pick from).
-      expectFailClosedRead(deviceStep);
+      // The device-picker step now renders from the COMPOSED device read
+      // (PA-019): the real projection is empty (accepted is not executed),
+      // so the wizard renders the real "add your first device" content —
+      // never a fail-closed panel, and never an invented device to pick.
+      expect(deviceStep).toContain('data-onboarding-step="device"');
+      expect(deviceStep).toContain('data-onboarding-form="enroll-device"');
+      expect(deviceStep).not.toContain('data-mutation-result="error"');
+      expect(deviceStep).not.toContain('data-onboarding-form="pick-device"');
 
       // Primary task completion (leg 2): the goal-creation command is
       // durably accepted, and the goal-ACTIVATION leg then honestly cannot
@@ -231,14 +253,17 @@ describe("RL-113 hosted journey: first-run onboarding", () => {
 });
 
 describe("RL-113 hosted journey: goal creation and editing", () => {
-  it("creates the goal command durably and refuses versioned goal commands honestly when the read is uncomposed", async () => {
+  it("creates the goal command durably and fails the versioned goal commands on the honest not-found (never blind)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0a4, email: "goals@example.com" });
     try {
-      // Entry point + discoverability: the Goals destination renders the
-      // ExperienceIntent surface (fail-closed on this runtime).
+      // Entry point + discoverability: the Goals destination now renders
+      // the COMPOSED intent read (PA-019) — the real empty goal list (no
+      // executed create commands), with the first-goal call to action.
       const goalsPage = await journey.app.renderDocument({ page: "intents" });
       expectShellChrome(goalsPage);
-      expectFailClosedRead(goalsPage);
+      expect(goalsPage).toContain('data-goals-empty="true"');
+      expect(goalsPage).toContain("No goals yet.");
+      expect(goalsPage).toContain("Choose your first goal");
 
       // Primary task completion: the create command is durably accepted.
       const created = await journey.app.createIntentFlow(
@@ -255,9 +280,11 @@ describe("RL-113 hosted journey: goal creation and editing", () => {
       expect(await persistence.records("api-commands").count()).toBe(1);
 
       // Editing (activate/supersede) is version-aware: the flow READS the
-      // current revision first, the read honestly refuses (501), and the
-      // flow fails closed WITHOUT issuing a versionless command into the
-      // durable ledger (the read-first discipline holds end to end).
+      // current revision first, the composed read answers the honest 404
+      // (no executed goal exists — execution is the worker plane's
+      // concern), and the flow fails closed WITHOUT issuing a versionless
+      // command into the durable ledger (the read-first discipline holds
+      // end to end).
       const intentId = "0e0e0e0e-0000-4000-8000-000000000003";
       const activated = await journey.app.activateIntentFlow(
         { intentId },
@@ -266,8 +293,8 @@ describe("RL-113 hosted journey: goal creation and editing", () => {
       expect(activated.status).toBe("error");
       if (activated.status !== "error") return;
       expect(activated.error).toMatchObject({
-        kind: "unavailable",
-        reason: "READ_MODEL_NOT_COMPOSED",
+        kind: "not-found",
+        reason: "NOT_FOUND",
       });
       const superseded = await journey.app.supersedeIntentFlow(
         { intentId, rationale: "Prefer trusted Wi-Fi when it is good enough", accessClasses: ["any_internet", "metered_cost_cap"] },

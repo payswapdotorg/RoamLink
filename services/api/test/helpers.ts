@@ -5,8 +5,10 @@
  * the persistence-postgres package and in the pglite integration test here).
  */
 import {
+  parseOrganizationId,
   parseUtcInstant,
   parseUserId,
+  tenantIdFromOrganization,
   tenantIdFromUser,
   type UtcInstant,
   type UserId,
@@ -102,6 +104,45 @@ export class TestAdministration {
 
   registerUser(seed: number, options?: { readonly password?: string }): Promise<UserId> {
     return registerSeedUser(this.#inner, seed, () => this.#clock.now(), options);
+  }
+
+  /** Creates an organization (the owner is the seeded user). */
+  createOrganization(
+    seed: number,
+    organizationId: string,
+    name: string,
+  ): Promise<Awaited<ReturnType<AccountAdministrationService["createOrganization"]>>> {
+    const owner = userIdFromSeed(seed);
+    return this.#inner.createOrganization(
+      fixtureCommandEnvelope({
+        actorId: `usr:${owner}`,
+        tenantId: tenantIdFromOrganization(parseOrganizationId(organizationId)),
+        idempotencyKey: `create-org-${organizationId}`,
+        correlationId: `corr-create-org-${organizationId}`,
+        createdAt: this.#clock.now(),
+      }),
+      { organizationId, name },
+    );
+  }
+
+  /** Adds a member to an organization (the owner is the seeded user). */
+  addMember(
+    seed: number,
+    organizationId: string,
+    userId: UserId,
+    role: "owner" | "admin" | "member",
+  ): Promise<Awaited<ReturnType<AccountAdministrationService["addMember"]>>> {
+    const owner = userIdFromSeed(seed);
+    return this.#inner.addMember(
+      fixtureCommandEnvelope({
+        actorId: `usr:${owner}`,
+        tenantId: tenantIdFromOrganization(parseOrganizationId(organizationId)),
+        idempotencyKey: `add-member-${organizationId}-${userId}`,
+        correlationId: `corr-add-member-${organizationId}-${userId}`,
+        createdAt: this.#clock.now(),
+      }),
+      { organizationId, userId, role },
+    );
   }
 }
 

@@ -25,12 +25,21 @@
  *   POST <mutation routes>               durable command ingestion (accepted;
  *                                        execution is the workers' concern)
  *   GET  /v1/commands/{commandId}        the stored-command view
- *   GET  <spec read routes>              501 READ_MODEL_NOT_COMPOSED - the
- *                                        read models are not composed on the
- *                                        real runtime in this wave; the
- *                                        service invents NO data (the
- *                                        deterministic fake API remains the
- *                                        contract reference for those reads)
+ *   GET  <spec read routes>              the composed business read models
+ *                                        (PA-019, closes F-016-2): the
+ *                                        identity-backed reads (users,
+ *                                        organizations) and the durable
+ *                                        command-ledger / reconciliation-job
+ *                                        projections (devices, experience-
+ *                                        intents (+versions), payments,
+ *                                        connectivity, support-cases,
+ *                                        reconciliation-jobs) serve REAL
+ *                                        bound state; the routes with no
+ *                                        composed source keep the honest
+ *                                        typed 501 with a named reason —
+ *                                        the service invents NO data (the
+ *                                        deterministic fake API remains
+ *                                        the contract reference)
  *
  * Authorization is enforced server-side at this boundary through
  * @roamlink/auth (session verification + actor->tenant resolution); the
@@ -79,7 +88,8 @@ import {
   readStoredCommand,
   type StoredCommand,
 } from "./commands.js";
-import { errorToResponse, jsonResponse, readModelNotComposed } from "./http.js";
+import { errorToResponse, jsonResponse } from "./http.js";
+import { createReadModelDispatcher, type ReadModelDispatcher } from "./read-models.js";
 import {
   composeReadiness,
   readinessToResponse,
@@ -112,11 +122,16 @@ export {
 
 // --------------------------------------------------------------------------------
 // The spec's read-route surface (spec/api.md, mirrored by app-kit's route
-// table): reads the real runtime does not compose yet answer the typed 501 -
-// honest unavailability, never invented data.
+// table): PA-019 composes the read models over the service's bound state
+// (see ./read-models.ts); the routes with no real source keep the typed
+// 501 with their named reasons - honest unavailability, never invented
+// data. The frozen pattern set below is the READ ROUTE SURFACE CONTRACT:
+// every pattern must be answered by the composed dispatcher or the
+// kept-501 table (the composition battery asserts the two tables together
+// cover it exactly - a read route that answers the plain 404 is a gap).
 // --------------------------------------------------------------------------------
 
-const READ_MODEL_ROUTES: readonly RegExp[] = Object.freeze([
+export const READ_MODEL_ROUTES: readonly RegExp[] = Object.freeze([
   /^\/v1\/users\/[^/]+$/,
   /^\/v1\/organizations$/,
   /^\/v1\/devices$/,
@@ -134,10 +149,12 @@ const READ_MODEL_ROUTES: readonly RegExp[] = Object.freeze([
   /^\/v1\/audit-events$/,
   /^\/v1\/reconciliation-jobs$/,
   /^\/v1\/projection-health$/,
-  // PA-010 (RL-115-F6): the integration-health read model is not composed on
-  // the real runtime in this wave — the route answers the typed honest 501
-  // (READ_MODEL_NOT_COMPOSED), exactly like its sibling admin observability
-  // reads; the deterministic fake API remains the contract reference.
+  // PA-010 (RL-115-F6): the integration-health read model has no real
+  // source in this service's bound persistence (the ADCOS compatibility
+  // probe is env-gated in the worker host) — the route keeps the typed
+  // honest 501 (READ_MODEL_NOT_COMPOSED) with its named reason in
+  // ./read-models.ts; the deterministic fake API remains the contract
+  // reference.
   /^\/v1\/integration-health$/,
   /^\/v1\/support-cases$/,
   /^\/v1\/support-cases\/[^/]+$/,
@@ -327,6 +344,17 @@ function createInnerService(options: ApiServiceOptions): ApiService {
     options.identity.memberships,
     options.identity.organizations,
   );
+  // The composed business read models (PA-019): the dispatcher serves the
+  // composed routes from the service's bound state and the kept-501 routes
+  // with their named reasons; non-read paths return null (the caller's 404).
+  const readModels: ReadModelDispatcher = createReadModelDispatcher({
+    persistence: options.persistence,
+    users: options.identity.users,
+    organizations: options.identity.organizations,
+    memberships: options.identity.memberships,
+    authorization,
+    now: options.now,
+  });
   // The durable webhook inbox: admission (verify -> admit -> persist) is the
   // synchronous route path; projection/processing is NOT composed here - the
   // route only admits and persists (RL-LOCK-009).
@@ -425,8 +453,9 @@ function createInnerService(options: ApiServiceOptions): ApiService {
           if (commandMatch !== null) {
             return await handleCommandRead(principal, commandMatch[1] as string, request);
           }
-          for (const pattern of READ_MODEL_ROUTES) {
-            if (pattern.test(path)) return readModelNotComposed(path);
+          const read = await readModels(request, path, principal);
+          if (read !== null) {
+            return read;
           }
         }
 
