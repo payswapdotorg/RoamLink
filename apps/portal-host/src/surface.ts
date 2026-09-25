@@ -23,6 +23,7 @@ import {
   RoamLinkApiClient,
   type HtmlFragment,
   type HttpRequest,
+  type MutationFlowResult,
   type RequestIdGenerator,
 } from "@roamlink/app-kit";
 import { CustomerWebApp, WEB_PAGE_ROUTES, type WebPageName } from "@roamlink/web";
@@ -42,9 +43,34 @@ export interface ResolvedPage<P extends string> {
 }
 
 /**
+ * Parses one single-placeholder route template (`/devices/{deviceId}` or
+ * `/devices/{deviceId}/sim`) into its prefix, the placeholder's name and the
+ * literal suffix that follows the placeholder. Returns undefined when the
+ * template has zero placeholders or more than one (the app's route table is
+ * single-param only by construction; this stays fail-closed if that ever
+ * drifts).
+ */
+function parseSingleParamTemplate(
+  template: string,
+): { readonly prefix: string; readonly paramName: string; readonly suffix: string } | undefined {
+  const open = template.indexOf("{");
+  if (open === -1) return undefined;
+  const close = template.indexOf("}", open);
+  if (close === -1) return undefined;
+  if (template.indexOf("{", close + 1) !== -1) return undefined;
+  const prefix = template.slice(0, open);
+  const paramName = template.slice(open + 1, close);
+  if (!/^\w+$/.test(paramName)) return undefined;
+  const suffix = template.slice(close + 1);
+  return { prefix, paramName, suffix };
+}
+
+/**
  * Matches `pathname` against one of the app's templates (exact first, then
- * the single-parameter templates). The route tables are the APPS' property;
- * this resolver only translates a URL into the app's own page request.
+ * the single-parameter templates — including the `/devices/{deviceId}/sim`
+ * template that carries a literal suffix after the placeholder). The route
+ * tables are the APPS' property; this resolver only translates a URL into
+ * the app's own page request.
  */
 function resolveAgainst<P extends string>(
   routes: Readonly<Record<P, string>>,
@@ -55,15 +81,13 @@ function resolveAgainst<P extends string>(
     if (template === pathname) return { page: name, params: {} };
   }
   for (const [name, template] of entries) {
-    const open = template.indexOf("{");
-    if (open === -1) continue;
-    const prefix = template.slice(0, open);
-    const placeholder = template.slice(open); // e.g. "{deviceId}"
-    if (!/^\{\w+\}$/.test(placeholder)) continue; // single-param templates only
-    if (!pathname.startsWith(prefix)) continue;
-    const value = pathname.slice(prefix.length);
+    const parsed = parseSingleParamTemplate(template);
+    if (parsed === undefined) continue;
+    if (!pathname.startsWith(parsed.prefix)) continue;
+    if (!pathname.endsWith(parsed.suffix)) continue;
+    const value = pathname.slice(parsed.prefix.length, pathname.length - parsed.suffix.length);
     if (value.length === 0 || value.includes("/")) continue;
-    return { page: name, params: { [placeholder.slice(1, -1)]: value } };
+    return { page: name, params: { [parsed.paramName]: value } };
   }
   return undefined;
 }
@@ -148,17 +172,41 @@ export class SessionResolutionError extends Error {
 // Page rendering (thin: the apps render; the host only binds + translates)
 // ---------------------------------------------------------------------------
 
+/**
+ * The optional host-side context a customer-surface render can carry: the
+ * `lastResult` from a /flows/* POST (rendered above the page body as the
+ * mutation-result panel), and the URL's `searchParams` (the app's pages
+ * read step/goal/deviceId/notice and the support-context params from the
+ * query string). Both are additive — a render with neither preserves the
+ * pre-flows-wiring GET behavior exactly.
+ */
+export interface CustomerRenderOptions {
+  readonly lastResult?: MutationFlowResult;
+  readonly searchParams?: URLSearchParams;
+}
+
 /** Renders one customer web page into the full HTML document. */
 export async function renderCustomerDocument(
   api: SurfaceApi,
   token: string,
   pathname: string,
+  options?: CustomerRenderOptions,
 ): Promise<string> {
   const resolved = resolveWebPage(pathname);
   if (resolved === undefined) throw new SurfaceNotFoundError(pathname);
   const { client } = await resolveSurfaceClient(api, token);
   const app = new CustomerWebApp({ client });
-  return app.renderDocument({ page: resolved.page, params: resolved.params });
+  const params: Record<string, string> = { ...resolved.params };
+  if (options?.searchParams !== undefined) {
+    for (const [key, value] of options.searchParams.entries()) {
+      params[key] = value;
+    }
+  }
+  return app.renderDocument({
+    page: resolved.page,
+    params,
+    ...(options?.lastResult !== undefined ? { lastResult: options.lastResult } : {}),
+  });
 }
 
 /** Renders one admin console page into the full HTML document. */

@@ -11,7 +11,7 @@
  * Discipline (spec/deployment.md §4): these handlers translate transport
  * ONLY - no database access, no outcome decisions, no invented state.
  */
-import { HTTP_STATUS, el, fragment, htmlDocument, pageShell, text, type ActorSessionResource } from "@roamlink/app-kit";
+import { HTTP_STATUS, el, fragment, htmlDocument, pageShell, text, type ActorSessionResource, type MutationFlowResult } from "@roamlink/app-kit";
 import { CompositionError } from "./composition.js";
 import type { HostRuntime } from "./bootstrap.js";
 
@@ -36,11 +36,22 @@ import {
   renderCustomerDocument,
   renderLoginDocument,
   resolveAdminPage,
+  resolveSurfaceClient,
   resolveWebPage,
+  type SurfaceClient,
 } from "./surface.js";
 import { resolveActorSession } from "./ops-surface.js";
 import { opsSloSurfaceDocument } from "./ops-slo-page.js";
 import { buildProductSloDashboard } from "@roamlink/observability";
+import { CustomerWebApp } from "@roamlink/web";
+import {
+  FLOW_HANDLERS,
+  FLOW_PATH_PREFIX,
+  formValidationErrorOf,
+  type FlowHandler,
+  type FlowRunContext,
+  FormValidationError,
+} from "./flows.js";
 
 // ---------------------------------------------------------------------------
 // Health / readiness (spec/deployment.md: "health/readiness is real, not fake")
@@ -274,7 +285,8 @@ export async function handleCustomerSurface(request: Request, runtime: HostRunti
   if (!runtime.ok) {
     return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; no surface is served");
   }
-  const pathname = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const pathname = url.pathname;
   // A path that is not a page of the mounted app is an honest 404 BEFORE the
   // session check (unknown pages never leak authentication state).
   if (resolveWebPage(pathname) === undefined) {
@@ -283,7 +295,15 @@ export async function handleCustomerSurface(request: Request, runtime: HostRunti
   const token = sessionTokenOf(request.headers.get("cookie") ?? undefined);
   if (token === undefined) return redirectTo("/login");
   try {
-    return htmlResponse(await renderCustomerDocument(runtime.composition.api, token, pathname));
+    // The app's own pages read step/goal/deviceId/notice (onboarding) and the
+    // support-context params (support) from the URL's query string; the host
+    // forwards the search params so the wizard and the contextual escape
+    // hatch work through the GET plane (PA-018).
+    return htmlResponse(
+      await renderCustomerDocument(runtime.composition.api, token, pathname, {
+        searchParams: url.searchParams,
+      }),
+    );
   } catch (error) {
     if (error instanceof SessionResolutionError) return redirectTo("/login");
     if (error instanceof SurfaceNotFoundError) {
@@ -309,6 +329,178 @@ export async function handleAdminSurface(request: Request, runtime: HostRuntime)
     if (error instanceof SessionResolutionError) return redirectTo("/login");
     if (error instanceof SurfaceNotFoundError) {
       return htmlResponse(surfaceNotFoundDocument(pathname), HTTP_STATUS.notFound);
+    }
+    return internalErrorResponse();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The /flows/* form-action POST handler (PA-018 — closes F-016-1).
+//
+// The apps/web README "Mounting" contract: the host wires the rendered
+// `/flows/*` form actions (`data-flow` attributes — including the onboarding
+// `/flows/onboarding-enroll-device` and `/flows/onboarding-finish`, and the
+// workspace connector enrollment `/flows/provision-connector`) to the
+// matching typed flow methods on `CustomerWebApp`. THE HOST OWNS
+// SESSIONS/CSRF; the app never sees credentials (RL-LOCK-016). After a
+// connector-enrollment command the host redirects to
+// `/workspace?commandId=<ack.commandId>` so the page renders the command's
+// four-stage pipeline from the status read.
+//
+// Fail-closed laws (the host never invents success):
+//   - runtime-not-ready → typed 503 HOST_NOT_READY
+//   - unknown flow name → typed 404 FLOW_NOT_FOUND
+//   - CSRF (same-origin) missing/invalid → typed 403 CSRF_INVALID
+//   - session cookie absent/unresolvable → 303 to /login (the host's login
+//     redirect discipline; never an invented session)
+//   - form fields missing/invalid → re-render the originating page with the
+//     typed validation error panel (the app's own mutation-result error panel)
+//   - flow failure → re-render with the typed error panel (the app's flow
+//     methods already wrap the typed `ApiClientError`)
+//   - flow success + redirect law (provision-connector / onboarding-finish)
+//     → 303 to the law's target
+//   - flow success + render law → 200 with the rendered page (the
+//     `lastResult` panel above the body)
+// ---------------------------------------------------------------------------
+
+/**
+ * The host's CSRF defense: a same-origin POST check at the seam. The session
+ * cookie is `SameSite=Lax` (already blocking cross-site form POSTs); this
+ * check rejects any POST that lacks a same-origin `Origin` (or, in its
+ * absence, a same-origin `Referer`). The app's rendered forms need NO CSRF
+ * token field — the host owns CSRF at the seam (RL-LOCK-016: the app never
+ * sees credentials, never sees the CSRF surface either).
+ */
+function isSameOriginPost(request: Request, url: URL): boolean {
+  const origin = request.headers.get("origin");
+  if (origin !== null) return origin === url.origin;
+  const referer = request.headers.get("referer");
+  if (referer !== null) {
+    try {
+      return new URL(referer).origin === url.origin;
+    } catch {
+      return false;
+    }
+  }
+  // No Origin and no Referer: fail closed. A same-origin browser POST always
+  // sends at least one (the only legitimate case where both are absent is a
+  // same-site navigation triggered by a non-form UI, never a mutation).
+  return false;
+}
+
+/** The typed 404 for an unwired flow name. */
+function flowNotFoundResponse(flowName: string): Response {
+  return errorResponse(
+    HTTP_STATUS.notFound,
+    "FLOW_NOT_FOUND",
+    `the flow "${flowName}" is not wired (no host-side handler exists for /flows/${flowName})`,
+  );
+}
+
+/** The typed 403 for a CSRF (same-origin) failure. */
+function csrfInvalidResponse(): Response {
+  return errorResponse(
+    HTTP_STATUS.forbidden,
+    "CSRF_INVALID",
+    "the form submission failed the host's same-origin check (CSRF defense); no mutation was attempted",
+  );
+}
+
+export async function handleFlowSubmit(request: Request, runtime: HostRuntime): Promise<Response> {
+  // 1. Runtime gate — a refused composition refuses every flow (fail-closed).
+  if (!runtime.ok) {
+    return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; no flow is accepted");
+  }
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  // 2. Path + flow-name resolution — a path that is not a flow action is the
+  //    honest typed 404 (never a guess, never a fall-through to a GET).
+  if (!pathname.startsWith(FLOW_PATH_PREFIX)) {
+    return flowNotFoundResponse(pathname);
+  }
+  const flowName = pathname.slice(FLOW_PATH_PREFIX.length);
+  if (flowName.length === 0 || flowName.includes("/")) {
+    return flowNotFoundResponse(flowName);
+  }
+  const handler: FlowHandler | undefined = FLOW_HANDLERS[flowName];
+  if (handler === undefined) {
+    return flowNotFoundResponse(flowName);
+  }
+  // 3. CSRF — same-origin POST required (SameSite=Lax is the cookie's first
+  //    line of defense; this is the seam's second line). A failure is the
+  //    typed 403, never a redirect (a redirect could leak state to a
+  //    cross-origin page).
+  if (!isSameOriginPost(request, url)) {
+    return csrfInvalidResponse();
+  }
+  // 4. Session — required. Absent or unresolvable → the host's login
+  //    redirect discipline (303 to /login; never an invented session).
+  const token = sessionTokenOf(request.headers.get("cookie") ?? undefined);
+  if (token === undefined) return redirectTo("/login");
+  let surfaceClient: SurfaceClient;
+  try {
+    surfaceClient = await resolveSurfaceClient(runtime.composition.api, token);
+  } catch (error) {
+    if (error instanceof SessionResolutionError) return redirectTo("/login");
+    return internalErrorResponse();
+  }
+  // 5. Form-encoded parse — the rendered forms POST `application/x-www-form-
+  //    encoded` by default (no enctype set). `request.formData()` accepts
+  //    both that and multipart (defensive); a malformed body is the typed
+  //    400, never a fall-through.
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return errorResponse(
+      HTTP_STATUS.badRequest,
+      "FORM_INVALID",
+      "the form submission was not a valid form-encoded body",
+    );
+  }
+  // 6. Parse → typed flow-method input. A `FormValidationError` becomes the
+  //    typed validation error panel (rendered on the originating page, so
+  //    the customer sees the form again with the typed failure above it).
+  const app = new CustomerWebApp({ client: surfaceClient.client });
+  const idempotencyKey = `${flowName}-${crypto.randomUUID()}`;
+  const ctx: FlowRunContext = { app, idempotencyKey };
+  let result: MutationFlowResult;
+  try {
+    const typedInput = handler.parse(form);
+    result = await handler.run(ctx, typedInput);
+  } catch (error) {
+    if (error instanceof FormValidationError) {
+      result = { status: "error" as const, error: formValidationErrorOf(error) };
+    } else {
+      return internalErrorResponse();
+    }
+  }
+  // 7. Response — redirect law first, then the rendered result.
+  if (result.status === "ok" && handler.redirectOnSuccess !== undefined) {
+    const target = handler.redirectOnSuccess(form, result.acknowledgement);
+    if (target !== null) return redirectTo(target);
+  }
+  // The render law: re-render the originating page with the `lastResult`
+  // panel above the body. The originating page is the page that hosts the
+  // form (the form came from there; the customer's expectation is to land
+  // back on it with the outcome visible).
+  if (handler.renderPath === undefined) {
+    // No render target and no redirect: an internal misconfiguration (never
+    // a state the customer should see). Fail-closed — never invented success.
+    return internalErrorResponse();
+  }
+  const renderTarget = handler.renderPath(form);
+  try {
+    return htmlResponse(
+      await renderCustomerDocument(runtime.composition.api, token, renderTarget.pathname, {
+        lastResult: result,
+        ...(renderTarget.searchParams !== undefined ? { searchParams: renderTarget.searchParams } : {}),
+      }),
+    );
+  } catch (error) {
+    if (error instanceof SessionResolutionError) return redirectTo("/login");
+    if (error instanceof SurfaceNotFoundError) {
+      return flowNotFoundResponse(flowName);
     }
     return internalErrorResponse();
   }
