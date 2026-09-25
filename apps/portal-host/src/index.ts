@@ -33,6 +33,7 @@ export * from "./scrypt-password-hasher.js";
 export * from "./http-adapter.js";
 export * from "./session.js";
 export * from "./surface.js";
+export * from "./flows.js";
 export * from "./handlers.js";
 export * from "./bootstrap.js";
 export * from "./demo-accounts.js";
