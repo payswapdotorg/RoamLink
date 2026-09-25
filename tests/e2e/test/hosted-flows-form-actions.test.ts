@@ -18,14 +18,21 @@
  *         -> RoamLinkApiClient (app-kit) over the host's /v1 mount
  *           -> services/api -> @roamlink/auth -> REAL PostgreSQL (pglite)
  *
- * The honest terrain (asserted, never decorated): the real runtime composes
- * the durable COMMAND plane; every business read model answers the typed
- * 501 READ_MODEL_NOT_COMPOSED (F-016-2, unchanged). The flows that READ a
- * versioned resource first (update/retire device, activate/supersede intent,
- * cancel order, onboarding-finish's activation leg) therefore fail closed
- * through the form path too — the typed error panel renders above the
- * originating page; the durable command ledger is NOT incremented (the
- * read-first discipline holds end to end through the form plane).
+ * The honest terrain (asserted, never decorated): the real runtime
+ * composes the durable COMMAND plane plus the PA-019 command-ledger read
+ * projections (devices, experience-intents, connectivity, support cases,
+ * enterprise workspace). The page bodies for those reads now serve their
+ * real EMPTY state (no executed commands on this composition — accepted
+ * is not executed) — the same composed-empty assertion pattern PA-019
+ * adopted in the four RL-113 journey files. Pages whose read set still
+ * includes a kept-501 route (the home page's notification read; the
+ * commerce and order pages' product/order reads; the device-detail page's
+ * notification read; the connectivity center's notification read) still
+ * fail closed into the typed READ_MODEL_NOT_COMPOSED panel — and the
+ * flows that READ a versioned resource first (update/retire device,
+ * activate/supersede intent, cancel order, onboarding-finish's activation
+ * leg) fail on the typed not-found (the read model composes the honest
+ * empty/404 — never a blind versionless write through the form plane).
  *
  * Fail-closed matrix (the host never invents success):
  *   - runtime-not-ready → typed 503 HOST_NOT_READY
@@ -114,7 +121,7 @@ const VARIANT_ID = "05050505-0000-4000-8000-000000000005";
 // ---------------------------------------------------------------------------
 
 describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", () => {
-  it("enroll-device accepts the command durably and re-renders /devices with the success panel", async () => {
+  it("enroll-device accepts the command durably and re-renders /devices with the success panel above the composed empty registry (PA-019)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d1, email: "flows-enroll@example.com" });
     try {
       const response = await handleFlowSubmit(
@@ -127,9 +134,24 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(html).toContain('data-mutation-result="ok"');
       expect(html).toContain('data-stage="accepted" data-reached="true"');
       expect(html).toContain('data-stage="executed" data-reached="false"');
-      // The originating page (/devices) is re-rendered; its read fails closed
-      // (F-016-2) but the success panel rides above the body.
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-019 merge-integration: the /devices read now composes the real
+      // EMPTY registry (no executed commands — accepted is not executed).
+      // The page renders the real empty state (the same composed-empty
+      // pattern PA-019 adopted in tests/e2e/test/hosted-devices-
+      // connectivity-recovery.test.ts): the empty-registry marker, the
+      // "add your first device" CTA, and the rendered enroll-device form
+      // for the next submit — never a 501, never an invented device. The
+      // success panel rides above the body.
+      expect(html).toContain('data-devices-empty="true"');
+      expect(html).toContain("No devices yet.");
+      expect(html).toContain("Add your first device");
+      expect(html).toContain('data-flow="enroll-device"');
+      // The shell connectivity indicator now states the honest no-reference
+      // state (the composed connectivity read serves the real empty
+      // aggregate — never a 501, never an unverifiable shrug).
+      expect(html).toContain('data-shell-connectivity="no-reference"');
+      // No READ_MODEL_NOT_COMPOSED panel anymore on the /devices body.
+      expect(html).not.toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
       expect(await commandCount(journey)).toBe(1);
     } finally {
       await journey.dispose();
@@ -323,7 +345,7 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
     }
   });
 
-  it("activate-intent refuses the versioned command through the form path (read-first discipline)", async () => {
+  it("activate-intent refuses the versioned command through the form path on the honest not-found (PA-019 read-first discipline)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d9, email: "flows-activate@example.com" });
     try {
       const intentId = "0e0e0e0e-0000-4000-8000-0000000000d9";
@@ -334,14 +356,26 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain('data-mutation-result="error"');
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-019 merge-integration: the experience-intent read now composes;
+      // the typed `getExperienceIntent(intentId)` read answers the honest
+      // 404 NOT_FOUND for the unknown intent (no executed create command —
+      // accepted is not executed). The flow's read-first discipline fails
+      // closed on the typed not-found — never a blind versionless command
+      // into the durable ledger. The same pattern PA-019 adopted in
+      // tests/e2e/test/hosted-entry-onboarding-goals.test.ts (the
+      // "creates the goal command durably and fails the versioned goal
+      // commands on the honest not-found" row). The page body AND the
+      // mutation-result panel both carry the typed not-found.
+      expect(html).toContain('data-error-kind="not-found"');
+      expect(html).toContain('data-error-reason="NOT_FOUND"');
+      expect(html).not.toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
       expect(await commandCount(journey)).toBe(0);
     } finally {
       await journey.dispose();
     }
   });
 
-  it("supersede-intent refuses the versioned command through the form path (read-first discipline)", async () => {
+  it("supersede-intent refuses the versioned command through the form path on the honest not-found (PA-019 read-first discipline)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0da, email: "flows-supersede@example.com" });
     try {
       const intentId = "0e0e0e0e-0000-4000-8000-0000000000da";
@@ -360,7 +394,12 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain('data-mutation-result="error"');
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-019 merge-integration: same as activate-intent — the read model
+      // composes, the unknown intent answers the typed 404, and the flow
+      // fails closed on the not-found (never a blind versionless command).
+      expect(html).toContain('data-error-kind="not-found"');
+      expect(html).toContain('data-error-reason="NOT_FOUND"');
+      expect(html).not.toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
       expect(await commandCount(journey)).toBe(0);
     } finally {
       await journey.dispose();
