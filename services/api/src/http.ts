@@ -98,17 +98,43 @@ function headersOf(error: RoamLinkError): Record<string, string> | undefined {
   return undefined;
 }
 
-/** A typed "read model not composed" response (501 - honest, never fake data). */
-export function readModelNotComposed(path: string): HttpResponse {
+/** A named, honest reason a read model is not composed on the real runtime. */
+export interface ReadModelNotComposedReason {
+  /** Diagnosable UPPER_SNAKE code (log-safe, value-free). */
+  readonly code: string;
+  /** The one-line explanation (what real source is missing). */
+  readonly explanation: string;
+}
+
+/**
+ * A typed "read model not composed" response (501 - honest, never fake data).
+ * PA-019: every kept-501 route names its reason (the real source that does
+ * not exist in this service's bound persistence); the typed reason stays
+ * READ_MODEL_NOT_COMPOSED so clients keep their one honest refusal shape.
+ */
+export function readModelNotComposed(
+  path: string,
+  named?: ReadModelNotComposedReason,
+): HttpResponse {
   return {
     status: 501,
     body: JSON.stringify({
       kind: "unavailable",
       reason: "READ_MODEL_NOT_COMPOSED",
       message:
-        "this read model is not composed on the real persistence runtime yet (the deterministic fake API remains the contract reference); no data is invented here",
+        named === undefined
+          ? "this read model is not composed on the real persistence runtime yet (the deterministic fake API remains the contract reference); no data is invented here"
+          : `this read model has no composed source on the real runtime (${named.code}: ${named.explanation}); no data is invented here`,
       retryable: false,
-      details: [{ path, issue: "read model not composed in this wave" }],
+      details: [
+        {
+          path,
+          issue:
+            named === undefined
+              ? "read model not composed in this wave"
+              : `read model not composed (${named.code}: ${named.explanation})`,
+        },
+      ],
     }),
   };
 }
