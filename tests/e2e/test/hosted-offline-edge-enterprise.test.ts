@@ -194,13 +194,14 @@ describe("RL-113 hosted journey: enterprise onboarding (explicit known gap)", ()
       expect(error).toMatchObject({ kind: "not-found", reason: "NOT_FOUND", status: 404 });
 
       // The customer surface fails closed: the shell renders (entry point +
-      // navigation), the workspace body is the typed error panel (its read
-      // set includes the session read, which carries the cross-surface
-      // contract drift recorded in the entry journey), and NO enterprise
+      // navigation; the composed connectivity read states the honest
+      // no-reference state — PA-019), the workspace body is the typed error
+      // panel (its read set includes the enterprise workspace read, which
+      // answers the plain 404 — the recorded gap), and NO enterprise
       // journey state (workspace -> verification -> policy -> connector ->
       // devices -> capabilities -> goal -> overview) is fabricated anywhere.
       const html = await journey.app.renderDocument({ page: "workspace" });
-      expect(html).toContain('data-shell-connectivity="unverifiable"');
+      expect(html).toContain('data-shell-connectivity="no-reference"');
       expect(html).toContain('data-mutation-result="error"');
       expect(html).not.toContain('data-workspace');
       expect(html).not.toContain("organization verification");

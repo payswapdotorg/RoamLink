@@ -6,11 +6,14 @@
  * The connectivity journey's honest law end to end: the lifecycle
  * vocabulary (observed -> requested -> accepted -> reserved -> path active
  * -> delivery -> recovered) renders ONLY from what the read model asserts.
- * On the real runtime the read model is not composed — so NOTHING renders,
- * the indicator says "cannot confirm", and no stage (including a fabricated
- * "recovered") is ever claimed. The recovery that DOES exist on this
- * runtime is real and asserted: idempotent command replay, the durable
- * stored-command view, and replay-safe webhook admission.
+ * With the PA-019 composition the connectivity read serves the runtime's
+ * REAL state: no command has executed, so no subjects and no device
+ * observations exist — the honest no-reference indicator, no stage
+ * (including a fabricated "recovered") ever claimed, and an admitted
+ * webhook STILL creates no projection (admission is not truth,
+ * RL-LOCK-009). The recovery that DOES exist on this runtime is real and
+ * asserted: idempotent command replay, the durable stored-command view,
+ * and replay-safe webhook admission.
  */
 import { describe, expect, it } from "vitest";
 
@@ -23,13 +26,18 @@ import {
 } from "../src/host.js";
 
 describe("RL-113 hosted journey: device enrollment", () => {
-  it("enrolls durably, then refuses the versioned device commands honestly", async () => {
+  it("enrolls durably, then fails the versioned device commands on the honest not-found (never blind)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0b1, email: "devices@example.com" });
     try {
+      // The Devices destination now renders from the COMPOSED device read
+      // (PA-019): the real empty registry (accepted is not executed) with
+      // the first-device call to action and the enrollment form.
       const devicesPage = await journey.app.renderDocument({ page: "devices" });
-      expect(devicesPage).toContain('data-shell-connectivity="unverifiable"');
-      expect(devicesPage).toContain('data-error-kind="unavailable"');
-      expect(devicesPage).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      expect(devicesPage).toContain('data-shell-connectivity="no-reference"');
+      expect(devicesPage).toContain('data-devices-empty="true"');
+      expect(devicesPage).toContain("No devices yet.");
+      expect(devicesPage).toContain("Add your first device");
+      expect(devicesPage).toContain('data-flow="enroll-device"');
 
       // Primary task completion: the enrollment command is durable.
       const enrolled = await journey.app.enrollDeviceFlow(
@@ -41,22 +49,41 @@ describe("RL-113 hosted journey: device enrollment", () => {
       const persistence = createPostgresPersistence(journey.composition.driver);
       expect(await persistence.records("api-commands").count()).toBe(1);
 
-      // The device-detail page reads fail closed (honest 501, no invented
-      // device), and the versioned update/retire flows refuse to command
-      // blind: the read-first discipline fails closed instead.
+      // The device-detail read now composes and answers the honest 404 for
+      // the unknown device (the enrolled command is accepted, not executed —
+      // no device exists yet, and none is invented)...
       const deviceId = "0d0d0d0d-0000-4000-8000-000000000004";
+      let deviceRead: unknown;
+      try {
+        await journey.app.client().getDevice(deviceId);
+      } catch (caught) {
+        deviceRead = caught;
+      }
+      expect(isApiClientError(deviceRead)).toBe(true);
+      if (isApiClientError(deviceRead)) {
+        expect(deviceRead.status).toBe(404);
+        expect(deviceRead.kind).toBe("not-found");
+        expect(deviceRead.reason).toBe("NOT_FOUND");
+      }
+      // ...so the detail PAGE fails closed (its read set also includes the
+      // notification read model, which honestly keeps its typed 501): an
+      // error panel, and NO invented device content either way.
       const detail = await journey.app.renderDocument({
         page: "device",
         params: { deviceId },
       });
-      expect(detail).toContain('data-error-kind="unavailable"');
+      expect(detail).toContain('data-mutation-result="error"');
+      expect(detail).not.toContain('data-device-capability="true"');
+      expect(detail).not.toContain('data-device-manage="true"');
+      // ...and the versioned update/retire flows refuse to command blind:
+      // the read-first discipline fails closed on the typed not-found.
       const updated = await journey.app.updateDeviceFlow(
         { deviceId, name: "Travel Router (renamed)" },
         { idempotencyKey: "e2e-device-update" },
       );
       expect(updated.status).toBe("error");
       if (updated.status !== "error") return;
-      expect(updated.error).toMatchObject({ kind: "unavailable", reason: "READ_MODEL_NOT_COMPOSED" });
+      expect(updated.error).toMatchObject({ kind: "not-found", reason: "NOT_FOUND" });
       const retired = await journey.app.retireDeviceFlow(
         { deviceId },
         { idempotencyKey: "e2e-device-retire" },
@@ -81,34 +108,29 @@ describe("RL-113 hosted journey: device enrollment", () => {
 });
 
 describe("RL-113 hosted journey: connectivity observation", () => {
-  it("renders the connectivity center fail-closed with the honest unverifiable indicator", async () => {
+  it("composes the honest real overview: no subjects, no observations, the no-reference indicator", async () => {
     const journey = await bootHostedJourney({ seed: 0x0b2, email: "connectivity@example.com" });
     try {
       const html = await journey.app.renderDocument({ page: "connectivity" });
-      // The persistent indicator: the real overview read refused, so the
-      // shell claims NOTHING (not success, not failure).
-      expect(html).toContain('data-shell-connectivity="unverifiable"');
-      expect(html).toContain("Cannot confirm right now");
-      expect(html).toContain("this is not a success or a failure claim");
-      // The page body is the typed error panel and nothing else.
+      // The persistent indicator: the composed overview read serves the real
+      // empty aggregate, so the shell states the honest no-reference state
+      // (a real claim of nothing — not success, not failure, not a shrug).
+      expect(html).toContain('data-shell-connectivity="no-reference"');
+      expect(html).toContain("No active connectivity reference");
+      expect(html).toContain("nothing is currently set up to deliver connectivity");
+      // The page body still fails closed: the connectivity center's read set
+      // includes the notification read model, which honestly keeps its
+      // typed 501 (no notification store is bound on this runtime).
       expect(html).toContain('data-error-kind="unavailable"');
       expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
       expect(html).not.toContain('data-connectivity-overview="true"');
 
-      // The typed client surfaces the real refusal with its taxonomy kind
-      // intact (the app never renders an unvalidated payload either way).
-      let error: unknown;
-      try {
-        await journey.app.client().getConnectivityOverview();
-      } catch (caught) {
-        error = caught;
-      }
-      expect(isApiClientError(error)).toBe(true);
-      if (isApiClientError(error)) {
-        expect(error.status).toBe(501);
-        expect(error.kind).toBe("unavailable");
-        expect(error.reason).toBe("READ_MODEL_NOT_COMPOSED");
-      }
+      // The typed client now SUCCEEDS on the composed read and surfaces the
+      // real aggregate (the app parses and renders it only through the
+      // contract's own fail-closed parser).
+      const overview = await journey.app.client().getConnectivityOverview();
+      expect(overview.subjects).toEqual([]);
+      expect(overview.deviceObservations).toEqual([]);
     } finally {
       await journey.dispose();
     }
@@ -216,20 +238,15 @@ describe("RL-113 hosted journey: automatic recovery", () => {
       expect(await persistence.inbox.count("ADMITTED")).toBe(1);
 
       // --- (4) Admission is NOT truth (RL-LOCK-009 end to end): after the
-      // webhook was admitted, the connectivity read STILL refuses and no
+      // webhook was admitted, the composed connectivity read still serves
+      // the REAL state — the admission created no projection (projection is
+      // the worker plane's concern), so no subject, no evidence and no
       // journey state is claimed anywhere.
-      let refused: unknown;
-      try {
-        await journey.app.client().getConnectivityOverview();
-      } catch (caught) {
-        refused = caught;
-      }
-      expect(isApiClientError(refused)).toBe(true);
-      if (isApiClientError(refused)) {
-        expect(refused.reason).toBe("READ_MODEL_NOT_COMPOSED");
-      }
+      const overview = await journey.app.client().getConnectivityOverview();
+      expect(overview.subjects).toEqual([]);
+      expect(overview.deviceObservations).toEqual([]);
       const html = await journey.app.renderDocument({ page: "connectivity" });
-      expect(html).toContain('data-shell-connectivity="unverifiable"');
+      expect(html).toContain('data-shell-connectivity="no-reference"');
     } finally {
       await journey.dispose();
     }

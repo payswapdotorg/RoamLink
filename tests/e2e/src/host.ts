@@ -19,11 +19,19 @@
  *
  * The honest terrain this harness explores: the real hosted runtime
  * composes the COMMAND plane (durable command ingestion, session/login,
- * command-status reads, webhook admission) and answers every business read
- * model with the typed 501 READ_MODEL_NOT_COMPOSED (honest unavailability,
- * never invented data). The journeys below assert exactly what the real
- * composition produces — completion where the command plane reaches,
- * fail-closed where it does not — and never fabricate an eighth state.
+ * command-status reads, webhook admission) AND the composed business read
+ * models (PA-019, closes F-016-2): the command-ledger projections serve the
+ * runtime's REAL executed state — on this composition no command has
+ * executed (the worker plane's executors are not composed here), so every
+ * ledger projection serves its honest EMPTY state and the business pages
+ * render the real empty journey content instead of the fail-closed panel.
+ * The routes with no composed source (products, orders, subscriptions,
+ * notifications, audit-events, projection-health, integration-health) keep
+ * the typed 501 READ_MODEL_NOT_COMPOSED with their named reasons — pages
+ * whose read set includes one of those still fail closed into the typed
+ * error panel, and the journeys assert exactly that. The composition never
+ * fabricates a state: completion where the planes reach, fail-closed where
+ * they do not, and never an eighth state.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
