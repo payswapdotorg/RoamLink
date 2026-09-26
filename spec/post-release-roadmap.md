@@ -1,111 +1,93 @@
-# RoamLink Post-Gate Implementation Plan
+# RoamLink Implementation Roadmap
 
-**Baseline:** RL-080 and RL-081 deterministic release gates pass.  
-**Next objective:** turn the verified architecture into a genuinely deployable, discoverable product.
+**Baseline:** RL-001..RL-118 and PA-001..PA-019 are implemented/evidenced.
+**Current objective:** finish the hosted product's live runtime, not redesign the architecture.
 
-## Wave 6 — Product shell + hosted runtime
+## Completed roadmap
 
-### Worker A — Experience
-- RL-082 First-run onboarding
-- RL-083 ShareNet-inspired RoamLink application shell
-- RL-084 Connectivity Center
-- RL-085 Activity / automation timeline
-- RL-086 Goal-oriented intent UX
-- RL-087 Device capability experience
-- RL-088 Responsive/mobile web accessibility pass
+### Foundation
+- ✅ RL-001..RL-081
 
-### Worker B — Runtime
-- RL-089 Next.js/Vercel web host
-- RL-090 API/BFF host composition
-- RL-091 Real PostgreSQL persistence driver
-- RL-092 SQL migration set
-- RL-093 Durable outbox recovery / stuck-claim sweep
-- RL-094 Inbox batch progression fix
+### Wave 6
+- ✅ RL-082..RL-100
 
-### Worker C — Operations / deployment
-- RL-095 Neon environment provisioning
-- RL-096 Upstash Redis integration
-- RL-097 Upstash QStash job delivery
-- RL-098 Cloudflare R2 integration
-- RL-099 deployment manifests/secrets/environment separation
-- RL-100 hosted health/readiness + synthetic smoke checks
+### Wave 7
+- ✅ RL-101..RL-112
 
-## Wave 7 — Journey completion
+### Wave 8
+- ✅ RL-113..RL-118
 
-### Worker A
-- RL-101 Guided purchase-to-delivery experience
-- RL-102 Connectivity evidence / why progressive disclosure
-- RL-103 Support contextual entry points
-- RL-104 Enterprise onboarding journey
+### Post-acceptance
+- ✅ PA-001..PA-019
 
-### Worker B
-- RL-105 production API hardening
-- RL-106 real database concurrency verification
-- RL-107 webhook/reconciliation production worker wiring
-- RL-108 production ADCOS compatibility probe
+## Current next wave — live runtime completion
 
-### Worker C
-- RL-109 observability dashboard
-- RL-110 scheduled/event-driven recovery jobs
-- RL-111 production backup/export verification
-- RL-112 deployment rollback verification
+### Worker A — Experience / browser
 
-## Wave 8 — Discoverability / confidence validation
+- PA-020 — component-scoped degradation on primary surfaces
+- PA-021 — deployed browser journey acceptance
+- PA-022 — final UX closure after runtime composition
 
-All three workers participate through isolated lanes.
+### Worker B — API / runtime / workers
 
-- RL-113 user-journey E2E suite
-- RL-114 responsive/accessibility verification
-- RL-115 capability discoverability audit
-- RL-116 telemetry/SLO journey validation
-- RL-117 demo environment acceptance
-- RL-118 production deployment acceptance
+- PA-023 — mutation route parity for every rendered customer action
+- PA-024 — remaining real read-model composition
+- PA-025 — live command-execution worker path
+- PA-026 — enterprise workspace + connector runtime completion
 
-## Critical dependencies
+### Worker C — deployment / provider / release
 
-RL-082 + RL-083 -> RL-084 -> RL-085 -> RL-086
+- PA-027 — redeploy current main + current-main acceptance
+- PA-028 — verify/configure free-tier provider stack
+- PA-029 — final live acceptance + release record
 
-RL-001..RL-081 -> RL-089 -> RL-090
+## Dependency graph
 
-RL-003 -> RL-091 -> RL-092
+PA-020 → PA-022
+PA-021 depends on PA-020
 
-RL-091 -> RL-093 -> RL-094
+PA-023 → PA-025
+PA-024 → PA-025
+PA-023 + PA-024 + PA-025 → PA-026
 
-RL-095 + RL-096 + RL-097 + RL-098 + RL-099 -> RL-100
+PA-021 + PA-022 + PA-026 → PA-027
+PA-027 → PA-028
+PA-027 + PA-028 → PA-029
 
-RL-084 + RL-085 + RL-086 + RL-087 + RL-100 -> RL-101..104
+## Worker rules
 
-RL-091 + RL-092 + RL-093 + RL-094 + RL-108 -> RL-105..108
+A worker stops and escalates to the orchestrator when:
+- an architecture lock would be changed;
+- a real API route does not map to public ADCOS capability;
+- a read model requires fabricated state;
+- accepted is being presented as executed;
+- a provider limitation would alter correctness;
+- a UI feature requires a new connectivity authority.
 
-RL-101..112 -> RL-113..118
+## Required final journeys
 
-## Parallelism rules
+Individual:
+login → onboarding → goal → device → eSIM/capabilities → connectivity → activity → purchase → payment → delivery evidence → support
 
-Three workers may operate concurrently.
+Enterprise:
+workspace → organization → policy → connector → devices → capability verification → first goal → live organization overview
 
-Shared interfaces are orchestrator-owned.
+Operator:
+admin → SLO → integration health → reconciliation → projection health → audit → support
 
-A worker must stop when:
+## Exit criteria
 
-- the requested provider capability is unavailable;
-- a real persistence implementation changes semantics;
-- an existing architecture lock would be violated;
-- a customer state cannot be mapped to authoritative evidence;
-- a UI feature requires a new authority.
-
-## Exit criteria for this roadmap
-
-Do not call RoamLink deployed until:
-
-1. a real web host exists;
-2. a real Postgres instance backs state;
-3. a real webhook endpoint is reachable;
-4. the ADCOS compatibility gate runs against the configured service;
-5. a real user can complete onboarding -> goal -> device -> connectivity -> activity -> support;
-6. an enterprise user can complete workspace onboarding;
-7. a degraded connectivity journey can be observed and explained;
-8. offline mobile behavior can be exercised;
-9. the ShareNet-inspired navigation works responsively;
-10. smoke tests run against the deployed environment;
-11. accepted production findings are either remediated or explicitly retained with owner and exposure;
-12. the architecture conformance suite remains green.
+Do not mark the current phase complete until:
+1. every rendered mutation has a real API route;
+2. every required customer/admin read is either composed or component-level explicitly unavailable;
+3. the command execution worker path advances durable commands in the deployed demo;
+4. onboarding and Goals complete without fabricated state;
+5. eSIM actions execute through the real API;
+6. commerce reads/orders/delivery journey are live;
+7. Activity remains usable with notification data live or locally degraded;
+8. enterprise workspace and connector are live;
+9. admin integration/audit/projection surfaces are live or locally degraded;
+10. the deployed browser journey suite passes;
+11. smoke, demo acceptance and rollback checks pass on current main;
+12. ADCOS compatibility is configured and verified for the target environment;
+13. architecture conformance remains green.
