@@ -10,15 +10,17 @@
  * asserts the four mobile legs over real outbox state — queued is NOT
  * executed, observation continues offline, freshness is always rendered.
  *
- * The enterprise-onboarding journey is pinned honestly: the real hosted
- * runtime does not compose the /v1/enterprise/workspace read (it answers
- * the plain 404 NOT_FOUND — not even the typed read-model refusal), so
- * since PA-020 the customer surface degrades COMPONENT-SCOPED: the core
- * sections (fleet, goals, org connectivity) render from their composed
- * reads while the workspace-composed sections render the quiet unavailable
- * panel with the typed reason. That gap is recorded here as an explicit
- * finding (never a silently-passing assertion, never a fabricated journey
- * state).
+ * The enterprise-onboarding journey is COMPOSED since PA-024: the real
+ * hosted runtime answers /v1/enterprise/workspace with the composed read
+ * model (the organization section from the bound identity stores, the
+ * connector section from the executed-command ledger, the unbound
+ * sections the contract's honest nulls), so the workspace page renders
+ * its real journey content — the four workspace-composed journey steps,
+ * the connector enrollment, the policy summary, the integrations and the
+ * enrollment status sections — never the unavailable panels, never a
+ * fabricated journey state. The personal tenant composes the honest
+ * null organization; an organization-scoped journey composes the REAL
+ * organization record from the bound identity stores.
  */
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -37,7 +39,11 @@ import {
 } from "@roamlink/mobile";
 import { deterministicUuidFromSeed, fixtureTenantId } from "@roamlink/testkit";
 
-import { bootHostedJourney } from "../src/host.js";
+import {
+  bootHostedJourney,
+  orgScopedApp,
+  registerHostedOrganization,
+} from "../src/host.js";
 
 const T = "2026-03-01T08:00:00.000Z";
 const KEY_BYTES = new Uint8Array(32).fill(23);
@@ -180,58 +186,116 @@ describe("RL-113 hosted journey: offline edge (the mobile document legs)", () =>
   });
 });
 
-describe("RL-113 hosted journey: enterprise onboarding (explicit known gap)", () => {
-  it("degrades the workspace page component-scoped and records the gap honestly (never a fabricated journey state)", async () => {
+describe("RL-113 hosted journey: enterprise onboarding (the composed workspace read, PA-024)", () => {
+  it("composes the workspace read honestly for a personal tenant and renders the real journey content (never a fabricated state)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d1, email: "enterprise@example.com" });
     try {
-      // KNOWN GAP (RL-113 finding, recorded — never silently passed): the
-      // real hosted runtime does not compose the enterprise workspace read.
-      // The app-contract route /v1/enterprise/workspace is not in the
-      // real API's read-model refusal set either, so the raw answer is the
-      // plain 404 NOT_FOUND (no existence oracle, no invented workspace).
-      let error: unknown;
-      try {
-        await journey.app.client().getEnterpriseWorkspace();
-      } catch (caught) {
-        error = caught;
-      }
-      expect(error).toMatchObject({ kind: "not-found", reason: "NOT_FOUND", status: 404 });
+      // The enterprise workspace read is now COMPOSED on the real hosted
+      // runtime (PA-024, previously the audit §3 plain 404). A personal
+      // tenant composes the honest all-null sections: no organization
+      // (a real fact of the personal tenant), no enrollment journey, no
+      // connector (accepted is not executed — no executed
+      // connector.provision command exists on this composition), no
+      // policy/integration reads. Every field is a real fact of the
+      // bound state, parsed under the frozen app-kit parser.
+      const workspace = await journey.app.client().getEnterpriseWorkspace();
+      expect(workspace.organization).toBeNull();
+      expect(workspace.enrollment).toBeNull();
+      expect(workspace.connector).toBeNull();
+      expect(workspace.policy).toBeNull();
+      expect(workspace.integrations).toBeNull();
+      expect(workspace.presentedAt).toBeDefined();
 
-      // PA-020: the customer surface degrades COMPONENT-SCOPED. The shell
-      // renders (entry point + navigation; the composed connectivity read
-      // states the honest no-reference state — PA-019), the CORE sections
-      // (device fleet, goals, org connectivity — all composed reads) render
-      // their honest empty-journey content, and ONLY the workspace-composed
-      // sections degrade to the quiet unavailable panel carrying the typed
-      // 404 reason. The journey keeps its spine: the core steps (devices,
-      // capability verification, first goal, live overview) render their
-      // honest states; the workspace-composed steps do NOT render (their
-      // facts are unknown - never invented journey states).
+      // PA-024 flip: the customer surface renders the real journey content
+      // from the composed read. The shell still states the honest
+      // no-reference connectivity (the ledger projection is empty), the
+      // CORE sections (device fleet, goals, org connectivity — all
+      // composed reads) render their honest empty-journey content, AND the
+      // workspace-composed sections now render from the real resource
+      // instead of the quiet unavailable panels: the switcher states the
+      // honest unknown-organization fact, the four workspace-composed
+      // journey steps render (their honest not-started/complete states),
+      // and the connector enrollment, policy summary, integrations and
+      // enrollment status sections each render their honest content.
       const html = await journey.app.renderDocument({ page: "workspace" });
       expect(html).toContain('data-shell-connectivity="no-reference"');
       expect(html).toContain('data-device-fleet="true"');
       expect(html).toContain('data-workspace-goals="true"');
       expect(html).toContain('data-org-connectivity="true"');
+      // The switcher composes the honest personal-tenant fact.
+      expect(html).toContain('data-workspace-switcher="true"');
+      expect(html).toContain('data-workspace-org-unknown="true"');
+      // The four workspace-composed journey steps render (their facts are
+      // known now — honest states, never invented ones).
       expect(html).toContain('data-workspace-journey="true"');
+      expect(html).toContain('data-workspace-step="workspace"');
+      expect(html).toContain('data-workspace-step="organization-verification"');
+      expect(html).toContain('data-workspace-step="policy"');
+      expect(html).toContain('data-workspace-step="connector"');
       expect(html).toContain('data-workspace-step="devices"');
       expect(html).toContain('data-workspace-step="live-overview"');
-      expect(html).not.toContain('data-workspace-step="workspace"');
-      expect(html).not.toContain('data-workspace-step="organization-verification"');
-      expect(html).not.toContain('data-workspace-step="policy"');
-      expect(html).not.toContain('data-workspace-step="connector"');
-      expect(html).toContain('data-unavailable="true"');
-      expect(html).toContain('data-unavailable-section="workspace-switcher"');
-      expect(html).toContain('data-unavailable-section="workspace-journey"');
-      expect(html).toContain('data-unavailable-section="connector-enrollment"');
-      expect(html).toContain('data-unavailable-section="policy-summary"');
-      expect(html).toContain('data-unavailable-section="enterprise-integrations"');
-      expect(html).toContain('data-unavailable-section="workspace-enrollment"');
-      expect(html).toContain('data-unavailable-reason="NOT_FOUND"');
-      // The degraded body is NOT the fail-closed panel.
+      // The workspace-composed sections render their real content.
+      expect(html).toContain('data-connector-enrollment="true"');
+      expect(html).toContain('data-policy-summary="not-available"');
+      expect(html).toContain('data-integrations="true"');
+      expect(html).toContain('data-enrollment-absent="true"');
+      expect(html).toContain('data-connector-absent="true"');
+      // NO degradation panels remain anywhere on the page: the workspace
+      // read composed, so no section needs the quiet unavailable panel.
+      expect(html).not.toContain('data-unavailable="true"');
+      // The degraded/fail-closed bodies are gone: the page is the real
+      // journey content, never a fabricated state.
       expect(html).not.toContain('data-error-kind=');
       // The More destination (the workspace's mobile discovery path) stays
       // discoverable.
       expect(html).toContain('href="/more"');
+    } finally {
+      await journey.dispose();
+    }
+  });
+
+  it("composes the REAL organization section for an organization-scoped journey (the bound identity stores' own record)", async () => {
+    const journey = await bootHostedJourney({ seed: 0x0d2, email: "enterprise-org@example.com" });
+    try {
+      // The organization is created through the REAL administration
+      // boundary over the host's own identity stores (the same boundary
+      // the demo-account seeding drives), with the journey's user as the
+      // owner. The workspace read in the ORGANIZATION tenant then composes
+      // the REAL organization record — the bound identity stores' own
+      // facts, never a fabricated workspace identity.
+      const orgTenantId = await registerHostedOrganization(
+        journey.composition,
+        journey.identity,
+        0x5d2,
+        "Acahat Travel Co",
+      );
+      const scoped = orgScopedApp(journey, orgTenantId);
+
+      const workspace = await scoped.client.getEnterpriseWorkspace();
+      const organization = workspace.organization;
+      if (organization === null) throw new Error("organization section missing");
+      expect(organization.tenantId).toBe(orgTenantId);
+      expect(organization.name).toBe("Acahat Travel Co");
+      expect(organization.status).toBe("active");
+      // The unbound sections keep the honest nulls in the org scope too.
+      expect(workspace.enrollment).toBeNull();
+      expect(workspace.connector).toBeNull();
+      expect(workspace.policy).toBeNull();
+      expect(workspace.integrations).toBeNull();
+
+      // The workspace page in the organization scope renders the REAL
+      // organization identity in the switcher (name + active badge) and
+      // the full journey content from the composed reads.
+      const html = await scoped.app.renderDocument({ page: "workspace" });
+      expect(html).toContain("Acahat Travel Co");
+      expect(html).toContain('data-workspace-switcher="true"');
+      expect(html).not.toContain('data-workspace-org-unknown="true"');
+      expect(html).toContain('data-workspace-step="workspace"');
+      expect(html).toContain('data-workspace-step="organization-verification"');
+      expect(html).toContain('data-workspace-step="policy"');
+      expect(html).toContain('data-workspace-step="connector"');
+      expect(html).not.toContain('data-unavailable="true"');
+      expect(html).not.toContain('data-error-kind=');
     } finally {
       await journey.dispose();
     }

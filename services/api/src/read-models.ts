@@ -17,6 +17,22 @@
  *     persistence. Honest skips, recorded in the route table below (and in
  *     the PA-019 closure note), never papered over.
  *
+ * PA-024 composes the remaining journey read whose source binds through the
+ * service's existing ports: the ENTERPRISE WORKSPACE read
+ * (`/v1/enterprise/workspace`, previously the audit §3 plain 404). Its
+ * sections compose exactly what the bound state asserts: `organization` from
+ * the bound identity stores (the acting org tenant's real organization
+ * record; the honest null for a personal tenant), `connector` from the
+ * command-ledger projection of EXECUTED connector.provision commands (the
+ * PA-023 mutation; the domain's creation state, advanced by no executed
+ * transition this bound state records), and `enrollment` / `policy` /
+ * `integrations` as the contract's honest NULL sections (their owning
+ * sources - the enterprise enrollment journey store, the upstream policy
+ * administration, the integration status records - have no port bound in
+ * this service's construction; the application contract models the absent
+ * section as null, "an absent section is not an assertion", never a guessed
+ * one). No enterprise state machine is invented in this API layer.
+ *
  * THE PROJECTION LAW (the standing truthfulness law, applied to reads): a
  * business resource exists in a composed read model ONLY when its creating
  * command has EXECUTED and recorded its resource id (the executed stage +
@@ -84,6 +100,15 @@ import {
  * each names the real source that does not exist in this service's bound
  * persistence. The deterministic fake API remains the contract reference
  * for these reads.
+ *
+ * PA-024 re-verified each named reason against the service's construction
+ * (the ports the live host actually passes: the shared persistence, the
+ * identity stores, the authorization boundary): every reason below still
+ * holds - the owning source of each model (the domain catalog, the
+ * catalog-borne price facts, the subscription lifecycle, the notification
+ * store, the audit chain, the worker-plane projection/SLO state, the
+ * worker-host RL-108 probe record) has no port through which this service
+ * can bind it TODAY, so the honest skip stands (never invented data).
  */
 export const READ_MODELS_NOT_COMPOSED: Readonly<Record<string, ReadModelNotComposedReason>> =
   Object.freeze({
@@ -242,6 +267,15 @@ function selectComposedHandler(segments: readonly string[]): ComposedReadHandler
   }
   if (segments.length === 2 && segments[1] === "support-cases") return handleSupportCaseListRead;
   if (segments.length === 3 && segments[1] === "support-cases") return handleSupportCaseRead;
+  // PA-024: the enterprise workspace read composes from the bound identity
+  // stores + the executed-command ledger (see handleEnterpriseWorkspaceRead).
+  if (
+    segments.length === 3 &&
+    segments[1] === "enterprise" &&
+    segments[2] === "workspace"
+  ) {
+    return handleEnterpriseWorkspaceRead;
+  }
   return undefined;
 }
 
@@ -998,6 +1032,108 @@ async function handleSupportCaseRead(
     throw new NotFoundError("the requested support case does not exist", { reason: "NOT_FOUND" });
   }
   return jsonResponse(200, supportCaseResourceOf(supportCase));
+}
+
+// --------------------------------------------------------------------------------
+// The enterprise workspace read (PA-024: the audit §3 404, composed)
+// --------------------------------------------------------------------------------
+
+/**
+ * The workspace's organization section: the acting tenant's REAL
+ * organization record from the bound identity stores. A personal tenant
+ * carries no organization - the honest null section (never a fabricated
+ * workspace identity, never an existence probe).
+ */
+async function workspaceOrganizationOf(
+  input: ReadRequestContext & ReadModelOptions,
+): Promise<Record<string, unknown> | null> {
+  if (!input.tenantId.startsWith("org:")) return null;
+  const organizationId = parseOrganizationId(input.tenantId.slice("org:".length));
+  const organization = await input.organizations.findById(input.tenantId, organizationId);
+  // The boundary's actor->tenant resolution already failed closed for an
+  // unknown organization before this read ran; the null is the defensive
+  // honest answer, never a guessed record.
+  if (organization === undefined) return null;
+  return {
+    tenantId: organization.tenantId,
+    organizationId: organization.organizationId,
+    name: organization.name,
+    status: organization.status,
+  };
+}
+
+/**
+ * The workspace's connector section: the command-ledger projection of the
+ * tenant's EXECUTED connector.provision commands (the PA-023 mutation
+ * route). The projection law: accepted is NOT executed - a provisioned
+ * connector exists only when its command executed and recorded its
+ * `connector_provisioning` resource id. The projected state is the domain's
+ * creation state (`provisioning` - the in-flight vocabulary
+ * packages/enterprise's provisioning record owns); the provisioned/failed/
+ * revoked transitions are domain-execution facts this bound state never
+ * asserts, so they are never invented here.
+ *
+ * The one-active-attempt law (the domain rejects a second active
+ * provisioning) means at most the LATEST executed attempt is the current
+ * record; an earlier executed attempt was terminal before a later one
+ * could execute. The read composes the latest, never a transition the
+ * ledger does not record.
+ */
+function workspaceConnectorOf(
+  commands: readonly ExecutedCommand[],
+): Record<string, unknown> | null {
+  let latest: ExecutedCommand | null = null;
+  // executedCommandsOf sorts ascending by (executedAt, commandId): the last
+  // matching executed command is the current provisioning attempt.
+  for (const command of commands) {
+    if (command.kind !== "connector.provision") continue;
+    if (command.resourceId === null) continue; // executed without its recorded resource: nothing to project
+    latest = command;
+  }
+  if (latest === null) return null;
+  return {
+    provisioningId: latest.resourceId,
+    state: "provisioning", // the domain's creation state at execution
+    createdAt: latest.executedAt, // a provisioning record exists from execution
+    updatedAt: latest.executedAt,
+  };
+}
+
+/**
+ * PA-024: the enterprise workspace read (GET /v1/enterprise/workspace).
+ *
+ * The customer workspace composes ONLY what the service's bound state
+ * asserts, section by section (the application contract's
+ * EnterpriseWorkspaceResource - every section honestly present or absent):
+ *  - organization: the bound identity stores' organization record of the
+ *    acting org tenant (null for a personal tenant);
+ *  - enrollment / policy / integrations: the honest NULL sections - their
+ *    owning sources (the enterprise enrollment journey store, the upstream
+ *    policy administration read, the integration status records) are not
+ *    bound through any port of this service's construction, and "an absent
+ *    section is not an assertion" (the application contract's law) - never
+ *    a guessed enrollment state, policy or integration status;
+ *  - connector: the executed-command projection above;
+ *  - presentedAt: the injected clock.
+ *
+ * No enterprise state machine is invented in this API layer: the section
+ * vocabularies are the application contract's own closed vocabularies, and
+ * the workspace page renders its journey content from exactly these facts.
+ */
+async function handleEnterpriseWorkspaceRead(
+  input: ReadRequestContext & ReadModelOptions,
+): Promise<HttpResponse> {
+  const organization = await workspaceOrganizationOf(input);
+  const commands = await executedCommandsOf(input.persistence, input.tenantId);
+  const connector = workspaceConnectorOf(commands);
+  return jsonResponse(200, {
+    presentedAt: input.now(),
+    organization,
+    enrollment: null,
+    connector,
+    policy: null,
+    integrations: null,
+  });
 }
 
 // --------------------------------------------------------------------------------

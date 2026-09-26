@@ -681,8 +681,9 @@ describe("the read surface contract (READ_MODEL_ROUTES coverage)", () => {
     await world.administration.registerUser(1);
     const session = await sessionOf(world, 1);
 
-    // The frozen surface: 20 read-route patterns — 12 composed, 8 kept-501.
-    expect(READ_MODEL_ROUTES).toHaveLength(20);
+    // The frozen surface: 21 read-route patterns — 13 composed (PA-024
+    // adds the enterprise workspace read), 8 kept-501.
+    expect(READ_MODEL_ROUTES).toHaveLength(21);
     expect(Object.keys(READ_MODELS_NOT_COMPOSED)).toHaveLength(8);
 
     // A representative concrete path for every frozen route pattern (the

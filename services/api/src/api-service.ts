@@ -39,7 +39,12 @@
  *                                        typed 501 with a named reason —
  *                                        the service invents NO data (the
  *                                        deterministic fake API remains
- *                                        the contract reference)
+ *                                        the contract reference). PA-024
+ *                                        adds the enterprise workspace read
+ *                                        (organization from the bound
+ *                                        identity stores, connector from
+ *                                        the executed-command ledger, the
+ *                                        unbound sections honestly null)
  *
  * Authorization is enforced server-side at this boundary through
  * @roamlink/auth (session verification + actor->tenant resolution); the
@@ -125,7 +130,8 @@ export {
 // table): PA-019 composes the read models over the service's bound state
 // (see ./read-models.ts); the routes with no real source keep the typed
 // 501 with their named reasons - honest unavailability, never invented
-// data. The frozen pattern set below is the READ ROUTE SURFACE CONTRACT:
+// data. PA-024 adds the enterprise workspace read to the composed surface.
+// The frozen pattern set below is the READ ROUTE SURFACE CONTRACT:
 // every pattern must be answered by the composed dispatcher or the
 // kept-501 table (the composition battery asserts the two tables together
 // cover it exactly - a read route that answers the plain 404 is a gap).
@@ -158,6 +164,14 @@ export const READ_MODEL_ROUTES: readonly RegExp[] = Object.freeze([
   /^\/v1\/integration-health$/,
   /^\/v1\/support-cases$/,
   /^\/v1\/support-cases\/[^/]+$/,
+  // PA-024: the enterprise workspace read — previously the audit §3's
+  // plain 404 (not dispatched at all) — composes from the service's bound
+  // identity stores + the executed-command ledger (see ./read-models.ts
+  // handleEnterpriseWorkspaceRead). The pattern joins the frozen read
+  // surface so the composition battery's coverage contract stays
+  // exhaustive: every pattern is answered by the composed dispatcher or
+  // the kept-501 table, never the plain 404.
+  /^\/v1\/enterprise\/workspace$/,
 ]);
 
 // --------------------------------------------------------------------------------
