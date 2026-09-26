@@ -198,7 +198,7 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
     }
   });
 
-  it("esim-install accepts the command durably (the typed API validates the activation code)", async () => {
+  it("esim-install accepts the command durably through the REAL /v1 mount and renders the typed acknowledgement panel (PA-023)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d4, email: "flows-esim-install@example.com" });
     try {
       const deviceId = "0d0d0d0d-0000-4000-8000-0000000000d4";
@@ -218,6 +218,24 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       // (F-016-2) but the mutation-result panel renders above it.
       expect(html).toContain("<!DOCTYPE html>");
       expect(html).toContain("<title>RoamLink - deviceSim</title>");
+      // PA-023 strengthening: the eSIM install mutation route landed in the
+      // real API, so the flow now SUCCEEDS through the REAL /v1 mount — the
+      // typed acknowledgement panel carries the command id, the idempotency
+      // key echo (the host's `esim-install-<uuid>` key) and the honest
+      // four-stage pipeline (accepted reached, the later stages honestly
+      // NOT reached — accepted ≠ executed, the NO-INVENTION law).
+      expect(html).toContain('data-mutation-result="ok"');
+      expect(html).toMatch(
+        /data-command-id="[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"/,
+      );
+      expect(html).toMatch(
+        /command [0-9a-f-]{36} \(idempotency key esim-install-[0-9a-f-]{36}, correlation [0-9a-f-]{36}\)/,
+      );
+      expect(html).toContain('data-stage="accepted" data-reached="true"');
+      expect(html).toContain('data-stage="executed" data-reached="false"');
+      expect(html).toContain('data-stage="delivered" data-reached="false"');
+      expect(html).toContain('data-stage="billable-final" data-reached="false"');
+      expect(await commandCount(journey)).toBe(1);
     } finally {
       await journey.dispose();
     }
@@ -242,7 +260,7 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
     }
   });
 
-  it("esim-remove accepts the command durably and re-renders the device-SIM page", async () => {
+  it("esim-remove accepts the command durably through the REAL /v1 mount and renders the typed acknowledgement panel (PA-023)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d5, email: "flows-esim-remove@example.com" });
     try {
       const deviceId = "0d0d0d0d-0000-4000-8000-0000000000d5";
@@ -254,12 +272,22 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain("<title>RoamLink - deviceSim</title>");
+      // PA-023 strengthening: the remove command is durably accepted by the
+      // real API — the typed acknowledgement panel echoes the command id +
+      // the host's `esim-remove-<uuid>` idempotency key.
+      expect(html).toContain('data-mutation-result="ok"');
+      expect(html).toMatch(
+        /command [0-9a-f-]{36} \(idempotency key esim-remove-[0-9a-f-]{36}, correlation [0-9a-f-]{36}\)/,
+      );
+      expect(html).toContain('data-stage="accepted" data-reached="true"');
+      expect(html).toContain('data-stage="executed" data-reached="false"');
+      expect(await commandCount(journey)).toBe(1);
     } finally {
       await journey.dispose();
     }
   });
 
-  it("esim-enable accepts the command durably (the desired state rides the form)", async () => {
+  it("esim-enable accepts the command durably through the REAL /v1 mount and renders the typed acknowledgement panel (PA-023)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d6, email: "flows-esim-enable@example.com" });
     try {
       const deviceId = "0d0d0d0d-0000-4000-8000-0000000000d6";
@@ -275,6 +303,16 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain("<title>RoamLink - deviceSim</title>");
+      // PA-023 strengthening: the desired state rides the form; the command
+      // is durably accepted — the acknowledgement panel echoes the command
+      // id + the host's `esim-enable-<uuid>` idempotency key.
+      expect(html).toContain('data-mutation-result="ok"');
+      expect(html).toMatch(
+        /command [0-9a-f-]{36} \(idempotency key esim-enable-[0-9a-f-]{36}, correlation [0-9a-f-]{36}\)/,
+      );
+      expect(html).toContain('data-stage="accepted" data-reached="true"');
+      expect(html).toContain('data-stage="executed" data-reached="false"');
+      expect(await commandCount(journey)).toBe(1);
     } finally {
       await journey.dispose();
     }
@@ -531,27 +569,42 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
     }
   });
 
-  it("provision-connector accepts the enrollment submit through the form plane and re-renders /workspace (the redirect law applies on success; on the real runtime the endpoint is not yet composed, the flow fails closed)", async () => {
+  it("provision-connector accepts the enrollment submit through the form plane and applies the redirect law (PA-023: the command is durable through the REAL /v1 mount)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0df, email: "flows-provision@example.com" });
     try {
       const response = await handleFlowSubmit(
         flowPost("provision-connector", { connectorId: "demo-connector" }, { token: journey.token }),
         runtimeOf(journey.composition),
       );
-      // The redirect law (`/workspace?commandId=<ack.commandId>`) applies on
-      // SUCCESS — and on the real runtime the enterprise connector
-      // provisioning endpoint is NOT YET COMPOSED (the typed API answers
-      // 404 — F-016-2's analog for the command plane on this wave). The
-      // host therefore falls back to the render law: re-render /workspace
-      // with the typed error panel above the body. The redirect law
-      // itself is pinned in the unit battery (apps/portal-host/test/
-      // flows.test.ts) against the FLOW_HANDLERS table directly.
-      expect(response.status).toBe(200);
-      const html = await response.text();
-      expect(html).toContain("<title>RoamLink - workspace</title>");
-      expect(html).toContain('data-mutation-result="error"');
-      // No command was durably ingested (the API rejected the command).
-      expect(await commandCount(journey)).toBe(0);
+      // PA-023 strengthening: the enterprise connector provisioning route
+      // landed in the real API, so the flow now SUCCEEDS and the redirect law
+      // applies on success — 303 to `/workspace?commandId=<ack.commandId>`
+      // (the page renders the command's four-stage pipeline from the status
+      // read; the redirect law itself was pinned in the unit battery
+      // against the FLOW_HANDLERS table directly).
+      expect(response.status).toBe(303);
+      const location = response.headers.get("location") ?? "";
+      expect(location).toMatch(/^\/workspace\?commandId=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      const commandId = location.slice("/workspace?commandId=".length);
+      // The command was durably ingested through the REAL /v1 mount.
+      expect(await commandCount(journey)).toBe(1);
+      // The typed acknowledgement through the REAL /v1 mount: the command
+      // status read echoes the command id + the host's idempotency key and
+      // the honest accepted-only stages (accepted ≠ executed).
+      const status = await journey.v1({
+        method: "GET",
+        path: `/v1/commands/${commandId}`,
+        headers: { "x-roamlink-tenant-id": journey.identity.tenantId },
+      });
+      expect(status.status).toBe(200);
+      const ack = JSON.parse(status.body ?? "{}") as Record<string, unknown>;
+      expect(ack["commandId"]).toBe(commandId);
+      expect(ack["kind"]).toBeUndefined(); // the status read is the ack, not the stored record
+      expect(String(ack["idempotencyKey"])).toMatch(/^provision-connector-[0-9a-f-]{36}$/);
+      expect(ack["acceptedAt"]).toBe("2026-01-15T08:30:00.000Z");
+      expect(ack["executedAt"]).toBeUndefined();
+      expect(ack["deliveredAt"]).toBeUndefined();
+      expect(ack["billableFinalAt"]).toBeUndefined();
     } finally {
       await journey.dispose();
     }
