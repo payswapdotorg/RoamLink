@@ -193,6 +193,43 @@ eSIM flows now assert the typed acknowledgement panel — command id + idempoten
 and the connector flow asserts the redirect law `303 → /workspace?commandId=<ack.commandId>` with the durable command verified
 through the REAL /v1 mount). The `pnpm check` floor held (45 packages, 0 fail); no existing test was weakened, skipped or deleted.
 
+**Read-model closure note (PA-024, 2026-09-26, additive — the kept-501 finding above stands as the historical record; the enterprise-workspace 404 finding is closed):**
+every route of the §3 kept-501 list plus the enterprise-workspace 404 was re-mapped against the service's construction
+(the ports the live host actually passes: the shared persistence, the identity stores, the authorization boundary) before any
+composition, per the PA-019 bindability discipline. What composed: **`/v1/enterprise/workspace`** (the §3 "plain 404" finding)
+— `services/api/src/read-models.ts` `handleEnterpriseWorkspaceRead` composes the workspace section by section from the REAL
+bound sources: the `organization` section from the bound identity stores (the acting org tenant's real organization record;
+the honest `null` for a personal tenant — a real fact, never a fabricated identity and never an existence probe), the
+`connector` section from the command-ledger projection of EXECUTED `connector.provision` commands (the PA-023 mutation; the
+domain's creation state `provisioning`, the latest executed attempt per the one-active-attempt law, the provisioned/failed/
+revoked transitions never invented), and `enrollment`/`policy`/`integrations` as the application contract's honest NULL
+sections — their owning sources (the enterprise enrollment journey store, the upstream policy administration, the
+integration status records) have no port bound in this service's construction, and "an absent section is not an assertion";
+no enterprise state machine is invented in the API layer. The route joined `READ_MODEL_ROUTES` (the coverage contract now
+21 patterns — 13 composed, 8 kept-501). What kept its typed 501 and why (each reason re-verified, still true):
+`products` (PRODUCT_CATALOG_NOT_BOUND — no product-creating command kind exists and nothing writes catalog facts through the
+shared persistence; the domain catalog store is self-contained in-memory), `orders` + `orders/{id}`
+(ORDER_PRICE_FACTS_NOT_BOUND — `order.place` payloads carry only variantId+quantity; line ids, product ids, unit prices and
+totals are catalog + domain-execution facts the bound state never carries, and prices are never invented), `subscriptions`
+(SUBSCRIPTION_STATE_NOT_BOUND — no subscription command kind, no subscription records in the bound persistence),
+`notifications` (NOTIFICATION_STORE_NOT_BOUND — no notification-creating command kind; read-marking only targets, and no
+notification store writer exists on this runtime), `audit-events` (AUDIT_CHAIN_NOT_BOUND — the tamper-evident chain is an
+in-memory domain-plane component composed nowhere in production), `projection-health`
+(PROJECTION_HEALTH_SOURCE_NOT_BOUND — the projection store and SLO state live in the worker/host planes, not in this
+service's bound persistence), `integration-health` (INTEGRATION_HEALTH_SOURCE_NOT_BOUND — the RL-108 probe record lives in
+the worker host's process memory, env-gated; per the PA-010 law the surface renders what the probe recorded, and the probe
+record is not reachable through this service's ports). Journeys 1/7/8/11 therefore keep their honest PA-020-degraded or
+fail-closed assertions (their read sets still include kept-501 routes); Journey 10 flipped: the hosted enterprise journey now
+renders the real workspace journey content — the four workspace-composed journey steps, the connector enrollment, the policy
+summary, the integrations and the enrollment status sections — with no degradation panels (`tests/e2e/test/hosted-offline-edge-enterprise.test.ts`,
+plus a new organization-scoped e2e leg proving the organization section composes the REAL identity-store record through the
+host's own /v1 mount). Battery evidence: `services/api/test/enterprise-workspace-read-model.test.ts` (5 tests — the
+write-then-read round trip for the connector projection with the accepted-is-not-executed pre-state, the latest-executed
+projection, the identity-backed organization section for both tenant scopes, and the tenant fail-closed discipline), the
+evolved coverage contract in `services/api/test/read-models.test.ts` (21 patterns), and the full existing battery unchanged.
+The `pnpm check` floor held (45 packages, 0 fail); no existing test was weakened, skipped or deleted; the deterministic fake
+API and apps/** are untouched.
+
 ## 4. Journey simulation
 
 ### Journey 1 — Login → Home

@@ -25,13 +25,19 @@
  * executed (the worker plane's executors are not composed here), so every
  * ledger projection serves its honest EMPTY state and the business pages
  * render the real empty journey content instead of the fail-closed panel.
- * The routes with no composed source (products, orders, subscriptions,
- * notifications, audit-events, projection-health, integration-health) keep
- * the typed 501 READ_MODEL_NOT_COMPOSED with their named reasons — pages
- * whose read set includes one of those still fail closed into the typed
- * error panel, and the journeys assert exactly that. The composition never
- * fabricates a state: completion where the planes reach, fail-closed where
- * they do not, and never an eighth state.
+ * PA-024 composes the enterprise workspace read the same way: the
+ * organization section serves the bound identity stores' REAL organization
+ * record (the honest null for a personal tenant), the connector section
+ * projects the executed-command ledger (honestly null until execution), and
+ * the enrollment/policy/integrations sections keep the contract's honest
+ * nulls. The routes with no composed source (products, orders,
+ * subscriptions, notifications, audit-events, projection-health,
+ * integration-health) keep the typed 501 READ_MODEL_NOT_COMPOSED with
+ * their named reasons — pages whose read set includes one of those still
+ * degrade or fail closed into the typed error panel, and the journeys
+ * assert exactly that. The composition never fabricates a state:
+ * completion where the planes reach, fail-closed where they do not, and
+ * never an eighth state.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -251,6 +257,69 @@ export async function registerHostedUser(
     actorId: `usr:${userId}`,
     email,
   };
+}
+
+/**
+ * Registers an organization (owner = the already-registered hosted user)
+ * through the REAL @roamlink/auth administration boundary — the same
+ * boundary the portal-host's demo-account seeding drives. Returns the
+ * organization's tenant id; the owner's session token authorizes reads in
+ * that tenant through the boundary's own membership resolution.
+ */
+export async function registerHostedOrganization(
+  composition: PortalHostComposition,
+  owner: HostedIdentity,
+  organizationSeed: number,
+  name: string,
+): Promise<TenantId> {
+  const organizationId = deterministicUuidFromSeed(organizationSeed);
+  const tenantId = `org:${organizationId}` as TenantId;
+  const administration = new AccountAdministrationService({
+    users: composition.identity.users,
+    directory: composition.identity.directory,
+    credentials: composition.identity.credentials,
+    organizations: composition.identity.organizations,
+    memberships: composition.identity.memberships,
+    ledger: composition.identity.ledger,
+    hasher: composition.identity.hasher,
+    authorization: new AuthorizationService(
+      composition.identity.memberships,
+      composition.identity.organizations,
+    ),
+    now: () => T0,
+    generateMembershipId: () => crypto.randomUUID(),
+  });
+  await administration.createOrganization(
+    fixtureCommandEnvelope({
+      commandId: deterministicUuidFromSeed(organizationSeed + 1),
+      actorId: owner.actorId,
+      tenantId,
+      idempotencyKey: `e2e-create-org-${organizationSeed}`,
+      correlationId: `e2e-corr-org-${organizationSeed}`,
+      createdAt: T0,
+    }),
+    { organizationId, name },
+  );
+  return tenantId;
+}
+
+/**
+ * Binds a typed app-kit client + the REAL customer web app over an
+ * EXISTING hosted journey's transport, scoped to the ORGANIZATION tenant
+ * (the owner's session token + the org tenant context; the boundary's
+ * actor->tenant resolution authorizes the membership). The PA-024
+ * enterprise workspace journey reads compose through this scope.
+ */
+export function orgScopedApp(
+  journey: HostedJourney,
+  orgTenantId: TenantId,
+): { readonly client: RoamLinkApiClient; readonly app: CustomerWebApp } {
+  const client = new RoamLinkApiClient({
+    transport: journey.transport,
+    actor: { actorId: journey.identity.actorId, tenantId: orgTenantId },
+    ids: new DeterministicUuidGenerator(50_000),
+  });
+  return { client, app: new CustomerWebApp({ client }) };
 }
 
 async function transportRequest(
