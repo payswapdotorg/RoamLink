@@ -169,6 +169,30 @@ The current list does not include the rendered customer actions for:
 
 Therefore PA-018 proves host form wiring, but not yet end-to-end API mutation parity for those two capabilities.
 
+**Mutation-parity closure note (PA-023, 2026-09-26, additive — the original finding above is unchanged):**
+the four missing mutation routes landed in the real API. `services/api/src/commands.ts` `MUTATION_ROUTES` now serves
+`/v1/devices/{deviceId}/sim/install` → `esim.install`, `/v1/devices/{deviceId}/sim/profiles/{profileId}/remove` → `esim.remove`,
+`/v1/devices/{deviceId}/sim/profiles/{profileId}/enable` → `esim.enable`, and
+`/v1/enterprise/workspace/connector/provision` → `connector.provision` (the kinds follow the in-repo command vocabulary — the
+deterministic fake API's and the workers' executor-table key style — rather than a new naming). Per the NO-INVENTION law these
+routes DURABLY ACCEPT a typed command envelope into the command plane (idempotency key, correlation id, the atomic
+command-record + key-pointer + outbox-obligation unit of work) and answer the four-stage acknowledgement with only `accepted`
+reached — execution remains the worker path's concern (PA-025), so accepted ≠ executed stays honest. Server-side payload
+validation mirrors the app-kit serializers exactly (same field names, same bounds, fail-closed typed rejections:
+`activationCode` non-empty string, `enabled` boolean, the ids as canonical lowercase UUIDs on the path, and the bounded
+printable connector label `/^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$/` — never a secret); the pre-existing 15 kinds keep their
+ingestion contract with the fake API as the reference. The gap is now held closed by a repo-level law:
+`tests/architecture/test/mutation-route-parity.test.ts` parses the rendered-flow union (apps/web pages + the app's typed flow
+methods), the portal-host `FLOW_HANDLERS` table, and the services/api `MUTATION_ROUTES` table, and fails on drift in either
+direction — every rendered/hosted flow must resolve to a real API mutation route, and every API-only mutation kind must stay
+in the documented exceptions list (`order.complete`, `support-case.transition`, `organization.suspend`, `organization.reactivate`
+— the service-plane extras). Battery evidence: `services/api/test/esim-connector-mutations.test.ts` (12 tests — the positive
+acceptance, idempotency dedupe/conflict, the durable read-back through `/v1/commands/{commandId}`, and the fail-closed
+negative matrix per route) and the strengthened e2e rows in `tests/e2e/test/hosted-flows-form-actions.test.ts` (the three
+eSIM flows now assert the typed acknowledgement panel — command id + idempotency key echo + the honest four-stage pipeline —
+and the connector flow asserts the redirect law `303 → /workspace?commandId=<ack.commandId>` with the durable command verified
+through the REAL /v1 mount). The `pnpm check` floor held (45 packages, 0 fail); no existing test was weakened, skipped or deleted.
+
 ## 4. Journey simulation
 
 ### Journey 1 — Login → Home

@@ -55,6 +55,19 @@ import { readMutationEnvelope } from "./envelope.js";
 // route table; reads are NOT ingestion and never mutate state)
 // --------------------------------------------------------------------------------
 
+/**
+ * The additive eSIM/connector mutation surface (PA-023 — the audit's §3
+ * mutation-parity gap): the app contract already pinned these wire paths
+ * (app-kit API_ROUTE_TEMPLATES deviceSimInstall / deviceSimProfileRemove /
+ * deviceSimProfileEnable / enterpriseConnectorProvision) and PA-018 wired
+ * the rendered forms; the kinds follow the in-repo command vocabulary
+ * (`esim.install` / `esim.remove` / `esim.enable` / `connector.provision` —
+ * exactly the deterministic fake API's kinds and the workers' executor-table
+ * key style). NO-INVENTION LAW: these routes DURABLY ACCEPT a typed command
+ * envelope into the command plane; they never execute it (execution is the
+ * worker path's concern — the acknowledgement stays honestly `accepted`).
+ */
+
 interface MutationRoute {
   readonly pattern: RegExp;
   readonly kind: string;
@@ -64,6 +77,9 @@ export const MUTATION_ROUTES: readonly MutationRoute[] = Object.freeze([
   { pattern: /^\/v1\/devices$/, kind: "device.enroll" },
   { pattern: /^\/v1\/devices\/[^/]+\/update$/, kind: "device.update" },
   { pattern: /^\/v1\/devices\/[^/]+\/retire$/, kind: "device.retire" },
+  { pattern: /^\/v1\/devices\/[^/]+\/sim\/install$/, kind: "esim.install" },
+  { pattern: /^\/v1\/devices\/[^/]+\/sim\/profiles\/[^/]+\/remove$/, kind: "esim.remove" },
+  { pattern: /^\/v1\/devices\/[^/]+\/sim\/profiles\/[^/]+\/enable$/, kind: "esim.enable" },
   { pattern: /^\/v1\/experience-intents$/, kind: "experience-intent.create" },
   { pattern: /^\/v1\/experience-intents\/[^/]+\/versions$/, kind: "experience-intent.supersede" },
   { pattern: /^\/v1\/experience-intents\/[^/]+\/activate$/, kind: "experience-intent.activate" },
@@ -76,6 +92,7 @@ export const MUTATION_ROUTES: readonly MutationRoute[] = Object.freeze([
   { pattern: /^\/v1\/support-cases\/[^/]+\/transitions$/, kind: "support-case.transition" },
   { pattern: /^\/v1\/organizations\/[^/]+\/suspend$/, kind: "organization.suspend" },
   { pattern: /^\/v1\/organizations\/[^/]+\/reactivate$/, kind: "organization.reactivate" },
+  { pattern: /^\/v1\/enterprise\/workspace\/connector\/provision$/, kind: "connector.provision" },
 ]);
 
 /** Resolves the command kind of a mutation path; null when it is not a mutation route. */
@@ -145,6 +162,139 @@ export function acknowledgementOf(command: StoredCommand): MutationAcknowledgeme
 }
 
 // --------------------------------------------------------------------------------
+// Per-kind payload validation (PA-023 — mutation-route parity)
+// --------------------------------------------------------------------------------
+
+/** The canonical lowercase UUID shape (mirrors app-kit's requireId law). */
+const CANONICAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * The connector label rule, mirrored EXACTLY from the app-kit serializer
+ * (`provisionConnectorBody`; the owning domain's CONNECTOR_LABEL_PATTERN): a
+ * bounded printable diagnostics label — never a secret.
+ */
+const CONNECTOR_LABEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$/;
+
+/** The eSIM install path: /v1/devices/{deviceId}/sim/install (deviceId at segment 3). */
+const ESIM_DEVICE_ID_SEGMENT = 3;
+
+/** The eSIM profile command path: /v1/devices/{deviceId}/sim/profiles/{profileId}/{action}. */
+const ESIM_PROFILE_ID_SEGMENT = 6;
+
+function pathSegmentOf(path: string, index: number): string {
+  const segment = path.split("/")[index];
+  if (segment === undefined) {
+    // Unreachable for a path that already matched the route pattern; kept
+    // total anyway (the validator never trusts its caller).
+    commandInvalid("the command path is malformed", "$");
+  }
+  return segment;
+}
+
+function requirePayloadObject(kind: string, payload: unknown): Record<string, unknown> {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    commandInvalid(`the ${kind} command requires a JSON object body`, "$");
+  }
+  return payload as Record<string, unknown>;
+}
+
+/**
+ * Fail-closed unknown-field rejection: the accepted body carries EXACTLY the
+ * fields the app-kit serializer emits (byte-for-byte agreement, PA-023).
+ */
+function requireOnlyFields(kind: string, body: Record<string, unknown>, allowed: ReadonlySet<string>): void {
+  for (const key of Object.keys(body)) {
+    if (!allowed.has(key)) {
+      commandInvalid(
+        `the ${kind} command body carries a field outside the contract (allowed: ${[...allowed].sort().join(", ") || "none"})`,
+        key,
+      );
+    }
+  }
+}
+
+/** The path-bound id law mirrored from app-kit's requireId/requireDeviceId. */
+function requirePathId(kind: string, name: string, value: string): void {
+  if (!CANONICAL_UUID_PATTERN.test(value)) {
+    commandInvalid(`the ${kind} command's ${name} path segment must be a canonical lowercase UUID`, name);
+  }
+}
+
+/**
+ * Server-side payload validation for the PA-023 mutation routes, mirroring the
+ * app-kit client serializers EXACTLY (same field names, same bounds, same
+ * fail-closed typed rejections — the client and the server agree
+ * byte-for-byte on bodies):
+ *  - `esim.install`  <- installEsimProfileBody: {activationCode: non-empty string},
+ *    deviceId on the path as a canonical lowercase UUID;
+ *  - `esim.remove`   <- validateRemoveEsimProfile + the "{}" wire body: the ids
+ *    ride the path (both canonical UUIDs), the body carries no fields;
+ *  - `esim.enable`   <- enableEsimProfileBody: {enabled: boolean}, the ids ride
+ *    the path (both canonical UUIDs);
+ *  - `connector.provision` <- provisionConnectorBody: {connectorId: bounded
+ *    printable label}.
+ *
+ * The pre-existing kinds keep their ingestion contract (any canonical JSON
+ * body): their full payload semantics remain the domain executors' law and
+ * the deterministic fake API stays the contract reference. Validation runs
+ * BEFORE admission (fail-closed): a malformed payload is never accepted into
+ * the durable command plane.
+ */
+export function validateMutationPayload(path: string, kind: string, payload: unknown): void {
+  switch (kind) {
+    case "esim.install": {
+      const body = requirePayloadObject(kind, payload);
+      requireOnlyFields(kind, body, new Set(["activationCode"]));
+      const activationCode = body["activationCode"];
+      if (typeof activationCode !== "string" || activationCode.length === 0) {
+        commandInvalid(
+          "the esim.install command requires activationCode to be a non-empty string (the carrier-issued install credential)",
+          "activationCode",
+        );
+      }
+      requirePathId(kind, "deviceId", pathSegmentOf(path, ESIM_DEVICE_ID_SEGMENT));
+      return;
+    }
+    case "esim.remove": {
+      const body = requirePayloadObject(kind, payload);
+      requireOnlyFields(kind, body, new Set());
+      requirePathId(kind, "deviceId", pathSegmentOf(path, ESIM_DEVICE_ID_SEGMENT));
+      requirePathId(kind, "profileId", pathSegmentOf(path, ESIM_PROFILE_ID_SEGMENT));
+      return;
+    }
+    case "esim.enable": {
+      const body = requirePayloadObject(kind, payload);
+      requireOnlyFields(kind, body, new Set(["enabled"]));
+      if (typeof body["enabled"] !== "boolean") {
+        commandInvalid(
+          "the esim.enable command requires enabled to be a boolean (the desired state)",
+          "enabled",
+        );
+      }
+      requirePathId(kind, "deviceId", pathSegmentOf(path, ESIM_DEVICE_ID_SEGMENT));
+      requirePathId(kind, "profileId", pathSegmentOf(path, ESIM_PROFILE_ID_SEGMENT));
+      return;
+    }
+    case "connector.provision": {
+      const body = requirePayloadObject(kind, payload);
+      requireOnlyFields(kind, body, new Set(["connectorId"]));
+      const connectorId = body["connectorId"];
+      if (typeof connectorId !== "string" || !CONNECTOR_LABEL_PATTERN.test(connectorId)) {
+        commandInvalid(
+          "the connector.provision command requires connectorId to be a bounded, printable connector label (letters, numbers, dots, underscores, colons, at-signs or dashes; never a secret)",
+          "connectorId",
+        );
+      }
+      return;
+    }
+    default:
+      // The pre-existing kinds keep their ingestion contract (the fake API
+      // remains the full contract reference for their payload semantics).
+      return;
+  }
+}
+
+// --------------------------------------------------------------------------------
 // Ingestion
 // --------------------------------------------------------------------------------
 
@@ -199,6 +349,12 @@ export async function ingestCommand(options: IngestCommandOptions): Promise<Muta
     }
     throw error;
   }
+
+  // The per-kind payload law (PA-023): the four eSIM/connector routes mirror
+  // the app-kit serializers fail-closed BEFORE admission. A malformed payload
+  // is never accepted into the durable command plane. (Validated on the
+  // PARSED body; the canonical string below is the digest/storage form.)
+  validateMutationPayload(options.path, options.commandKind, payload);
 
   const digest = commandDigest({
     kind: options.commandKind,
