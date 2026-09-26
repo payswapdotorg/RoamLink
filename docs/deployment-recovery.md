@@ -250,3 +250,13 @@ itself). The facts established after full diagnosis:
   branch pushes deployed previews minutes before the limit clamped).
 - The diagnostic branch `deploy/main-current` was deleted after the
   diagnosis (the blocked webhook will not retroactively deploy it).
+
+### Deploy-trigger note (2026-09-26 09:50 UTC)
+
+The rate-limit clamp proved intermittent at the webhook level: the 10dbe80
+push's deploy was refused ("Deployment rate limited"), yet the 3b079d4 push
+ten minutes later deployed to production cleanly. This note is itself the
+deploy trigger for the current head (PA-024/PA-025/PA-026 merged): if the
+webhook is again refused, the next push after any window re-opening
+deploys; the commit statuses remain the ground truth for what actually
+deployed.
