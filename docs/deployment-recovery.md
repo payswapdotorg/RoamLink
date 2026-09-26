@@ -210,3 +210,17 @@ the load suite and the accepted-risk registry.)*
    heals). Whether production check implementations themselves measure the
    right things per deployment is an operational review concern; the
    contract-level fail-closed behavior is what is mechanically provable.
+
+## Operational record — 2026-09-26 (the quota-blocked deploy window and the git-link remediation)
+
+The `api-deployments-free-per-day` quota (100/day, account-wide) exhausted
+at ~02:55 UTC 2026-09-26 while main carried two merged, gated waves
+(PA-020 @ 45a446e, PA-023 @ 9d10ec59) not yet deployed — a RECORDED
+deployment lag with a material delta (unlike the earlier neutral lag the
+RL-118 record describes). Remediation: the Vercel project was linked to
+the GitHub repository (production branch `main`) at 03:24 UTC, enabling
+push-triggered production deploys on the git-integration path (a quota
+bucket separate from API creates). Sequencing impact recorded honestly:
+PA-021 (deployed browser acceptance) was held behind the deploy;
+deploy-independent work orders (PA-024) continued. The quota resets at
+~04:00 UTC 2026-09-27 regardless.
