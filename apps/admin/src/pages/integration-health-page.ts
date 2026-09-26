@@ -21,12 +21,15 @@
  *    renders beside it, and "never checked" renders when no report exists.
  */
 import {
+  isUnavailableRead,
+  unavailablePanelFor,
   el,
   fragment,
   instantView,
   text,
   type HtmlFragment,
   type IntegrationHealthResource,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pageHeading } from "../page-kit.js";
@@ -52,8 +55,28 @@ const STATE_EXPLANATIONS: Readonly<Record<IntegrationHealthResource["state"], st
 });
 
 export function integrationHealthPage(input: {
-  readonly health: IntegrationHealthResource;
+  /**
+   * PA-020: the integration-health read is the page's data-plane read. When
+   * its source refuses (the typed 501 with its named reason, or any
+   * unavailability-class typed error), the surface degrades to the quiet
+   * unavailable panel - the console navigation and every healthy diagnostic
+   * page stay usable. The read stays read-only either way.
+   */
+  readonly health: ReadOrUnavailable<IntegrationHealthResource>;
 }): HtmlFragment {
+  if (isUnavailableRead(input.health)) {
+    return fragment(
+      pageHeading(
+        "Integration health",
+        "The ADCOS compatibility probe's recorded outcome (RL-108): compatibility against the supported ADCOS API contract. Read-only — this surface never triggers the probe and never changes compatibility state.",
+      ),
+      unavailablePanelFor(input.health, {
+        section: "integration-health",
+        meaning:
+          "The recorded compatibility outcome cannot be shown right now. The rest of the console stays usable from the navigation above, and this page will show the recorded outcome once its source answers.",
+      }),
+    );
+  }
   const { health } = input;
   const reportRecorded = health.state === "compatible" || health.state === "incompatible";
   const failedChecks = health.checks.filter((check) => !check.passed);

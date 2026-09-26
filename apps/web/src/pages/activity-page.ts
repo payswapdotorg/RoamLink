@@ -19,6 +19,8 @@ import {
   severityBadge,
   stateBadge,
   disclosureSection,
+  isUnavailableRead,
+  unavailablePanelFor,
   el,
   fragment,
   text,
@@ -26,6 +28,7 @@ import {
   type ExperienceIntentResource,
   type HtmlFragment,
   type NotificationResource,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
@@ -36,7 +39,16 @@ import { supportEscape, SUPPORT_REF_KINDS, type SupportRef } from "./support-con
 import { pageHeading } from "../app.js";
 
 export interface ActivityPageInput {
-  readonly notifications: readonly NotificationResource[];
+  /**
+   * PA-020: the notification feed is a SECONDARY read on Activity. When its
+   * source refuses (the typed 501 READ_MODEL_NOT_COMPOSED with its named
+   * reason, or any unavailability-class typed error), the notification-
+   * derived sections (the needs-attention list and the timeline) degrade to
+   * the quiet unavailable panel - while the automation-status section still
+   * renders its honest state from the intents/devices core reads. A core
+   * read failing keeps the page-level fail-closed law.
+   */
+  readonly notifications: ReadOrUnavailable<readonly NotificationResource[]>;
   readonly intents: readonly ExperienceIntentResource[];
   readonly devices: readonly DeviceResource[];
 }
@@ -167,7 +179,9 @@ function activityItem(notification: NotificationResource): HtmlFragment {
 }
 
 export function activityPage(input: ActivityPageInput): HtmlFragment {
-  const items = chronological(input.notifications);
+  const notifications = input.notifications;
+  const notificationsUnavailable = isUnavailableRead(notifications);
+  const items = notificationsUnavailable ? [] : chronological(notifications);
   const needsYou = (n: NotificationResource) => n.state === "delivered";
   const needsYouCount = items.filter(needsYou).length;
   const activeGoal = findActiveGoal(input.intents);
@@ -181,46 +195,58 @@ export function activityPage(input: ActivityPageInput): HtmlFragment {
       "section",
       { "data-activity-needs-you": "true" },
       el("h3", {}, text("Needs your attention")),
-      needsYouCount === 0
-        ? el(
-            "p",
-            { class: "muted", "data-nothing-needs-you": "true" },
-            text("Nothing needs you right now."),
-          )
-        : el(
-            "ul",
-            { class: "activity-list", "aria-label": "Items that need your review" },
-            ...items.filter(needsYou).map((n) => activityItem(n)),
-          ),
+      notificationsUnavailable
+        ? unavailablePanelFor(notifications, {
+            section: "activity-needs-you",
+            meaning:
+              "RoamLink cannot show your attention items right now. The automation status below still renders from your goals, and Support is reachable from the navigation if you need help.",
+          })
+        : needsYouCount === 0
+          ? el(
+              "p",
+              { class: "muted", "data-nothing-needs-you": "true" },
+              text("Nothing needs you right now."),
+            )
+          : el(
+              "ul",
+              { class: "activity-list", "aria-label": "Items that need your review" },
+              ...items.filter(needsYou).map((n) => activityItem(n)),
+            ),
     ),
     pageHeading("What RoamLink did"),
-    items.length === 0
-      ? el(
-          "p",
-          { class: "muted", "data-activity-empty": "true" },
-          text(
-            "Nothing yet — connect a device and choose a goal to begin. Every action RoamLink takes shows up here with its reason and its evidence.",
-          ),
-        )
-      : fragment(
-          el(
+    notificationsUnavailable
+      ? unavailablePanelFor(notifications, {
+          section: "activity-timeline",
+          meaning:
+            "The recorded timeline is not available right now. Nothing is invented in its place; the automation status below still tells you what RoamLink is managing.",
+        })
+      : items.length === 0
+        ? el(
             "p",
-            { class: "muted", "data-activity-summary": "true" },
+            { class: "muted", "data-activity-empty": "true" },
             text(
-              `${items.length} record${items.length === 1 ? "" : "s"}, newest first` +
-                (needsYouCount > 0 ? `; ${needsYouCount} need${needsYouCount === 1 ? "s" : ""} your review.` : "."),
+              "Nothing yet — connect a device and choose a goal to begin. Every action RoamLink takes shows up here with its reason and its evidence.",
+            ),
+          )
+        : fragment(
+            el(
+              "p",
+              { class: "muted", "data-activity-summary": "true" },
+              text(
+                `${items.length} record${items.length === 1 ? "" : "s"}, newest first` +
+                  (needsYouCount > 0 ? `; ${needsYouCount} need${needsYouCount === 1 ? "s" : ""} your review.` : "."),
+              ),
+            ),
+            el(
+              "ul",
+              {
+                class: "activity-list",
+                "data-activity-feed": "true",
+                "aria-label": "Full activity timeline, newest first",
+              },
+              ...items.map((n) => activityItem(n)),
             ),
           ),
-          el(
-            "ul",
-            {
-              class: "activity-list",
-              "data-activity-feed": "true",
-              "aria-label": "Full activity timeline, newest first",
-            },
-            ...items.map((n) => activityItem(n)),
-          ),
-        ),
     pageHeading("Automation status"),
     activeGoal?.decision
       ? el(

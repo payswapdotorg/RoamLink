@@ -37,6 +37,7 @@ import {
   isApiClientError,
   loadingPanel,
   mutationResultPanel,
+  optionalRead,
   shellConnectivityIndicator,
   WARM_SHELL_STYLES,
   type MutationAcknowledgement,
@@ -202,12 +203,17 @@ export class CustomerWebApp {
   async #renderBody(request: PageRequest): Promise<HtmlFragment> {
     switch (request.page) {
       case "home":
+        // PA-020: connectivity/intents/devices are the CORE Home reads; the
+        // notification feed is SECONDARY (the "Does RoamLink need you?"
+        // card). An unavailable notification source degrades that one card
+        // to the quiet panel - the hero and the goal/devices cards still
+        // render; a core read failing keeps the page-level fail-closed law.
         return this.#withReads("your connectivity", async () => {
           const [connectivity, intents, devices, notifications] = await Promise.all([
             this.#client.getConnectivityOverview(),
             this.#client.listExperienceIntents(),
             this.#client.listDevices(),
-            this.#client.listNotifications(),
+            optionalRead(() => this.#client.listNotifications()),
           ]);
           return homePage({ connectivity, intents, devices, notifications });
         });
@@ -220,17 +226,28 @@ export class CustomerWebApp {
           return overviewPage({ connectivity, notifications });
         });
       case "connectivity":
+        // PA-020: the connectivity overview is the page's CORE read (every
+        // section derives from it); the notification feed is SECONDARY (the
+        // "Recent connectivity events" section). An unavailable notification
+        // source degrades that section to the quiet panel; the connectivity
+        // center itself still renders.
         return this.#withReads("your connectivity", async () => {
           const [connectivity, notifications] = await Promise.all([
             this.#client.getConnectivityOverview(),
-            this.#client.listNotifications(),
+            optionalRead(() => this.#client.listNotifications()),
           ]);
           return connectivityCenterPage({ connectivity, notifications });
         });
       case "activity":
+        // PA-020: the intents/devices reads are the CORE of Activity (the
+        // automation-status section renders from them); the notification
+        // feed is SECONDARY (the needs-attention list and the timeline). An
+        // unavailable notification source degrades those sections to the
+        // quiet panel while the automation status still renders - the audit
+        // journey's "fail at component level, never destroy the page".
         return this.#withReads("your activity", async () => {
           const [notifications, intents, devices] = await Promise.all([
-            this.#client.listNotifications(),
+            optionalRead(() => this.#client.listNotifications()),
             this.#client.listExperienceIntents(),
             this.#client.listDevices(),
           ]);
@@ -373,10 +390,19 @@ export class CustomerWebApp {
         // closed like every page. PA-06: an optional `commandId` param
         // adds the provision-connector command's four-stage pipeline (the
         // polling status read - never fabricated from reads).
+        //
+        // PA-020: the session/devices/intents/connectivity reads are the
+        // CORE of the Workspace page (the fleet, goals and org connectivity
+        // sections render from them); the enterprise workspace read is
+        // SECONDARY. When it refuses (the real runtime's honest 404 for the
+        // not-composed route, or any unavailability-class typed error), the
+        // workspace-composed sections degrade to the quiet panel while the
+        // fleet, goals and connectivity sections still render. Authorization
+        // refusals never degrade (the page-level fail-closed law).
         return this.#withReads("your workspace", async () => {
           const [session, workspace, devices, intents, connectivity, command] = await Promise.all([
             this.#client.getActorSession(),
-            this.#client.getEnterpriseWorkspace(),
+            optionalRead(() => this.#client.getEnterpriseWorkspace()),
             this.#client.listDevices(),
             this.#client.listExperienceIntents(),
             this.#client.getConnectivityOverview(),

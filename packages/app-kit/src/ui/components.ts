@@ -273,6 +273,144 @@ export function emptyState(what: string): HtmlFragment {
 }
 
 // --------------------------------------------------------------------------------
+// Component-scoped degradation (PA-020): the quiet unavailable panel + the
+// secondary-read composition helper
+// --------------------------------------------------------------------------------
+
+/**
+ * The typed marker a page receives when one of its SECONDARY reads refused
+ * (PA-020). The marker carries exactly what is known - the typed reason and
+ * the contract-borne explanation - and nothing else. It never carries partial
+ * data: a section that cannot be composed renders the quiet unavailable
+ * panel, never invented content.
+ */
+export interface UnavailableRead {
+  readonly unavailable: true;
+  /** The typed reason the source refused (UPPER_SNAKE; rendered verbatim). */
+  readonly reason: string;
+  /** The contract-borne explanation when the source gave one (safe text). */
+  readonly message: string | null;
+}
+
+/** A secondary read's outcome: its parsed value, or the typed unavailable marker. */
+export type ReadOrUnavailable<T> = T | UnavailableRead;
+
+/** Narrows a {@link ReadOrUnavailable} to its unavailable marker. */
+export function isUnavailableRead(value: unknown): value is UnavailableRead {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as { readonly unavailable?: unknown }).unavailable === true
+  );
+}
+
+/**
+ * The error kinds that degrade a SECTION (PA-020): the source did not answer.
+ *
+ *  - `unavailable` - the typed 501 READ_MODEL_NOT_COMPOSED (with its named
+ *    reason), 503s and transport failures;
+ *  - `not-found` - the source has no such data on this runtime (e.g. the
+ *    not-composed enterprise workspace route answers an honest 404);
+ *  - `rate-limited` - the source refused this call for now.
+ *
+ * Everything else stays a PAGE-level fail-closed error: authorization
+ * refusals must never render partial surfaces (spec/security.md
+ * "Authorization" - never the surface, never partial data), and validation /
+ * contract-integrity failures indicate a broken contract that a quiet panel
+ * would mask. Those keep the existing honest full-body law.
+ */
+const SECTION_DEGRADABLE_ERROR_KINDS: ReadonlySet<string> = new Set([
+  "unavailable",
+  "not-found",
+  "rate-limited",
+]);
+
+/**
+ * Runs one SECONDARY read fail-soft (PA-020): an unavailability-class typed
+ * error becomes the section-level {@link UnavailableRead} marker so the page
+ * can render its quiet unavailable panel IN THAT SECTION while its core reads
+ * still render. Core reads must NOT go through this helper - a core read
+ * failure keeps the page-level fail-closed law (the page has nothing
+ * authoritative to say). Non-degradable errors re-throw for exactly that
+ * law to catch.
+ */
+export async function optionalRead<T>(read: () => Promise<T>): Promise<ReadOrUnavailable<T>> {
+  try {
+    return await read();
+  } catch (error) {
+    if (isApiClientError(error) && SECTION_DEGRADABLE_ERROR_KINDS.has(error.kind)) {
+      return { unavailable: true, reason: error.reason, message: error.message };
+    }
+    throw error;
+  }
+}
+
+/** The quiet unavailable panel's input (all fields are known facts). */
+export interface UnavailablePanelInput {
+  /** The section this panel stands in for (machine key; tests + scanning). */
+  readonly section: string;
+  /** The typed reason the source refused (rendered verbatim - the WHY). */
+  readonly reason: string;
+  /** The contract-borne explanation when the source gave one (safe text). */
+  readonly message?: string;
+  /**
+   * One line: what this means here - what is not shown, what IS still known
+   * on the page, and where the reader can go next. Written by the page (each
+   * section knows its own meaning); never invented by this component.
+   */
+  readonly meaning: string;
+}
+
+/**
+ * The quiet unavailable panel (PA-020): a small, section-scoped block in the
+ * same calm language as the rest of the shell. It renders ONLY what is known
+ * - the title, the typed reason (the WHY) and one what-this-means line. No
+ * retry buttons that cannot work, no fake data, no full-page alarm styling.
+ */
+export function unavailablePanel(input: UnavailablePanelInput): HtmlFragment {
+  return el(
+    "div",
+    {
+      class: "panel",
+      "data-unavailable": "true",
+      "data-unavailable-section": input.section,
+      "data-unavailable-reason": input.reason,
+    },
+    fragment(
+      el("h3", {}, text("Not available right now")),
+      el(
+        "p",
+        {},
+        fragment(
+          text("This section's source did not answer: "),
+          el("code", {}, text(input.reason)),
+          text("."),
+        ),
+      ),
+      input.message === undefined ? fragment() : el("p", { class: "muted" }, text(input.message)),
+      el("p", { class: "muted" }, text(input.meaning)),
+    ),
+  );
+}
+
+/**
+ * Renders the quiet unavailable panel from a narrowed {@link UnavailableRead}
+ * marker (call this only in the `isUnavailableRead(...)` branch of a
+ * secondary read's outcome).
+ */
+export function unavailablePanelFor(
+  outcome: UnavailableRead,
+  input: { readonly section: string; readonly meaning: string },
+): HtmlFragment {
+  return unavailablePanel({
+    section: input.section,
+    reason: outcome.reason,
+    ...(outcome.message !== null ? { message: outcome.message } : {}),
+    meaning: input.meaning,
+  });
+}
+
+// --------------------------------------------------------------------------------
 // Connectivity rendering (the honest aggregate)
 // --------------------------------------------------------------------------------
 

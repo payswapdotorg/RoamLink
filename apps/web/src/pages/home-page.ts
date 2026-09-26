@@ -17,6 +17,8 @@ import {
   freshnessBadge,
   instantView,
   severityBadge,
+  isUnavailableRead,
+  unavailablePanelFor,
   el,
   fragment,
   text,
@@ -26,6 +28,7 @@ import {
   type HtmlFragment,
   type IntentAccessClass,
   type NotificationResource,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import {
@@ -68,7 +71,16 @@ export interface HomePageInput {
   readonly connectivity: ConnectivityOverviewResource;
   readonly intents: readonly ExperienceIntentResource[];
   readonly devices: readonly DeviceResource[];
-  readonly notifications: readonly NotificationResource[];
+  /**
+   * PA-020: the notification feed is a SECONDARY read on Home (the audit
+   * journey's "Does RoamLink need you?" card). When its source refuses (the
+   * typed 501 READ_MODEL_NOT_COMPOSED with its named reason, or any
+   * unavailability-class typed error), that ONE card degrades to the quiet
+   * unavailable panel - the hero and the goal/devices cards still render
+   * from their own core reads. A core read failing keeps the page-level
+   * fail-closed law.
+   */
+  readonly notifications: ReadOrUnavailable<readonly NotificationResource[]>;
 }
 
 export function homePage(input: HomePageInput): HtmlFragment {
@@ -77,7 +89,12 @@ export function homePage(input: HomePageInput): HtmlFragment {
   const goalLanguage = activeGoal?.decision
     ? DERIVED_EXPERIENCE_LANGUAGE[activeGoal.decision.derivedStatus]
     : undefined;
-  const needsAttention = input.notifications.filter((n) => n.state === "delivered");
+  // PA-020: the attention card degrades alone when the notification feed is
+  // unavailable; nothing below reads invented notification state.
+  const notifications = input.notifications;
+  const needsAttention = isUnavailableRead(notifications)
+    ? []
+    : notifications.filter((n) => n.state === "delivered");
   const criticalCount = needsAttention.filter((n) => n.severity !== "info").length;
 
   // The hero facts line: every state family named separately, never merged.
@@ -152,28 +169,34 @@ export function homePage(input: HomePageInput): HtmlFragment {
       ),
       factCard(
         { heading: "Does RoamLink need you?", testid: "attention" },
-        needsAttention.length === 0
-          ? fragment(
-              el("p", { class: "home-fact-muted" }, text("No. Nothing needs your attention right now.")),
-            )
-          : fragment(
-              el(
-                "p",
-                {},
-                text(
-                  `${needsAttention.length} item${needsAttention.length === 1 ? "" : "s"} need${needsAttention.length === 1 ? "s" : ""} your attention` +
-                    (criticalCount > 0 ? ` (${criticalCount} warning or worse)` : "") +
-                    ".",
+        isUnavailableRead(notifications)
+          ? unavailablePanelFor(notifications, {
+              section: "home-attention",
+              meaning:
+                "RoamLink cannot show your attention items right now. Your connectivity, goal and devices on this page are unaffected, and Support is reachable from the navigation if you need help.",
+            })
+          : needsAttention.length === 0
+            ? fragment(
+                el("p", { class: "home-fact-muted" }, text("No. Nothing needs your attention right now.")),
+              )
+            : fragment(
+                el(
+                  "p",
+                  {},
+                  text(
+                    `${needsAttention.length} item${needsAttention.length === 1 ? "" : "s"} need${needsAttention.length === 1 ? "s" : ""} your attention` +
+                      (criticalCount > 0 ? ` (${criticalCount} warning or worse)` : "") +
+                      ".",
+                  ),
+                ),
+                el(
+                  "ul",
+                  { class: "home-fact-list" },
+                  ...needsAttention.slice(0, 3).map((n) =>
+                    el("li", {}, fragment(severityBadge(n.severity), text(` ${n.title}`))),
+                  ),
                 ),
               ),
-              el(
-                "ul",
-                { class: "home-fact-list" },
-                ...needsAttention.slice(0, 3).map((n) =>
-                  el("li", {}, fragment(severityBadge(n.severity), text(` ${n.title}`))),
-                ),
-              ),
-            ),
         el("a", { href: "/activity" }, text("Open Activity")),
       ),
       factCard(

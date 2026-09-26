@@ -7,11 +7,14 @@
  */
 import {
   instantView,
+  isUnavailableRead,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
   type HtmlFragment,
+  type ReadOrUnavailable,
   type SupportCaseResource,
 } from "@roamlink/app-kit";
 
@@ -20,8 +23,28 @@ import { pageHeading } from "../page-kit.js";
 const TRANSITIONS = ["startProgress", "resolve", "close", "cancel"] as const;
 
 export function supportTriagePage(input: {
-  readonly cases: readonly SupportCaseResource[];
+  /**
+   * PA-020: the support-case read is the page's data-plane read. When its
+   * source refuses (the typed 501 with its named reason, or any
+   * unavailability-class typed error), the case section degrades to the
+   * quiet unavailable panel - the console navigation and every healthy
+   * diagnostic page stay usable.
+   */
+  readonly cases: ReadOrUnavailable<readonly SupportCaseResource[]>;
 }): HtmlFragment {
+  if (isUnavailableRead(input.cases)) {
+    return fragment(
+      pageHeading(
+        "Support triage",
+        "The operations view: internal messages are visible here and structurally absent from the customer thread. Transitions require org:manage and are audited.",
+      ),
+      unavailablePanelFor(input.cases, {
+        section: "support-cases",
+        meaning:
+          "The support case queue cannot be shown right now. The rest of the console stays usable from the navigation above, and this page will show the queue once its source answers.",
+      }),
+    );
+  }
   return fragment(
     pageHeading(
       "Support triage",

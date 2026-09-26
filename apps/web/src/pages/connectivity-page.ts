@@ -32,13 +32,16 @@ import {
   technicalDisclosure,
   freshnessBadge,
   instantView,
+  isUnavailableRead,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
   type ConnectivityOverviewResource,
   type HtmlFragment,
   type NotificationResource,
+  type ReadOrUnavailable,
   type SubjectConnectivityResource,
 } from "@roamlink/app-kit";
 
@@ -56,7 +59,15 @@ import { supportEscape } from "./support-context.js";
 
 export interface ConnectivityCenterInput {
   readonly connectivity: ConnectivityOverviewResource;
-  readonly notifications: readonly NotificationResource[];
+  /**
+   * PA-020: the notification feed is a SECONDARY read on the Connectivity
+   * Center (only the "Recent connectivity events" section derives from it).
+   * When its source refuses (the typed 501 READ_MODEL_NOT_COMPOSED with its
+   * named reason, or any unavailability-class typed error), that section
+   * degrades to the quiet unavailable panel - every connectivity fact above
+   * still renders from the authoritative overview read.
+   */
+  readonly notifications: ReadOrUnavailable<readonly NotificationResource[]>;
 }
 
 // --------------------------------------------------------------------------------
@@ -334,47 +345,21 @@ function observationsSection(overview: ConnectivityOverviewResource): HtmlFragme
   );
 }
 
-function recentEventsSection(notifications: readonly NotificationResource[]): HtmlFragment {
-  const events = [...notifications]
-    .filter((n) => n.topic === "connectivity")
-    .sort((a, b) => {
-      const byTime = b.source.occurredAt.localeCompare(a.source.occurredAt);
-      return byTime !== 0 ? byTime : a.notificationId.localeCompare(b.notificationId);
-    })
-    .slice(0, 5);
+function recentEventsSection(
+  notifications: ReadOrUnavailable<readonly NotificationResource[]>,
+): HtmlFragment {
   return el(
     "section",
     { "data-recent-connectivity-events": "true" },
     fragment(
       pageHeading("Recent connectivity events", "The latest records from RoamLink's own state changes. The full story lives in Activity."),
-      events.length === 0
-        ? el(
-            "p",
-            { class: "muted", "data-recent-events-empty": "true" },
-            text("No connectivity events recorded yet."),
-          )
-        : el(
-            "ul",
-            { class: "activity-list", "aria-label": "Recent connectivity events" },
-            ...events.map((event) =>
-              el(
-                "li",
-                { class: "activity-item", "data-event-id": event.notificationId },
-                fragment(
-                  el("p", {}, fragment(el("strong", {}, text(event.title)))),
-                  el("p", { class: "muted" }, text(event.body)),
-                  el(
-                    "p",
-                    { class: "muted" },
-                    fragment(
-                      text(`Recorded change: ${event.source.transition} · happened `),
-                      instantView(event.source.occurredAt),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+      isUnavailableRead(notifications)
+        ? unavailablePanelFor(notifications, {
+            section: "recent-connectivity-events",
+            meaning:
+              "RoamLink cannot show the recent event records right now. Your connectivity facts, journey and device observations above are unaffected, and the full story remains reachable from Activity.",
+          })
+        : renderRecentEvents(notifications),
       el(
         "p",
         {},
@@ -382,6 +367,44 @@ function recentEventsSection(notifications: readonly NotificationResource[]): Ht
       ),
     ),
   );
+}
+
+function renderRecentEvents(notifications: readonly NotificationResource[]): HtmlFragment {
+  const events = [...notifications]
+    .filter((n) => n.topic === "connectivity")
+    .sort((a, b) => {
+      const byTime = b.source.occurredAt.localeCompare(a.source.occurredAt);
+      return byTime !== 0 ? byTime : a.notificationId.localeCompare(b.notificationId);
+    })
+    .slice(0, 5);
+  return events.length === 0
+    ? el(
+        "p",
+        { class: "muted", "data-recent-events-empty": "true" },
+        text("No connectivity events recorded yet."),
+      )
+    : el(
+        "ul",
+        { class: "activity-list", "aria-label": "Recent connectivity events" },
+        ...events.map((event) =>
+          el(
+            "li",
+            { class: "activity-item", "data-event-id": event.notificationId },
+            fragment(
+              el("p", {}, fragment(el("strong", {}, text(event.title)))),
+              el("p", { class: "muted" }, text(event.body)),
+              el(
+                "p",
+                { class: "muted" },
+                fragment(
+                  text(`Recorded change: ${event.source.transition} · happened `),
+                  instantView(event.source.occurredAt),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 // --------------------------------------------------------------------------------

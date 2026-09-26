@@ -20,6 +20,7 @@
 import {
   errorPanel,
   mutationResultPanel,
+  optionalRead,
   pageShell,
   type ActorSessionResource,
   type HtmlFragment,
@@ -130,28 +131,46 @@ export class AdminConsoleApp {
   }
 
   async #renderSurface(request: AdminPageRequest): Promise<HtmlFragment> {
+    // PA-020 (component-scoped degradation): the session GATE stays the
+    // core (a denied or unresolvable actor NEVER sees surface data - the
+    // fail-closed authorization law is unchanged), while each console
+    // page's DATA-PLANE read is secondary: when its source refuses (the
+    // typed 501 READ_MODEL_NOT_COMPOSED with its named reason, or any
+    // unavailability-class typed error), the page renders its heading plus
+    // the quiet unavailable panel in the data section - the navigation and
+    // every healthy diagnostic page stay usable. Authorization and
+    // contract-integrity failures still propagate to the honest
+    // page-level law.
     switch (request.page) {
       case "tenants":
         return tenantsPage({ organizations: await this.#client.listOrganizations() });
       case "audit":
         return auditPage({
-          audit: await this.#client.listAuditEvents({
-            ...(request.auditCategory !== undefined ? { category: request.auditCategory } : {}),
-          }),
+          audit: await optionalRead(() =>
+            this.#client.listAuditEvents({
+              ...(request.auditCategory !== undefined ? { category: request.auditCategory } : {}),
+            }),
+          ),
         });
       case "reconciliation":
         return reconciliationPage({
-          jobs: await this.#client.listReconciliationJobs(),
+          jobs: await optionalRead(() => this.#client.listReconciliationJobs()),
         });
       case "projectionHealth":
-        return projectionHealthPage({ health: await this.#client.getProjectionHealth() });
+        return projectionHealthPage({
+          health: await optionalRead(() => this.#client.getProjectionHealth()),
+        });
       case "supportTriage":
-        return supportTriagePage({ cases: await this.#client.listSupportCases() });
+        return supportTriagePage({
+          cases: await optionalRead(() => this.#client.listSupportCases()),
+        });
       case "integrationHealth":
         // PA-010: the recorded probe outcome through the application contract
         // — a READ. The surface never triggers the probe and never mutates
         // compatibility state (the gate stays in the integration boundary).
-        return integrationHealthPage({ health: await this.#client.getIntegrationHealth() });
+        return integrationHealthPage({
+          health: await optionalRead(() => this.#client.getIntegrationHealth()),
+        });
     }
   }
 

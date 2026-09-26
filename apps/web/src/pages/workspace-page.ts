@@ -72,10 +72,12 @@ import {
   connectivitySubjectCard,
   deriveShellConnectivityState,
   ENTERPRISE_INTEGRATION_RESOURCE_KINDS,
+  isUnavailableRead,
   SHELL_CONNECTIVITY_LANGUAGE,
   freshnessBadge,
   mutationStages,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
@@ -92,6 +94,7 @@ import {
   type FreshnessView,
   type HtmlFragment,
   type MutationAcknowledgement,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
@@ -100,7 +103,17 @@ import { supportEscape } from "./support-context.js";
 
 export interface WorkspacePageInput {
   readonly session: ActorSessionResource;
-  readonly workspace: EnterpriseWorkspaceResource;
+  /**
+   * PA-020: the enterprise workspace read is a SECONDARY read on this page.
+   * The session/devices/intents/connectivity reads are the CORE (the fleet,
+   * goals and org-connectivity sections render from them). When the
+   * workspace read refuses (the real runtime's honest 404 for the
+   * not-composed route, or any unavailability-class typed error), the
+   * workspace-composed sections degrade to the quiet unavailable panel
+   * while the core sections still render. Authorization refusals never
+   * degrade (the page-level fail-closed law).
+   */
+  readonly workspace: ReadOrUnavailable<EnterpriseWorkspaceResource>;
   readonly devices: readonly DeviceResource[];
   readonly intents: readonly ExperienceIntentResource[];
   readonly connectivity: ConnectivityOverviewResource;
@@ -317,6 +330,23 @@ export function deriveWorkspaceJourney(input: {
   readonly intents: readonly ExperienceIntentResource[];
   readonly connectivity: ConnectivityOverviewResource;
 }): readonly WorkspaceJourneyStepView[] {
+  return [
+    ...workspaceComposedJourneySteps(input),
+    ...coreWorkspaceJourneySteps(input),
+  ];
+}
+
+/**
+ * PA-020: the journey steps derived from the WORKSPACE READ ONLY (workspace,
+ * organization verification, policy, connector). These are the steps that
+ * cannot render when the enterprise workspace read is unavailable - the
+ * journey section then renders the quiet unavailable panel in their place
+ * (never invented step states), while the core steps below still render.
+ */
+function workspaceComposedJourneySteps(input: {
+  readonly session: ActorSessionResource;
+  readonly workspace: EnterpriseWorkspaceResource;
+}): readonly WorkspaceJourneyStepView[] {
   const enrollment = input.workspace.enrollment;
   const connector = input.workspace.connector;
   const gates = connectorStartGates(input);
@@ -344,27 +374,6 @@ export function deriveWorkspaceJourney(input: {
         : connector.state === "provisioning"
           ? "waiting"
           : "blocked";
-
-  const freshDevices = input.devices.filter(
-    (device) => device.capabilityFreshness?.freshnessState === "FRESH",
-  );
-  const capabilityState: WorkspaceJourneyStepState =
-    input.devices.length === 0
-      ? "not-started"
-      : freshDevices.length > 0
-        ? "complete"
-        : "waiting";
-
-  const activeGoal = input.intents.find(
-    (intent) => intent.status === "active" && intent.currentVersion?.status === "active",
-  );
-  const shellState = deriveShellConnectivityState(input.connectivity.subjects);
-  const overviewState: WorkspaceJourneyStepState =
-    shellState === "evidenced-fresh"
-      ? "complete"
-      : shellState === "no-reference"
-        ? "action-needed"
-        : "waiting";
 
   return [
     {
@@ -426,6 +435,42 @@ export function deriveWorkspaceJourney(input: {
             : "Review the connector enrollment",
       },
     },
+  ];
+}
+
+/**
+ * PA-020: the journey steps derived from the CORE reads (devices, intents,
+ * connectivity). These still render their honest states when the enterprise
+ * workspace read is unavailable - the journey section keeps its spine from
+ * what is actually known.
+ */
+function coreWorkspaceJourneySteps(input: {
+  readonly devices: readonly DeviceResource[];
+  readonly intents: readonly ExperienceIntentResource[];
+  readonly connectivity: ConnectivityOverviewResource;
+}): readonly WorkspaceJourneyStepView[] {
+  const freshDevices = input.devices.filter(
+    (device) => device.capabilityFreshness?.freshnessState === "FRESH",
+  );
+  const capabilityState: WorkspaceJourneyStepState =
+    input.devices.length === 0
+      ? "not-started"
+      : freshDevices.length > 0
+        ? "complete"
+        : "waiting";
+
+  const activeGoal = input.intents.find(
+    (intent) => intent.status === "active" && intent.currentVersion?.status === "active",
+  );
+  const shellState = deriveShellConnectivityState(input.connectivity.subjects);
+  const overviewState: WorkspaceJourneyStepState =
+    shellState === "evidenced-fresh"
+      ? "complete"
+      : shellState === "no-reference"
+        ? "action-needed"
+        : "waiting";
+
+  return [
     {
       step: "devices",
       state: input.devices.length === 0 ? "action-needed" : "complete",
@@ -466,8 +511,32 @@ export function deriveWorkspaceJourney(input: {
 
 function workspaceSwitcherSection(
   session: ActorSessionResource,
-  workspace: EnterpriseWorkspaceResource,
+  workspace: ReadOrUnavailable<EnterpriseWorkspaceResource>,
 ): HtmlFragment {
+  // PA-020: an unavailable workspace read degrades this section alone - the
+  // organization identity cannot be composed, so the quiet panel renders
+  // with the typed reason (never an invented organization).
+  if (isUnavailableRead(workspace)) {
+    return el(
+      "section",
+      { class: "panel", "data-workspace-switcher": "true" },
+      fragment(
+        el("h3", {}, text("Workspace")),
+        unavailablePanelFor(workspace, {
+          section: "workspace-switcher",
+          meaning:
+            "RoamLink cannot show your organization's workspace identity right now. Your fleet, goals and connectivity sections on this page still render from their own sources.",
+        }),
+        el(
+          "p",
+          { class: "muted", "data-workspace-switch-note": "true" },
+          text(
+            "Switching between several workspaces is not available yet. Your account is currently scoped to this single workspace.",
+          ),
+        ),
+      ),
+    );
+  }
   const organization = workspace.organization;
   return el(
     "section",
@@ -500,7 +569,15 @@ function workspaceSwitcherSection(
   );
 }
 
-function journeySection(steps: readonly WorkspaceJourneyStepView[]): HtmlFragment {
+function journeySection(
+  steps: readonly WorkspaceJourneyStepView[],
+  workspace: ReadOrUnavailable<EnterpriseWorkspaceResource>,
+): HtmlFragment {
+  // PA-020: when the enterprise workspace read is unavailable, the four
+  // workspace-composed steps cannot render (their facts are unknown) - the
+  // quiet panel explains why, and the core steps (devices, capability
+  // verification, first goal, live overview) still render their honest
+  // states from their own reads.
   return el(
     "section",
     { "data-workspace-journey": "true" },
@@ -509,6 +586,13 @@ function journeySection(steps: readonly WorkspaceJourneyStepView[]): HtmlFragmen
         "Your workspace journey",
         "Set your organization up step by step — each step confirms from real state, never from a guess.",
       ),
+      isUnavailableRead(workspace)
+        ? unavailablePanelFor(workspace, {
+            section: "workspace-journey",
+            meaning:
+              "The workspace, verification, policy and connector steps need the enterprise workspace read, which is not available right now. The fleet, capability, goal and overview steps below still render from their own sources.",
+          })
+        : fragment(),
       el(
         "ol",
         { class: "journey", "aria-label": "The enterprise onboarding journey, step by step" },
@@ -808,9 +892,29 @@ function connectorFailurePanel(input: {
 
 function connectorEnrollmentSection(
   session: ActorSessionResource,
-  workspace: EnterpriseWorkspaceResource,
+  workspace: ReadOrUnavailable<EnterpriseWorkspaceResource>,
   command: MutationAcknowledgement | undefined,
 ): HtmlFragment {
+  // PA-020: the connector flow derives entirely from the workspace read -
+  // when that read is unavailable, this section degrades to the quiet
+  // panel (never an invented enrollment stage, gate or command affordance).
+  if (isUnavailableRead(workspace)) {
+    return el(
+      "section",
+      { id: "connector-enrollment", "data-connector-enrollment": "true" },
+      fragment(
+        pageHeading(
+          "Connector enrollment",
+          "Bring your organization's devices into RoamLink through a connector. Each step below confirms from the live record — never from a guess.",
+        ),
+        unavailablePanelFor(workspace, {
+          section: "connector-enrollment",
+          meaning:
+            "The connector enrollment stages render from the enterprise workspace read, which is not available right now. Nothing is invented in its place; your device fleet below still renders from its own source.",
+        }),
+      ),
+    );
+  }
   const connector = workspace.connector;
   const gates = connectorStartGates({ session, workspace });
   const gatesPass = gates.enrollmentVerified && gates.actorCanManage;
@@ -1422,7 +1526,26 @@ function activeGoalsSection(intents: readonly ExperienceIntentResource[]): HtmlF
   );
 }
 
-function enrollmentSection(workspace: EnterpriseWorkspaceResource): HtmlFragment {
+function enrollmentSection(
+  workspace: ReadOrUnavailable<EnterpriseWorkspaceResource>,
+): HtmlFragment {
+  // PA-020: the enrollment status renders from the workspace read - when it
+  // is unavailable, this section degrades to the quiet panel with the typed
+  // reason (never an invented enrollment or connector state).
+  if (isUnavailableRead(workspace)) {
+    return el(
+      "section",
+      { class: "panel", "data-workspace-enrollment": "true" },
+      fragment(
+        el("h3", {}, text("Connector and enrollment status")),
+        unavailablePanelFor(workspace, {
+          section: "workspace-enrollment",
+          meaning:
+            "The organization verification and connector statuses render from the enterprise workspace read, which is not available right now. Your device fleet and goals below still render from their own sources.",
+        }),
+      ),
+    );
+  }
   const enrollment = workspace.enrollment;
   const connector = workspace.connector;
   return el(
@@ -1491,7 +1614,23 @@ function activityAuditSection(): HtmlFragment {
 }
 
 export function workspacePage(input: WorkspacePageInput): HtmlFragment {
-  const steps = deriveWorkspaceJourney(input);
+  const workspace = input.workspace;
+  // PA-020: the journey keeps its spine - the core steps always derive from
+  // the devices/intents/connectivity reads; the workspace-composed steps
+  // render only when the workspace read answered.
+  const steps = isUnavailableRead(workspace)
+    ? coreWorkspaceJourneySteps({
+        devices: input.devices,
+        intents: input.intents,
+        connectivity: input.connectivity,
+      })
+    : deriveWorkspaceJourney({
+        session: input.session,
+        workspace,
+        devices: input.devices,
+        intents: input.intents,
+        connectivity: input.connectivity,
+      });
   const shellState = deriveShellConnectivityState(input.connectivity.subjects);
   // The workspace support escape pre-carries the same facts the page
   // renders: the connectivity subjects plus the devices whose capability
@@ -1504,21 +1643,54 @@ export function workspacePage(input: WorkspacePageInput): HtmlFragment {
       "Workspace",
       "Your organization's live view of RoamLink — guided setup, fleet, goals and connectivity, all read from the same authoritative sources.",
     ),
-    workspaceSwitcherSection(input.session, input.workspace),
-    journeySection(steps),
+    workspaceSwitcherSection(input.session, workspace),
+    journeySection(steps, workspace),
     // PA-06: the guided connector enrollment (the connector journey step's
     // action surface - every stage renders from the read model; the only
     // writer is the provision-connector command through the app contract).
-    connectorEnrollmentSection(input.session, input.workspace, input.command),
+    connectorEnrollmentSection(input.session, workspace, input.command),
     orgConnectivitySection(input.connectivity),
-    policySummarySection(input.workspace.policy),
+    // PA-020: the policy summary and the integrations statuses derive from
+    // the workspace read - each degrades to its own quiet panel when that
+    // read is unavailable (the fleet, goals and org connectivity still
+    // render from their own core reads).
+    isUnavailableRead(workspace)
+      ? el(
+          "section",
+          { class: "panel", id: "policy-summary", "data-policy-summary": "not-available" },
+          fragment(
+            el("h3", {}, text("Policy summary")),
+            unavailablePanelFor(workspace, {
+              section: "policy-summary",
+              meaning:
+                "The policy summary renders from the enterprise workspace read, which is not available right now. Nothing is invented in its place.",
+            }),
+          ),
+        )
+      : policySummarySection(workspace.policy),
     // PA-008: the enterprise integrations surface (the RL-115-F5 closure —
     // SSO/SCIM/MDM statuses render from the read model with EXACTLY the
     // four honest states; the section composes no configuration control).
-    integrationsSection(input.workspace.integrations),
+    isUnavailableRead(workspace)
+      ? el(
+          "section",
+          { id: "integrations", "data-integrations": "true" },
+          fragment(
+            pageHeading(
+              "Enterprise integrations",
+              "The single sign-on, user provisioning and device management integrations your organization can connect through RoamLink — every state below comes from the live read, never from a guess.",
+            ),
+            unavailablePanelFor(workspace, {
+              section: "enterprise-integrations",
+              meaning:
+                "The integration statuses render from the enterprise workspace read, which is not available right now. Nothing is invented in its place; Support is reachable from this page's Support section below.",
+            }),
+          ),
+        )
+      : integrationsSection(workspace.integrations),
     deviceFleetSection(input.devices),
     activeGoalsSection(input.intents),
-    enrollmentSection(input.workspace),
+    enrollmentSection(workspace),
     activityAuditSection(),
     el(
       "section",

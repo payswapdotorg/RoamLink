@@ -12,9 +12,13 @@
  *
  * The enterprise-onboarding journey is pinned honestly: the real hosted
  * runtime does not compose the /v1/enterprise/workspace read (it answers
- * the plain 404 NOT_FOUND — not even the typed read-model refusal), so the
- * customer surface fails closed. That gap is recorded here as an explicit
- * finding (never a silently-passing assertion).
+ * the plain 404 NOT_FOUND — not even the typed read-model refusal), so
+ * since PA-020 the customer surface degrades COMPONENT-SCOPED: the core
+ * sections (fleet, goals, org connectivity) render from their composed
+ * reads while the workspace-composed sections render the quiet unavailable
+ * panel with the typed reason. That gap is recorded here as an explicit
+ * finding (never a silently-passing assertion, never a fabricated journey
+ * state).
  */
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -177,7 +181,7 @@ describe("RL-113 hosted journey: offline edge (the mobile document legs)", () =>
 });
 
 describe("RL-113 hosted journey: enterprise onboarding (explicit known gap)", () => {
-  it("fails the workspace read closed and records the gap honestly (never a fabricated journey state)", async () => {
+  it("degrades the workspace page component-scoped and records the gap honestly (never a fabricated journey state)", async () => {
     const journey = await bootHostedJourney({ seed: 0x0d1, email: "enterprise@example.com" });
     try {
       // KNOWN GAP (RL-113 finding, recorded — never silently passed): the
@@ -193,18 +197,38 @@ describe("RL-113 hosted journey: enterprise onboarding (explicit known gap)", ()
       }
       expect(error).toMatchObject({ kind: "not-found", reason: "NOT_FOUND", status: 404 });
 
-      // The customer surface fails closed: the shell renders (entry point +
-      // navigation; the composed connectivity read states the honest
-      // no-reference state — PA-019), the workspace body is the typed error
-      // panel (its read set includes the enterprise workspace read, which
-      // answers the plain 404 — the recorded gap), and NO enterprise
-      // journey state (workspace -> verification -> policy -> connector ->
-      // devices -> capabilities -> goal -> overview) is fabricated anywhere.
+      // PA-020: the customer surface degrades COMPONENT-SCOPED. The shell
+      // renders (entry point + navigation; the composed connectivity read
+      // states the honest no-reference state — PA-019), the CORE sections
+      // (device fleet, goals, org connectivity — all composed reads) render
+      // their honest empty-journey content, and ONLY the workspace-composed
+      // sections degrade to the quiet unavailable panel carrying the typed
+      // 404 reason. The journey keeps its spine: the core steps (devices,
+      // capability verification, first goal, live overview) render their
+      // honest states; the workspace-composed steps do NOT render (their
+      // facts are unknown - never invented journey states).
       const html = await journey.app.renderDocument({ page: "workspace" });
       expect(html).toContain('data-shell-connectivity="no-reference"');
-      expect(html).toContain('data-mutation-result="error"');
-      expect(html).not.toContain('data-workspace');
-      expect(html).not.toContain("organization verification");
+      expect(html).toContain('data-device-fleet="true"');
+      expect(html).toContain('data-workspace-goals="true"');
+      expect(html).toContain('data-org-connectivity="true"');
+      expect(html).toContain('data-workspace-journey="true"');
+      expect(html).toContain('data-workspace-step="devices"');
+      expect(html).toContain('data-workspace-step="live-overview"');
+      expect(html).not.toContain('data-workspace-step="workspace"');
+      expect(html).not.toContain('data-workspace-step="organization-verification"');
+      expect(html).not.toContain('data-workspace-step="policy"');
+      expect(html).not.toContain('data-workspace-step="connector"');
+      expect(html).toContain('data-unavailable="true"');
+      expect(html).toContain('data-unavailable-section="workspace-switcher"');
+      expect(html).toContain('data-unavailable-section="workspace-journey"');
+      expect(html).toContain('data-unavailable-section="connector-enrollment"');
+      expect(html).toContain('data-unavailable-section="policy-summary"');
+      expect(html).toContain('data-unavailable-section="enterprise-integrations"');
+      expect(html).toContain('data-unavailable-section="workspace-enrollment"');
+      expect(html).toContain('data-unavailable-reason="NOT_FOUND"');
+      // The degraded body is NOT the fail-closed panel.
+      expect(html).not.toContain('data-error-kind=');
       // The More destination (the workspace's mobile discovery path) stays
       // discoverable.
       expect(html).toContain('href="/more"');
