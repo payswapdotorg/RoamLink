@@ -18,6 +18,13 @@
  *  - `command-ledger.ts` the `executed`-stage writer over the SAME
  *                       `api-commands` repository the API ingested into
  *                       (stages never collapse or lie - spec/api.md);
+ *  - `tick.ts`          the bounded SINGLE-TICK composition (PA-025): one
+ *                       sweep + one capped claim batch through the delivery/
+ *                       outcome path + one bounded inbox batch (+ optionally
+ *                       one reconciliation tick), with the max-duration
+ *                       partial-progress guard - the free-tier-compatible
+ *                       execution path the authenticated worker endpoint
+ *                       drives; the production host's loop is unchanged;
  *  - `timer.ts`         the injectable timer port (deterministic tests).
  *
  * `src/main.ts` is the standalone long-running entry; `scripts/adcos-probe.ts`
@@ -28,4 +35,5 @@ export * from "./delivery.js";
 export * from "./command-ledger.js";
 export * from "./outbox-drain.js";
 export * from "./inbox-drain.js";
+export * from "./tick.js";
 export * from "./host.js";

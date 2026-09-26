@@ -8,6 +8,7 @@
  * endpoint keeps reporting the refusal honestly instead of flapping.
  */
 import { createPortalHostComposition, type PortalHostComposition } from "./composition.js";
+import { CompositionError } from "./composition.js";
 
 export type HostRuntime =
   | { readonly ok: true; readonly composition: PortalHostComposition }
@@ -34,6 +35,8 @@ export function portalHostEnvFromProcessEnv(
   qstashSigningKeyNext: string | undefined;
   sloObjectives: string | undefined;
   demoAccounts: string | undefined;
+  workerTickBatchSize: number | undefined;
+  workerTickMaxDurationMs: number | undefined;
 } {
   return {
     mode: env["NODE_ENV"] === "production" ? "production" : "development",
@@ -54,6 +57,7 @@ export function portalHostEnvFromProcessEnv(
     qstashBaseUrl: env["QSTASH_URL"],
     maintenanceDestination: env["ROAMLINK_MAINTENANCE_DESTINATION"],
     // RL-110: the RECEIVER-side QStash signing keys (verify before acting).
+    // The SAME keys gate the PA-025 worker-tick endpoint.
     qstashSigningKeyCurrent: env["QSTASH_CURRENT_SIGNING_KEY"],
     qstashSigningKeyNext: env["QSTASH_NEXT_SIGNING_KEY"],
     // RL-109: the deployment's budgeted §11 SLO objectives (see src/slo.ts).
@@ -61,7 +65,24 @@ export function portalHostEnvFromProcessEnv(
     // The public demo accounts gate (see src/demo-accounts.ts): the demo
     // environment's public fixtures, disabled everywhere else by default.
     demoAccounts: env["ROAMLINK_DEMO_ACCOUNTS"],
+    // PA-025: the bounded worker tick's tuning (optional; the tick's own
+    // bounded defaults apply when absent). A malformed value fails closed
+    // at the tick's composition (never a silent default).
+    workerTickBatchSize: parsePositiveEnvNumber(env["ROAMLINK_WORKER_TICK_BATCH_SIZE"]),
+    workerTickMaxDurationMs: parsePositiveEnvNumber(env["ROAMLINK_WORKER_TICK_MAX_DURATION_MS"]),
   };
+}
+
+/** Parses a positive-integer env value (absent/blank -> undefined). */
+function parsePositiveEnvNumber(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim().length === 0) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new CompositionError(
+      `the worker tick bound must be a positive integer (got "${raw}"); the host refuses to boot half-configured`,
+    );
+  }
+  return parsed;
 }
 
 /** The memoized composition (or the memoized refusal). */

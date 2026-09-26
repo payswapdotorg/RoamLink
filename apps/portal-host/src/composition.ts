@@ -69,6 +69,7 @@ import {
 } from "@roamlink/api-service";
 import type { HealthCheck } from "@roamlink/observability";
 import type { DurableJobDeliveryPort } from "@roamlink/provider-qstash";
+import { createWorkerTickEndpoint, type WorkerTickEndpoint } from "@roamlink/worker-endpoint";
 
 import { createRemoteApiReadinessProbe, remoteApiReadinessCheck } from "./readiness.js";
 import { runDailyMaintenance, type DailyMaintenanceResult } from "./maintenance.js";
@@ -113,6 +114,17 @@ export interface PortalHostComposition {
     readonly cronSecret: string | undefined;
     readonly run: () => Promise<DailyMaintenanceResult>;
     readonly receiver: MaintenanceReceiver | null;
+  };
+  /**
+   * PA-025 — the live command-execution path: the authenticated bounded
+   * worker-tick endpoint, composed ONLY when the receiver-side QStash
+   * signing keys are configured (the SAME keys the maintenance receiver
+   * uses). Uncomposed -> the route answers the honest 503 and accepted
+   * commands keep their PENDING obligations (the documented wave gap,
+   * never a fake execution).
+   */
+  readonly worker: {
+    readonly tickEndpoint: WorkerTickEndpoint | null;
   };
   /**
    * The host's §11 SLO bindings (RL-109): the REAL observability recorder
@@ -210,9 +222,22 @@ export interface PortalHostEnv {
    * when configured, /api/maintenance/receiver VERIFIES every delivered job
    * before acting (rotation keeps BOTH keys configured). Unset -> the
    * receiver refuses every delivery with the honest 503 (fail-closed).
+   *
+   * The SAME keys gate the PA-025 worker-tick endpoint: when the current
+   * key is configured, /api/worker/tick verifies every scheduled tick
+   * delivery before executing ONE bounded tick over the workers execution
+   * seam; unset -> the endpoint refuses every delivery (fail-closed).
    */
   readonly qstashSigningKeyCurrent?: string | undefined;
   readonly qstashSigningKeyNext?: string | undefined;
+  /**
+   * PA-025 tuning (optional): the bounded claim per tick
+   * (ROAMLINK_WORKER_TICK_BATCH_SIZE) and the max-duration guard in ms
+   * (ROAMLINK_WORKER_TICK_MAX_DURATION_MS). Absent -> the tick's own
+   * bounded defaults (10 per batch; the 45s guard).
+   */
+  readonly workerTickBatchSize?: number | undefined;
+  readonly workerTickMaxDurationMs?: number | undefined;
   /**
    * ROAMLINK_SLO_OBJECTIVES (RL-109): the deployment's budgeted §11 SLO
    * objectives, `id:targetRatio:windowMs[:atRiskBurnRate]` entries keyed by
@@ -456,6 +481,30 @@ async function createPortalHostCompositionWithDriver(
   };
 
   // --------------------------------------------------------------------------
+  // The PA-025 live command-execution path: the authenticated bounded
+  // worker-tick endpoint over the workers execution seam. Composed ONLY
+  // when the receiver-side QStash signing keys are configured (the same
+  // fail-closed gate as the maintenance receiver) — uncomposed means the
+  // route answers the honest 503 and accepted commands keep their PENDING
+  // outbox obligations (the documented wave gap, never a fake execution).
+  // --------------------------------------------------------------------------
+  const workerTickEndpoint =
+    env.qstashSigningKeyCurrent !== undefined && env.qstashSigningKeyCurrent.trim().length > 0
+      ? createWorkerTickEndpoint({
+          persistence,
+          now,
+          mode: env.mode,
+          signingKeys: {
+            current: env.qstashSigningKeyCurrent,
+            ...(env.qstashSigningKeyNext !== undefined ? { next: env.qstashSigningKeyNext } : {}),
+          },
+          ...(env.workerTickBatchSize !== undefined ? { outboxBatchSize: env.workerTickBatchSize } : {}),
+          ...(env.workerTickMaxDurationMs !== undefined ? { maxDurationMs: env.workerTickMaxDurationMs } : {}),
+        })
+      : null;
+  const worker = { tickEndpoint: workerTickEndpoint };
+
+  // --------------------------------------------------------------------------
   // The §11 SLO bindings (RL-109): the REAL recorder + the deployment's
   // configured objectives. The ops surface renders their state read-only
   // (ops-slo-page.ts) - real recorder state, zero invented numbers.
@@ -475,7 +524,7 @@ async function createPortalHostCompositionWithDriver(
     };
   };
 
-  return { api, driver, persistence, maintenance, slo, demo, identity, readyCheck, dispose };
+  return { api, driver, persistence, maintenance, worker, slo, demo, identity, readyCheck, dispose };
 }
 
 async function bindDriver(

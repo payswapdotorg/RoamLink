@@ -34,6 +34,13 @@ import {
   validateDestination,
   validateJobId,
 } from "./port.js";
+import {
+  type RecurringDeliverySchedule,
+  type RecurringDeliveryScheduleListing,
+  type RecurringDeliveryScheduleRequest,
+  type DurableJobSchedulePort,
+  validateCronExpression,
+} from "./schedule.js";
 import { deterministicQStashJti, renderQStashSignatureHeader } from "./verifier.js";
 
 export interface InMemoryJobDeliveryQueueOptions {
@@ -81,7 +88,7 @@ function isLive(state: JobState): boolean {
   return state === "pending" || state === "retrying";
 }
 
-export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort, TransportProbePort {
+export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort, TransportProbePort, DurableJobSchedulePort {
   readonly #clock: InMemoryJobDeliveryQueueOptions["clock"];
   readonly #signingKey: string;
   readonly #maxAttempts: number;
@@ -361,6 +368,100 @@ export class InMemoryJobDeliveryQueue implements DurableJobDeliveryPort, Transpo
 
   #nowMs(): number {
     return epochMsOf(parseUtcInstant(this.#clock.now()));
+  }
+
+  // --------------------------------------------------------------------------
+  // The recurring-delivery schedule surface (PA-025; see schedule.ts)
+  // --------------------------------------------------------------------------
+
+  readonly #schedules: { scheduleId: string; destination: string; cron: string; body: string | null }[] = [];
+  #scheduleCounter = 0;
+
+  /**
+   * Deterministic schedule creation: records the recurring delivery and
+   * returns a stable id (`sch-<n>`). Validation mirrors the hosted client
+   * (HTTPS destination, 5-field cron, bounded body) so the fake stays the
+   * contract reference (ADR-0003).
+   */
+  async createSchedule(request: RecurringDeliveryScheduleRequest): Promise<RecurringDeliverySchedule> {
+    if (request === null || typeof request !== "object") {
+      throw new ValidationError("RecurringDeliveryScheduleRequest must be an object", {
+        reason: "SCHEDULE_REQUEST_INVALID",
+        details: [{ path: "request", issue: "not an object" }],
+      });
+    }
+    validateDestination(request.destination);
+    validateCronExpression(request.cron);
+    if (request.body !== undefined && (typeof request.body !== "string" || Buffer.byteLength(request.body, "utf8") > this.#maxPayloadBytes)) {
+      throw new ValidationError(
+        `schedule bodies are admitted only up to ${this.#maxPayloadBytes} bytes (transport budget discipline)`,
+        {
+          reason: "SCHEDULE_BODY_INVALID",
+          details: [{ path: "body", issue: "not a bounded string" }],
+        },
+      );
+    }
+    this.#scheduleCounter += 1;
+    const scheduleId = `sch-${String(this.#scheduleCounter).padStart(3, "0")}`;
+    this.#schedules.push({
+      scheduleId,
+      destination: request.destination,
+      cron: request.cron,
+      body: request.body ?? null,
+    });
+    return { scheduleId };
+  }
+
+  /** The deterministic schedule listing (the idempotent-setup read). */
+  async listSchedules(): Promise<readonly RecurringDeliveryScheduleListing[]> {
+    return this.#schedules.map((schedule) => ({
+      scheduleId: schedule.scheduleId,
+      destination: schedule.destination,
+      cron: schedule.cron,
+    }));
+  }
+
+  /**
+   * Test helper: fires every schedule ONE delivery round (the scheduled
+   * transport's tick). Each fire delivers the schedule's body to its
+   * receiver through the SAME signed-delivery loop as ordinary jobs, so
+   * receivers under test verify REAL signatures. Returns the number of
+   * delivery attempts made.
+   */
+  async runDueSchedules(receiver: JobReceiver): Promise<number> {
+    if (typeof receiver !== "function") {
+      throw new ValidationError("runDueSchedules requires a JobReceiver", {
+        reason: "JOB_RECEIVER_INVALID",
+        details: [{ path: "receiver", issue: "not a function" }],
+      });
+    }
+    const nowMs = this.#nowMs();
+    let attempts = 0;
+    for (const schedule of this.#schedules) {
+      if (schedule.body === null) continue; // no body configured: nothing to deliver deterministically
+      attempts += 1;
+      const sentAtMs = nowMs;
+      const delivery: JobDelivery = {
+        jobId: `schedule:${schedule.scheduleId}:${Math.floor(sentAtMs / 1000)}`,
+        messageId: `scheduled-${schedule.scheduleId}-${Math.floor(sentAtMs / 1000)}`,
+        destination: schedule.destination,
+        payload: schedule.body,
+        attempt: 1,
+        sentAtMs,
+        signatureHeader: renderQStashSignatureHeader(this.#signingKey, Math.floor(sentAtMs / 1000), schedule.body, {
+          sub: schedule.destination,
+          jti: deterministicQStashJti(Math.floor(sentAtMs / 1000), schedule.body),
+        }),
+      };
+      try {
+        await receiver(delivery);
+      } catch {
+        // A schedule fire whose receiver is unreachable is counted as an
+        // attempt (the live transport retries on its own cadence); the
+        // deterministic fake never blocks on it.
+      }
+    }
+    return attempts;
   }
 
   // --------------------------------------------------------------------------

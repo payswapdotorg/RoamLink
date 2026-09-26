@@ -1,0 +1,39 @@
+{
+  "name": "@roamlink/worker-endpoint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vitest",
+    "schedule:publish": "tsx ./scripts/publish-tick-schedule.ts"
+  },
+  "dependencies": {
+    "@roamlink/contracts": "workspace:*",
+    "@roamlink/persistence-postgres": "workspace:*",
+    "@roamlink/provider-qstash": "workspace:*",
+    "@roamlink/workers": "workspace:*"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@roamlink/adcos": "workspace:*",
+    "@roamlink/api-service": "workspace:*",
+    "@roamlink/auth": "workspace:*",
+    "@roamlink/testkit": "workspace:*",
+    "@roamlink/webhook-inbox": "workspace:*",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "tsx": "^4.8.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -45,7 +45,13 @@ import {
   type SqlDriver,
 } from "@roamlink/persistence-postgres";
 import { InMemoryProjectionStore } from "@roamlink/projections";
-import { UpstashQStashClient } from "@roamlink/provider-qstash";
+// The RUNTIME-clean subpath (PA-025): the package's root export re-exports
+// the vitest-dependent contract battery (the ADR-0003 replacement-rule
+// surface for TESTS), which cannot be imported outside a vitest run — the
+// SAME class from the runtime subpath keeps this host's standalone start
+// path runnable and the hosted route bundles test-runner-free. One-line
+// specifier change; the imported class and behavior are IDENTICAL.
+import { UpstashQStashClient } from "@roamlink/provider-qstash/runtime";
 import type { AdcosClient } from "@roamlink/adcos";
 import { createAdcosReconciliationBoundary, AdcosReconciliationScheduler, SystemReconciliationTimer, type ReconciliationBoundary } from "@roamlink/reconciliation";
 import {
@@ -312,7 +318,14 @@ export async function createWorkerHost(
   }
 }
 
-async function bindDriver(env: WorkerHostEnv): Promise<{ driver: SqlDriver; dispose: () => Promise<void> }> {
+/**
+ * Binds the REAL SQL driver from the environment (fail-closed selection,
+ * the single-sited law): `pglite://` (development only), `postgres://`
+ * (pg pool), anything else refuses. Exported for the bounded single-tick
+ * composition (PA-025, tick.ts) so the env-composition law cannot fork —
+ * the production host and the bounded tick bind the driver IDENTICALLY.
+ */
+export async function bindDriver(env: WorkerHostEnv): Promise<{ driver: SqlDriver; dispose: () => Promise<void> }> {
   const databaseUrl = env.databaseUrl?.trim() ?? "";
   if (databaseUrl.startsWith("pglite:")) {
     if (env.mode === "production") {

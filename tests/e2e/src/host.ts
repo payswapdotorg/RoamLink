@@ -54,6 +54,10 @@ import {
 import { deterministicUuidFromSeed, fixtureCommandEnvelope } from "@roamlink/testkit";
 import { DeterministicUuidGenerator } from "@roamlink/testkit";
 import {
+  QSTASH_SIGNATURE_HEADER,
+  renderQStashSignatureHeader,
+} from "@roamlink/provider-qstash";
+import {
   AccountAdministrationService,
   AuthorizationService,
   parsePasswordSecret,
@@ -80,6 +84,7 @@ import {
   createPortalHostComposition,
   handleLoginSubmit,
   handleV1,
+  handleWorkerTick,
   type PortalHostComposition,
 } from "../../../apps/portal-host/src/index.js";
 
@@ -91,6 +96,38 @@ export const T0: UtcInstant = parseUtcInstant("2026-01-15T08:30:00.000Z");
 
 export const WEBHOOK_KEY_ID = "whk-e2e-journey";
 export const WEBHOOK_SECRET = "e2e-journey-signing-secret-never-prod";
+
+/**
+ * PA-025: the receiver-side signing key of the hosted journey's worker-tick
+ * endpoint (test-only; NEVER a production credential).
+ */
+export const WORKER_TICK_SIGNING_KEY = "e2e-worker-tick-signing-key-never-prod";
+
+/** The closed tick job body the signed deliveries carry (byte-exact). */
+export const WORKER_TICK_JOB_BODY = JSON.stringify({ kind: "worker.tick" });
+
+/**
+ * PA-025: a MUTABLE journey clock for the composed-execution journeys. The
+ * execution legs must advance time between ticks: the read projections
+ * order executed commands by (executedAt, commandId), so a FROZEN clock
+ * would tie every command at one instant and fall to the (random) commandId
+ * tie-break — advancing the clock keeps the projection's order the TRUE
+ * chronological order, exactly as production ticks (minutes apart) do.
+ */
+export function createJourneyClock(): {
+  now(): UtcInstant;
+  /** Advances the clock and returns the NEW instant. */
+  advanceMinutes(minutes?: number): UtcInstant;
+} {
+  let currentMs = Date.parse(T0);
+  return {
+    now: (): UtcInstant => new Date(currentMs).toISOString() as UtcInstant,
+    advanceMinutes(minutes = 1): UtcInstant {
+      currentMs += minutes * 60_000;
+      return new Date(currentMs).toISOString() as UtcInstant;
+    },
+  };
+}
 
 /** The REAL migration file access (infra/migrations) — the deployment runner's own binding. */
 function pinRealMigrations(): void {
@@ -135,6 +172,14 @@ export interface HostedJourney {
   v1(request: HttpRequest): Promise<HttpResponse>;
   /** Raw /v1 access with NO token injection (unauthenticated-leg probes). */
   v1Raw(request: HttpRequest): Promise<HttpResponse>;
+  /**
+   * PA-025: the live command-execution path's leg — delivers ONE SIGNED
+   * worker.tick job to the host's mounted endpoint (through the REAL
+   * handleWorkerTick dispatch), exactly the way the QStash scheduled
+   * transport would. Null when the journey booted WITHOUT the endpoint
+   * composed (the honest uncomposed terrain keeps its own assertions).
+   */
+  readonly workerTick: ((input?: { readonly at?: string; readonly body?: string }) => Promise<Response>) | null;
   dispose(): Promise<void>;
 }
 
@@ -145,6 +190,13 @@ export interface HostedJourneyOptions {
   readonly password?: string;
   /** Optional now() override for the composition clock. */
   readonly now?: () => UtcInstant;
+  /**
+   * PA-025: compose the bounded worker-tick endpoint (the receiver-side
+   * QStash signing keys ride the SAME composition the hosted demo uses).
+   * Default: NOT composed — the honest uncomposed terrain of the
+   * pre-execution journeys (asserted by the existing suites, unchanged).
+   */
+  readonly composeWorkerTickEndpoint?: boolean;
 }
 
 /**
@@ -164,6 +216,11 @@ export async function bootHostedJourney(
     databaseUrl: "pglite://",
     webhookSigningKeys: `${WEBHOOK_KEY_ID}:${WEBHOOK_SECRET}`,
     webhookEnvironment: "sandbox",
+    // PA-025: the composed execution path (env-gated exactly like the hosted
+    // demo — the receiver-side signing keys compose the endpoint).
+    ...(options.composeWorkerTickEndpoint === true
+      ? { qstashSigningKeyCurrent: WORKER_TICK_SIGNING_KEY }
+      : {}),
     now,
   });
   const applied = await createPostgresMigrationRunner({ driver: composition.driver }).migrateUp();
@@ -214,8 +271,46 @@ export async function bootHostedJourney(
     app,
     v1: (request: HttpRequest): Promise<HttpResponse> => transportRequest(composition, token, request),
     v1Raw: (request: HttpRequest): Promise<HttpResponse> => rawTransportRequest(composition, request),
+    workerTick:
+      composition.worker.tickEndpoint !== null
+        ? (input: { readonly at?: string; readonly body?: string } = {}): Promise<Response> =>
+            // The delivery is signed at the JOURNEY'S CURRENT clock instant —
+            // the transport's clock tracks the receiver's (within the replay
+            // window), so journeys that advance their deterministic clock
+            // between legs stay verifiable.
+            deliverSignedWorkerTick(composition, { at: now(), ...input })
+        : null,
     dispose: () => composition.dispose(),
   };
+}
+
+/**
+ * PA-025: delivers ONE SIGNED worker.tick job to the host's mounted endpoint
+ * through the REAL handleWorkerTick dispatch — the exact request shape the
+ * QStash scheduled transport delivers (the pinned signature header over the
+ * byte-exact job body, signed at the transport's current instant — within
+ * the verifier's replay window of the receiver's clock).
+ */
+async function deliverSignedWorkerTick(
+  composition: PortalHostComposition,
+  input: { readonly at?: string; readonly body?: string },
+): Promise<Response> {
+  const body = input.body ?? WORKER_TICK_JOB_BODY;
+  const at = input.at ?? T0;
+  const signature = renderQStashSignatureHeader(
+    WORKER_TICK_SIGNING_KEY,
+    Math.floor(Date.parse(at) / 1000),
+    body,
+  );
+  const request = new Request("https://host.test/api/worker/tick", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      [QSTASH_SIGNATURE_HEADER]: signature,
+    },
+    body,
+  });
+  return handleWorkerTick(request, runtimeOf(composition));
 }
 
 /** Registers a user through the REAL @roamlink/auth administration boundary. */

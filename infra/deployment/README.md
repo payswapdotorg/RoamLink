@@ -86,3 +86,22 @@ deploying app adopts at RL-100+ deploy time.
   (0 compatible | 1 incompatible, mutations fail closed | 2
   not-configured). Deployment check §7 "ADCOS compatibility gate runs
   against the configured endpoint" executes here.
+
+- **Live command execution (PA-025)** — `POST /api/worker/tick` on the
+  portal-host is the authenticated bounded worker-tick endpoint
+  (`services/worker-endpoint`, an isolated service plane over the
+  `services/workers` execution seam): it VERIFIES the QStash delivery
+  signature before anything else (`QSTASH_CURRENT_SIGNING_KEY` /
+  `QSTASH_NEXT_SIGNING_KEY`; unset = every delivery refused with the honest
+  503, fail-closed) and then executes exactly ONE bounded tick per delivery
+  (a `recoverInFlight` sweep + a capped `claimDue` batch through the
+  command-executor delivery port + one bounded inbox batch + the
+  max-duration partial-progress guard) — never a long-running serverless
+  job (deployment.md §4). Accepted commands ADVANCE to `executed` (the
+  CAS-guarded command-ledger write, resource recorded) and the read models
+  serve real projections. Publish the recurring QStash schedule once with
+  `pnpm --filter @roamlink/worker-endpoint schedule:publish`
+  (`QSTASH_TOKEN` + `ROAMLINK_WORKER_TICK_DESTINATION` +
+  `ROAMLINK_WORKER_TICK_CRON`; the cadence is a budgeted operator choice —
+  see environments/demo.env.example). The production long-running workers
+  host keeps the SAME seam unchanged.

@@ -315,6 +315,51 @@ The current demo still needs command execution for an accepted enrollment to bec
 
 The capability UI itself is discoverable and was closed by the RL-115 audit.
 
+**Execution-legs closure note (2026-09-26, PA-025 — additive; the findings above are unchanged):**
+the live command-execution path landed, closing the execution legs of Journeys 2/3/4 exactly as this
+audit framed them ("the demo needs the execution worker path, not just command ingestion"). The
+path: `services/worker-endpoint` is an isolated service plane exposing the authenticated bounded
+worker-tick endpoint, mounted at the portal-host's `POST /api/worker/tick` (the minimal additive
+forwarding route, mirroring the RL-110 maintenance-receiver mount) and composed only when the
+receiver-side QStash signing keys are configured (unset → the honest 503, never an unverified act).
+Every delivery is signature-verified BEFORE anything else (the provider's own pinned
+`QStashSignatureVerifier`; closed value-free 401 codes for unsigned/wrong-key/outside-replay-window
+deliveries) and then executes exactly ONE bounded tick over the unchanged services/workers execution
+seam (`createBoundedWorkerTick`: one `recoverInFlight` sweep, one capped `claimDue` batch through
+`commandLedgerDeliveryPort` — the composed demo executors — the CAS-guarded `markExecuted` write
+recording the executed stage AND the resource execution created, then the outbox outcome commits; a
+max-duration guard stops a too-long batch after the current item and the next scheduled delivery
+continues). The wiring contract for the demo: QStash token + the receiver-side signing keys on the
+host, and the recurring schedule published once
+(`pnpm --filter @roamlink/worker-endpoint schedule:publish`; `ROAMLINK_WORKER_TICK_DESTINATION` +
+`ROAMLINK_WORKER_TICK_CRON` — the cadence is a budgeted operator choice respecting the free tier,
+never encoded into correctness; see infra/deployment/environments/demo.env.example). Battery
+evidence: `services/worker-endpoint/test/execution-facts.test.ts` (5 tests — the API-plane
+acceptance → SIGNED delivery → executed CAS write → the device read model flips its honest empty
+state to the real resource → the outbox outcome commits; the goal chain create→activate; the
+bounded-batch cap 12@5 → 5+5+2 with the remainder honestly PENDING; the idempotent same-delivery
+twice advancing nothing; the `COMMAND_EXECUTOR_NOT_COMPOSED` honest retry for kinds without
+executors), `services/worker-endpoint/test/endpoint.test.ts` (9 tests — the fail-closed
+verification matrix and the honest summary shape), `services/workers/test/tick.test.ts` (8 tests —
+sweep-before-claim, the cap, the deadline stop's crash-safe partial progress, the closed outcome
+vocabulary, outcome errors counted, the optional legs, the fail-closed composition), `services/workers/test/command-ledger.test.ts` (5 tests — the resource-recording CAS
+write and the replay no-op), `packages/provider-qstash/test/schedule.test.ts` (10 tests — the pinned
+schedule wire, the fake's signed schedule fires, and the runtime-clean subpath parity), and the BOTH-DIRECTION e2e updates in
+`tests/e2e/test/hosted-entry-onboarding-goals.test.ts` + `hosted-devices-connectivity-recovery.test.ts`
+(+4 tests: composed → the executed device appears and the onboarding wizard completes through the
+real versioned goal path; the goals journey activates and supersedes against real revisions; the
+device journey updates and retires at real revisions; uncomposed → the endpoint's honest 503 — the
+pre-existing uncomposed suites keep their honest-empty assertions unchanged). What the demo shows
+once configured: Journey 2 completes end to end (the wizard's device picker lists the executed
+device; the goal activates through the real read-first/versioned path); Journey 3's goals appear,
+activate and supersede (no more honest not-found); Journey 4's devices appear and their versioned
+update/retire legs complete. Still honest: the journeys remain MULTI-TICK by design (accepted →
+next tick → executed — the four-stage pipeline renders only the truth), the `delivered`/
+`billable-final` stages stay unwritten (the delivery wave's writers), and the kinds without
+composed executors (orders, payments, notifications, eSIM, connector, support cases, organizations)
+keep their accepted-not-executed state with the diagnosable reason — executor coverage is the
+execution wave's remaining work, not the path.
+
 ### Journey 5 — eSIM
 
 Device

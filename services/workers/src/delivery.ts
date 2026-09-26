@@ -29,7 +29,10 @@
  *    on the stored command. A kind without a composed executor is a
  *    RETRYABLE failure with the honest reason (a rolling deploy that adds
  *    the executor self-heals; an exhausted budget lands terminal FAILED with
- *    the diagnosable reason - loud, never silent).
+ *    the diagnosable reason - loud, never silent). PA-025: an executor may
+ *    return the {@link CommandResource} it created, and the ledger write
+ *    records it in the SAME CAS (the read projections' "a resource exists
+ *    from execution" fact).
  */
 import { ValidationError, type UtcInstant } from "@roamlink/contracts";
 import type { OutboxRecord } from "@roamlink/persistence";
@@ -116,16 +119,49 @@ export interface CommandObligationPayload {
   readonly expectedVersion?: number;
 }
 
-/** Executes one command obligation's payload (composed per kind). */
+/**
+ * The resource reference a command execution records on the stored command
+ * (PA-025): `{type, id, version?}` — the durable record of WHAT execution
+ * created or acted on, in the stored-command vocabulary the PA-019 read
+ * projections project from (a device exists from execution; the connector
+ * provisioning record exists from execution).
+ */
+export interface CommandResource {
+  readonly type: string;
+  readonly id: string;
+  readonly version?: number;
+}
+
+/**
+ * The facts one executor hands the ledger write (PA-025, additive): the
+ * resource the applied command created, when it created one. An executor
+ * MAY return nothing (a targeted transition records no new resource — the
+ * read projections apply those from the executed command itself).
+ */
+export interface CommandExecutionOutcome {
+  readonly resource?: CommandResource;
+}
+
+/**
+ * Executes one command obligation's payload (composed per kind). Returning
+ * a resource (PA-025) makes the ledger's `executed` write record it; the
+ * pre-PA-025 `Promise<void>` shape remains fully assignable.
+ */
 export type CommandExecutor = (
   record: OutboxRecord,
   payload: CommandObligationPayload,
   at: UtcInstant,
-) => Promise<void>;
+) => Promise<CommandExecutionOutcome | void>;
 
 /** Records the `executed` stage on the stored command (the stage-truth law). */
 export interface CommandLedger {
-  markExecuted(commandId: string, at: UtcInstant): Promise<void>;
+  /**
+   * CAS-writes `executedAt` (null -> set) and, when the executor produced
+   * one, the resource it applied — ONE version-guarded write, never a raw
+   * write. Already-executed commands are an idempotent no-op (the first
+   * execution's facts stand).
+   */
+  markExecuted(commandId: string, at: UtcInstant, resource?: CommandResource): Promise<void>;
 }
 
 export interface CommandLedgerDeliveryOptions {
@@ -158,8 +194,9 @@ export function commandLedgerDeliveryPort(options: CommandLedgerDeliveryOptions)
           reason: deliveryReason("COMMAND_EXECUTOR_NOT_COMPOSED"),
         };
       }
+      let outcome: CommandExecutionOutcome | void;
       try {
-        await executor(record, obligation, options.now());
+        outcome = await executor(record, obligation, options.now());
       } catch {
         // The attempt happened; its outcome is unknown. The attempt-failure
         // consumes one retry slot and schedules the backoff (RL-LOCK-014
@@ -167,7 +204,11 @@ export function commandLedgerDeliveryPort(options: CommandLedgerDeliveryOptions)
         return { outcome: "RETRYABLE_FAILURE", reason: deliveryReason("COMMAND_EXECUTION_FAILED") };
       }
       try {
-        await options.ledger.markExecuted(obligation.commandId, options.now());
+        await options.ledger.markExecuted(
+          obligation.commandId,
+          options.now(),
+          outcome !== undefined ? outcome.resource : undefined,
+        );
       } catch {
         return { outcome: "RETRYABLE_FAILURE", reason: deliveryReason("COMMAND_LEDGER_WRITE_FAILED") };
       }

@@ -8,6 +8,11 @@
  * /v2/messages/{destination} publish and /v2/messages?count=1 probe pins
  * answer 405 on the live service) with failure injection - so the REAL
  * client path runs in contract tests with zero network.
+ *
+ * PA-025: the stand-in also speaks the pinned schedule routes (POST
+ * /v2/schedules/{destination} -> {scheduleId}; GET /v2/schedules -> the
+ * created schedules) with the same failure injection, so the recurring-
+ * delivery surface is wire-tested with zero network too.
  */
 import type { FetchLike } from "../src/index.js";
 
@@ -22,6 +27,8 @@ export interface QStashProtocolOptions {
   readonly corruptNext?: { count: number };
   /** Answer non-2xx for the next N requests. */
   readonly rejectNext?: { count: number; status: number };
+  /** The schedule list's canned entries (default: the created schedules). */
+  readonly scheduleListings?: readonly Record<string, unknown>[];
 }
 
 export interface PublishRecord {
@@ -38,13 +45,24 @@ export interface ProbeRecord {
   readonly authorized: boolean;
 }
 
+/** One recorded schedule-create request (PA-025 wire parity). */
+export interface ScheduleCreateRecord {
+  readonly destination: string;
+  readonly body: string;
+}
+
 export function createQStashPublishProtocol(options: QStashProtocolOptions): {
   fetchLike: FetchLike;
   publishes: PublishRecord[];
   probes: ProbeRecord[];
+  scheduleCreates: ScheduleCreateRecord[];
+  scheduleListRequests: number;
 } {
   const publishes: PublishRecord[] = [];
   const probes: ProbeRecord[] = [];
+  const scheduleCreates: ScheduleCreateRecord[] = [];
+  const createdSchedules: Record<string, unknown>[] = [];
+  let scheduleListRequests = 0;
   const failNext = options.failNext ?? { count: 0 };
   const corruptNext = options.corruptNext ?? { count: 0 };
   const rejectNext = options.rejectNext ?? { count: 0, status: 500 };
@@ -61,6 +79,38 @@ export function createQStashPublishProtocol(options: QStashProtocolOptions): {
     const auth = new Headers(init?.headers).get("authorization");
     if (auth !== `Bearer ${options.token}`) {
       return jsonResponse(401, { error: "Unauthorized" });
+    }
+    // The recurring-delivery schedule routes (PA-025): POST
+    // {base}/v2/schedules/{destination} (the scheme LITERAL in the path, the
+    // same law as publish) and the GET {base}/v2/schedules list.
+    const scheduleCreatePrefix = `${baseUrl}/v2/schedules/`;
+    if (url.startsWith(scheduleCreatePrefix) && (init?.method ?? "POST") === "POST") {
+      if (rejectNext.count > 0) {
+        rejectNext.count -= 1;
+        return jsonResponse(rejectNext.status, { error: "rate limited (simulated)" });
+      }
+      if (corruptNext.count > 0) {
+        corruptNext.count -= 1;
+        return jsonResponse(200, { unexpected: true });
+      }
+      const destination = decodeURIComponent(url.slice(scheduleCreatePrefix.length));
+      const body = typeof init?.body === "string" ? init.body : "";
+      scheduleCreates.push({ destination, body });
+      const scheduleId = `sch_${String(++counter).padStart(3, "0")}`;
+      createdSchedules.push({
+        scheduleId,
+        destination,
+        ...(body ? { cron: (JSON.parse(body) as { cron?: unknown }).cron } : {}),
+      });
+      return jsonResponse(200, { scheduleId });
+    }
+    if (url === `${baseUrl}/v2/schedules` && (init?.method ?? "GET") === "GET") {
+      scheduleListRequests += 1;
+      if (rejectNext.count > 0) {
+        rejectNext.count -= 1;
+        return jsonResponse(rejectNext.status, { error: "rate limited (simulated)" });
+      }
+      return jsonResponse(200, options.scheduleListings ?? createdSchedules);
     }
     // The read-only probe route (RL-100, LIVE-CONFIRMED PA-017): GET
     // {base}/v2/events (the old /v2/messages?count=1 pin answers 405 on
@@ -97,7 +147,16 @@ export function createQStashPublishProtocol(options: QStashProtocolOptions): {
     return jsonResponse(200, { messageId: messageIdFactory() });
   }) as unknown as FetchLike;
 
-  return { fetchLike, publishes, probes };
+  return {
+    fetchLike,
+    publishes,
+    probes,
+    scheduleCreates,
+    // A getter, not a snapshot: the counter mutates inside the fetch closure.
+    get scheduleListRequests(): number {
+      return scheduleListRequests;
+    },
+  };
 }
 
 function jsonResponse(status: number, body: unknown): Response {
