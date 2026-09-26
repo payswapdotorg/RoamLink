@@ -1,214 +1,160 @@
 # RoamLink Deployment Architecture
 
-**Status:** IMPLEMENTATION PLAN  
-**Target:** low-cost/free-tier development and early demonstration deployment.
+Status: CURRENT IMPLEMENTATION + NEXT LIVE-RUNTIME PHASE
 
 ## 1. Current deployment state
 
-RoamLink is **not currently deployed as a complete interactive product**.
+RoamLink has a real hosted demo.
 
-apps/web, apps/admin and apps/mobile are workspace packages. The customer web package explicitly requires a host. There is no current production web host, no real SQL migration set, and persistence still uses the deterministic in-memory adapter. DATABASE_URL and REDIS_URL are placeholders rather than configured infrastructure.
+Current accepted/live-demo history:
+- Vercel Hobby portal/runtime;
+- Neon Free PostgreSQL;
+- webhook signing configured;
+- provider adapters for Redis, QStash and R2 implemented;
+- real-wire verification completed for Neon, Redis, QStash and R2 across PA-011/012/013/017.
 
-The current release gates prove deterministic architectural behavior; they do not constitute a hosted production deployment.
+Important qualification:
+- the formal RL-118 acceptance record predates PA-018/PA-019;
+- current main therefore requires a fresh current-SHA deployment acceptance before the current tree is considered fully accepted;
+- ADCOS production credentials remain an external configuration step;
+- the current live demo may keep Redis/R2/QStash optional or disabled; actual state must be recorded by the current acceptance run.
 
-## 2. Target early deployment
+## 2. Target early validation stack
 
-### Web / API host
+- Vercel Hobby — hosted portal/runtime, personal/non-commercial demo only.
+- Neon Free PostgreSQL — durable source of truth.
+- Upstash Redis Free — ephemeral rate limiting/coordination.
+- Upstash QStash Free — asynchronous delivery.
+- Cloudflare R2 — object storage / backup artifacts.
+- ADCOS public Developer API — connectivity authority.
 
-**Vercel**
+The providers are adapters, not domain authorities.
 
-Use one Next.js host application initially:
+## 3. Runtime topology
 
-- customer portal;
-- admin console;
-- API routes / BFF;
-- webhook endpoint;
-- health/readiness endpoint;
-- scheduled maintenance/reconciliation entry points.
+User
+ ↓
+Vercel Next.js host
+ ├── customer portal
+ ├── admin console
+ ├── API/BFF
+ ├── webhook ingress
+ ├── /healthz
+ ├── /readyz
+ └── bounded worker trigger
+        │
+        ├── Neon PostgreSQL
+        ├── Upstash Redis
+        ├── Upstash QStash
+        └── Cloudflare R2
 
-Keep apps/web and apps/admin as presentation packages. The host composes them.
+QStash
+ ↓
+authenticated bounded worker endpoint
+ ↓
+services/workers execution seam
+ ↓
+Neon durable command/outbox state
 
-Vercel currently offers a $0 Hobby plan with automatic CI/CD and CDN capabilities, but its current terms restrict Hobby use to personal/non-commercial use. It is therefore appropriate for the public demo / non-commercial validation environment; commercial operation should move to a paid Vercel plan or another host before launch.
+ADCOS
+ ↓
+webhook ingress
+ ↓
+durable inbox
+ ↓
+QStash / worker execution
+ ↓
+projection/reconciliation
 
-### Primary database
+## 4. Critical free-tier constraint
 
-**Neon Postgres Free Plan**
+Do not run an unbounded long-lived worker inside a Vercel request handler.
 
-Use PostgreSQL as the production persistence driver behind the existing @roamlink/persistence ports.
+For the demo, use a bounded worker trigger over the existing worker composition:
 
-Required:
+durable outbox
+→ QStash
+→ authenticated bounded worker endpoint
+→ one bounded execution batch
+→ durable execution result
 
-- real migrations under infra/migrations;
-- connection pooling/serverless-safe driver;
-- transaction semantics matching the tested UnitOfWork contract;
-- optimistic concurrency;
-- durable inbox/outbox;
-- backup/export path.
+The long-running services/workers host remains the preferred production composition; the bounded trigger is the free-tier-compatible demo composition.
 
-Neon currently documents a free plan with scale-to-zero and per-project resource limits suitable for early deployments.
+## 5. Provider roles
 
-### Short-lived coordination
+PostgreSQL:
+- all durable business state;
+- command ledger;
+- inbox/outbox;
+- read-model state where applicable.
 
-**Upstash Redis Free**
-
-Use Redis only for:
-
+Redis:
 - rate limiting;
-- hot cache;
-- short TTL coordination;
-- ephemeral session acceleration;
-- abuse protection.
+- short-lived cache/coordination only.
 
-Do NOT make Redis the source of truth for orders, payments, intents, projections, audit, outbox or inbox.
-
-### Durable HTTP jobs
-
-**Upstash QStash Free**
-
-Use QStash for asynchronous work that is safe to retry:
-
+QStash:
+- retryable asynchronous delivery;
 - reconciliation triggers;
-- webhook retry orchestration;
-- projection refresh jobs;
-- notification delivery;
-- cleanup tasks.
+- worker kicks.
 
-The current free tier provides 1,000 messages/day, 50 GB/month bandwidth, 1 MB message size and DLQ support.
+R2:
+- objects/attachments/backups only.
 
-Core durability still lives in PostgreSQL; QStash is a delivery mechanism.
+Vercel:
+- hosting/runtime only.
 
-### Object storage
+ADCOS:
+- canonical connectivity authority.
 
-**Cloudflare R2**
+## 6. Current live-runtime gaps that deployment must close
 
-Use R2 for:
+1. command execution is not yet advancing every accepted command in the demo;
+2. notification read source is not bound;
+3. product/order/subscription read sources are not bound;
+4. enterprise workspace read is not composed;
+5. integration-health read source is not bound;
+6. audit/projection-health read sources are not bound;
+7. eSIM mutation routes are not present in the live API mutation table;
+8. enterprise connector mutation route is not present in the live API mutation table.
 
-- support attachments;
-- diagnostic exports;
-- user-downloadable reports;
-- large non-relational evidence artifacts;
-- encrypted application-level backup/export artifacts.
+## 7. Deployment acceptance sequence
 
-Do not move relational authority into object storage.
+1. migrate Neon;
+2. verify migration manifest;
+3. configure current webhook signing keys;
+4. configure bounded worker trigger;
+5. configure QStash endpoint/signing keys;
+6. optionally configure Redis;
+7. optionally configure R2;
+8. configure ADCOS production credentials;
+9. deploy current main;
+10. run health/readiness;
+11. run smoke;
+12. run browser journeys;
+13. run demo acceptance;
+14. run rollback acceptance;
+15. record deployed SHA + provider states + named skips.
 
-Current R2 pricing includes 10 GB-month storage, 1M Class A operations and 10M Class B operations per month in the free tier, with free egress.
+## 8. Free-tier facts to verify at deployment time
 
-## 3. Deployment topology
+Do not hard-code quotas into correctness.
 
-                         +-----------------------+
-                         |       User Web        |
-                         | desktop / mobile web  |
-                         +-----------+-----------+
-                                     |
-                                     | HTTPS
-                                     v
-                         +-----------------------+
-                         |       Vercel          |
-                         |   RoamLink Web Host   |
-                         |                       |
-                         | customer + admin UI   |
-                         | API / BFF              |
-                         | webhook ingress        |
-                         | health/readiness       |
-                         | cron endpoints         |
-                         +----+----------+--------+
-                              |          |
-                         SQL  |          | async
-                              v          v
-                     +------------+  +------------+
-                     |    Neon    |  |  QStash    |
-                     | PostgreSQL|  |  + Redis   |
-                     +------------+  +------+-----+
-                                            |
-                           +----------------+----------------+
-                           |                                 |
-                           v                                 v
-                  +----------------+                 +---------------+
-                  |     ADCOS      |                 |   Cloudflare  |
-                  | Developer API  |                 |      R2       |
-                  +----------------+                 +---------------+
+The current official pages used for the handoff are:
+- Vercel Hobby terms;
+- Neon Free pricing;
+- Upstash Redis Free pricing;
+- Upstash QStash Free pricing;
+- Cloudflare R2 pricing.
 
-## 4. Runtime boundaries
-
-Vercel request handlers may compose the existing services, but they must not absorb domain authority into route handlers.
-
-Use:
-
-HTTP -> application command/query -> domain/integration -> persistence
-
-not:
-
-HTTP -> ad hoc database mutation
-
-Webhook:
-
-ADCOS -> Vercel webhook route -> durable inbox -> QStash -> projection/reconciliation
-
-## 5. Free-tier operating constraints
-
-Design specifically around the limits:
-
-- Vercel Hobby cannot be treated as commercial production.
-- Hobby scheduled jobs have coarse cadence; current Vercel documentation says Hobby cron execution is once per day, so higher-frequency reconciliation must be event-driven through QStash or another paid/runtime path.
-- Neon should use scale-to-zero and conservative compute.
-- Upstash Redis must remain a bounded accelerator.
-- QStash must remain below its daily message budget.
-- R2 should hold only large-object data, not frequently-mutated relational state.
-
-## 6. Environment separation
-
-Create:
-
-- local;
-- preview;
-- demo;
-- production.
-
-Neon should provide isolated branches where practical.
-
-Never put production ADCOS credentials in preview environments.
-
-Use different database, Redis, QStash, R2, ADCOS credentials and webhook secrets per environment.
-
-## 7. Required deployment checks
-
-Before demo deployment:
-
-- real database migration passes from empty state;
-- backup/restore passes;
-- health/readiness is real, not fake;
-- webhook signatures are configured;
-- ADCOS compatibility gate runs against the configured endpoint;
-- no in-memory adapter is used for production;
-- stuck outbox recovery is implemented;
-- inbox backlog processing advances beyond one batch;
-- R2 uploads use scoped credentials;
-- Redis is optional for correctness;
-- job retry is idempotent;
-- synthetic smoke journey is green.
-
-## 8. Provider portability
-
-The deployment interfaces must remain provider-neutral.
-
-All providers sit behind ports:
-
-- PostgreSQL adapter;
-- Redis adapter;
-- object storage adapter;
-- async delivery adapter;
-- web hosting/runtime adapter.
-
-Replacing Neon, Upstash, R2 or Vercel must not require changes to domain authority.
+Provider limits are current-plan facts and must be rechecked by the Tech Lead before a commercial deployment.
 
 ## 9. Commercial transition
 
-When the product becomes commercial:
-
-- replace Vercel Hobby with a commercially permitted plan/host;
-- upgrade database capacity;
-- establish production backups/PITR appropriate to the risk;
-- add stronger uptime/alerting;
-- add multi-process recovery tests;
-- move from free job budgets to measured workload capacity;
-- add production incident procedures.
+Before commercial launch:
+- move off Vercel Hobby to a commercially permitted plan/host;
+- scale Neon appropriately;
+- establish production backup/PITR;
+- upgrade job capacity;
+- add stronger alerting;
+- add continuous worker capacity;
+- retain provider-neutral ports.
