@@ -281,6 +281,40 @@ export async function handleMaintenanceReceiver(request: Request, runtime: HostR
   }
 }
 
+// ---------------------------------------------------------------------------
+// The PA-025 live command-execution path: the authenticated bounded worker
+// tick endpoint (transport translation ONLY - the endpoint verifies the
+// QStash signature itself and executes ONE bounded tick over the workers
+// execution seam; the handler never touches the database).
+// ---------------------------------------------------------------------------
+
+export async function handleWorkerTick(request: Request, runtime: HostRuntime): Promise<Response> {
+  if (!runtime.ok) {
+    return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; the worker tick is unavailable");
+  }
+  const endpoint = runtime.composition.worker.tickEndpoint;
+  if (endpoint === null) {
+    // The honest not-configured (the same fail-closed gate as the
+    // maintenance receiver): the receiver-side QStash signing keys are
+    // absent, so NO scheduled delivery is ever acted on - never a faked
+    // execution, and accepted commands keep their PENDING obligations.
+    return errorResponse(
+      503,
+      "WORKER_TICK_NOT_CONFIGURED",
+      "the worker tick endpoint refuses every delivery: the receiver-side QStash signing keys are not configured (fail-closed)",
+    );
+  }
+  try {
+    return await endpoint.handle(request);
+  } catch (error) {
+    return errorResponse(
+      500,
+      "WORKER_TICK_FAILED",
+      `the bounded worker tick failed (details suppressed)${error instanceof Error ? `: ${error.name}` : ""}`,
+    );
+  }
+}
+
 export async function handleCustomerSurface(request: Request, runtime: HostRuntime): Promise<Response> {
   if (!runtime.ok) {
     return errorResponse(503, "HOST_NOT_READY", "the hosted runtime is not ready; no surface is served");

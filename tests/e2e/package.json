@@ -21,6 +21,7 @@
     "@roamlink/edge-actions": "workspace:*",
     "@roamlink/mobile": "workspace:*",
     "@roamlink/persistence-postgres": "workspace:*",
+    "@roamlink/provider-qstash": "workspace:*",
     "@roamlink/testkit": "workspace:*",
     "@roamlink/web": "workspace:*",
     "@roamlink/webhook-inbox": "workspace:*"

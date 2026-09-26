@@ -117,6 +117,22 @@ ADCOS:
 7. eSIM mutation routes are not present in the live API mutation table;
 8. enterprise connector mutation route is not present in the live API mutation table.
 
+**Gap-closure note (2026-09-26, PA-025 — gap 1, additive; the list above is the historical record):**
+the live command-execution path landed: `services/worker-endpoint` is the authenticated bounded
+worker-tick endpoint mounted at the host's `POST /api/worker/tick` (QStash-signature-verified before
+anything else; fail-closed 401/503 vocabulary) which executes exactly ONE bounded tick per delivery
+over the unchanged `services/workers` execution seam (`createBoundedWorkerTick` over
+`commandLedgerDeliveryPort` + the CAS-guarded `markExecuted` ledger write, resource recorded) — the
+§4 bounded-worker-trigger topology made real. The recurring QStash schedule is published once by the
+setup path (`pnpm --filter @roamlink/worker-endpoint schedule:publish`; the cadence is a budgeted
+operator choice, never a correctness fact). Once the demo environment configures the keys
+(`QSTASH_TOKEN`, the receiver-side signing keys, `ROAMLINK_WORKER_TICK_DESTINATION` +
+`ROAMLINK_WORKER_TICK_CRON` — see infra/deployment/environments/demo.env.example), accepted commands
+advance to executed and the composed read models serve real projections; without the keys the
+endpoint refuses every delivery and the pre-PA-025 terrain (records stay PENDING) holds honestly.
+The kinds without a composed executor keep the diagnosable `COMMAND_EXECUTOR_NOT_COMPOSED` retryable
+failure — the remaining gap is executor coverage, not the path.
+
 ## 7. Deployment acceptance sequence
 
 1. migrate Neon;

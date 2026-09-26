@@ -33,6 +33,10 @@
  *    check over the probe (hosts register it as an OPTIONAL dependency -
  *    a down transport degrades, never blocks, readiness);
  *  - {@link tryParseQStashEnv}: fail-closed, secret-redacting env access;
+ *  - {@link DurableJobSchedulePort}: the minimal recurring-delivery
+ *    (schedule) surface (PA-025) the live command-execution path's setup
+ *    step publishes the worker tick cadence through - transport cadence,
+ *    never correctness;
  *  - {@link defineDurableJobDeliveryContract}: the reusable transport
  *    battery (ADR-0003 replacement rule).
  */
@@ -40,6 +44,7 @@ export * from "./port.js";
 export * from "./verifier.js";
 export * from "./fake.js";
 export * from "./upstash-qstash.js";
+export * from "./schedule.js";
 export * from "./env.js";
 export * from "./health.js";
 export * from "./port-contract.js";

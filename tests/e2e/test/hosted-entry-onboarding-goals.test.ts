@@ -28,7 +28,13 @@ import { describe, expect, it } from "vitest";
 
 import { createPostgresPersistence } from "@roamlink/persistence-postgres";
 
-import { bootHostedJourney } from "../src/host.js";
+import {
+  bootHostedJourney,
+  createJourneyClock,
+  runtimeOf,
+  WORKER_TICK_JOB_BODY,
+} from "../src/host.js";
+import { handleWorkerTick } from "../../../apps/portal-host/src/index.js";
 
 const DESKTOP_NAV_HREFS = [
   "/",
@@ -331,6 +337,237 @@ describe("RL-113 hosted journey: goal creation and editing", () => {
       expect(stored.commandId).toBe(created.acknowledgement.commandId);
       expect(stored.acceptedAt).toBe(created.acknowledgement.acceptedAt);
       expect(stored.executedAt).toBeUndefined();
+    } finally {
+      await journey.dispose();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PA-025 — the live command-execution path: the COMPOSED direction of
+// Journeys 2 and 3 (both directions are pinned: the uncomposed suites above
+// keep the honest pre-execution terrain UNCHANGED; these legs boot the SAME
+// hosted composition with the bounded worker-tick endpoint composed and
+// drive it with SIGNED deliveries exactly the way the QStash scheduled
+// transport would).
+// ---------------------------------------------------------------------------
+
+describe("PA-025 the composed execution path: the uncomposed endpoint answers the honest 503 (the fail-closed gate)", () => {
+  it("refuses every delivery when the receiver-side signing keys are not configured", async () => {
+    const journey = await bootHostedJourney({ seed: 0x0a5, email: "tick-uncomposed@example.com" });
+    try {
+      expect(journey.workerTick).toBeNull(); // not composed on this journey
+      const response = await handleWorkerTick(
+        new Request("https://host.test/api/worker/tick", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: WORKER_TICK_JOB_BODY,
+        }),
+        runtimeOf(journey.composition),
+      );
+      expect(response.status).toBe(503);
+      expect(await response.text()).toContain("WORKER_TICK_NOT_CONFIGURED");
+    } finally {
+      await journey.dispose();
+    }
+  });
+});
+
+describe("PA-025 hosted journey: first-run onboarding over the composed execution path (Journey 2)", () => {
+  it("enrolls, ticks, and completes the wizard: the executed device appears, the goal activates through the real versioned path", async () => {
+    // The MUTABLE journey clock: each tick executes at a LATER instant (the
+    // projection orders executed commands chronologically — the frozen-clock
+    // tie would fall to the random commandId tie-break).
+    const clock = createJourneyClock();
+    const journey = await bootHostedJourney({
+      seed: 0x0a6,
+      email: "onboarding-executed@example.com",
+      composeWorkerTickEndpoint: true,
+      now: clock.now,
+    });
+    try {
+      expect(journey.workerTick).not.toBeNull();
+      const tick = journey.workerTick as NonNullable<typeof journey.workerTick>;
+
+      // Leg 1: the device-enrollment command is durably accepted (the honest
+      // pre-execution state — accepted is NOT executed).
+      const enrolled = await journey.app.enrollDeviceFlow(
+        { name: "Executed Phone", platform: "ios" },
+        { idempotencyKey: "e2e-onboarding-executed-enroll" },
+      );
+      expect(enrolled.status).toBe("ok");
+      if (enrolled.status !== "ok") return;
+      expect(enrolled.acknowledgement.executedAt).toBeUndefined();
+
+      // ONE SIGNED delivery executes it: the device step now renders the
+      // REAL device picker (the executed resource appears).
+      const enrollExecutedAt = clock.advanceMinutes();
+      const firstTick = await tick();
+      expect(firstTick.status).toBe(200);
+      const summary = JSON.parse(await firstTick.text()) as Record<string, unknown>;
+      expect((summary["outbox"] as Record<string, unknown>)["executed"]).toBe(1);
+      const deviceStep = await journey.app.renderDocument({
+        page: "onboarding",
+        params: { step: "device" },
+      });
+      // The REAL device picker renders (the executed resource appears); the
+      // pre-execution terrain rendered only the add-new form.
+      expect(deviceStep).toContain('data-onboarding-form="pick-device"');
+      expect(deviceStep).toContain("<strong>Executed Phone</strong>");
+
+      // The enrollment REPLAY now carries the executed stage + the resource
+      // (the four-stage pipeline advanced; the client's sanctioned retry).
+      const enrolledReplay = await journey.app.enrollDeviceFlow(
+        { name: "Executed Phone", platform: "ios" },
+        { idempotencyKey: "e2e-onboarding-executed-enroll" },
+      );
+      expect(enrolledReplay.status).toBe("ok");
+      if (enrolledReplay.status !== "ok") return;
+      expect(enrolledReplay.acknowledgement.executedAt).toBe(enrollExecutedAt);
+      const deviceId = enrolledReplay.acknowledgement.resource?.id;
+      expect(deviceId).toBeDefined();
+
+      // Leg 2: the onboarding finish flow's FIRST attempt is still honest —
+      // the create command is accepted, not executed, so the goal id does
+      // not exist yet (ONBOARDING_GOAL_NOT_CREATED, never a guessed id).
+      const firstFinish = await journey.app.completeOnboardingFlow(
+        { deviceId: deviceId as string, goalChoiceId: "travel" },
+        { idempotencyKey: "e2e-onboarding-executed-finish" },
+      );
+      expect(firstFinish.status).toBe("error");
+      if (firstFinish.status !== "error") return;
+      expect(firstFinish.error).toMatchObject({
+        kind: "unknown-state",
+        reason: "ONBOARDING_GOAL_NOT_CREATED",
+      });
+
+      // ONE more SIGNED delivery executes the goal creation.
+      clock.advanceMinutes();
+      const secondTick = await tick();
+      expect((JSON.parse(await secondTick.text()) as Record<string, unknown>)["outbox"]).toMatchObject({
+        executed: 1,
+      });
+
+      // The RETRY (the same idempotency key) replays the create
+      // acknowledgement — NOW carrying the executed stage and the created
+      // goal id — reads the real revision, and issues the versioned
+      // activation command: the wizard COMPLETES.
+      const finished = await journey.app.completeOnboardingFlow(
+        { deviceId: deviceId as string, goalChoiceId: "travel" },
+        { idempotencyKey: "e2e-onboarding-executed-finish" },
+      );
+      expect(finished.status).toBe("ok");
+      if (finished.status !== "ok") return;
+      const activateAck = finished.acknowledgement;
+      expect(activateAck.acceptedAt).toBeDefined();
+      expect(activateAck.executedAt).toBeUndefined(); // accepted, execution is the next tick
+
+      // The final SIGNED delivery executes the activation: the goal is
+      // ACTIVE on the real read model.
+      const activateExecutedAt = clock.advanceMinutes();
+      const thirdTick = await tick();
+      expect((JSON.parse(await thirdTick.text()) as Record<string, unknown>)["outbox"]).toMatchObject({
+        executed: 1,
+      });
+      const goals = await journey.app.client().listExperienceIntents();
+      expect(goals).toHaveLength(1);
+      expect(goals.at(0)?.status).toBe("active"); // created -> executed -> activated, all through real ticks
+      // The activation's stored-command view carries the executed stage.
+      const stored = await journey.app.client().getCommandStatus(activateAck.commandId);
+      expect(stored.executedAt).toBe(activateExecutedAt);
+    } finally {
+      await journey.dispose();
+    }
+  });
+});
+
+describe("PA-025 hosted journey: goals over the composed execution path (Journey 3)", () => {
+  it("creates, ticks, and the executed goal appears; the versioned activate and supersede legs complete against the real revisions", async () => {
+    const clock = createJourneyClock();
+    const journey = await bootHostedJourney({
+      seed: 0x0a7,
+      email: "goals-executed@example.com",
+      composeWorkerTickEndpoint: true,
+      now: clock.now,
+    });
+    try {
+      const tick = journey.workerTick as NonNullable<typeof journey.workerTick>;
+
+      // The create command is durably accepted; the goals read is honestly
+      // empty (accepted is NOT executed — the truth law holds end to end).
+      const created = await journey.app.createIntentFlow(
+        {
+          deviceId: "0f0f0f0f-0000-4000-8000-000000000002",
+          rationale: "Stay connected while traveling",
+          accessClasses: ["any_internet"],
+        },
+        { idempotencyKey: "e2e-goal-executed-create" },
+      );
+      expect(created.status).toBe("ok");
+      if (created.status !== "ok") return;
+      expect(await journey.app.client().listExperienceIntents()).toEqual([]);
+
+      // ONE SIGNED delivery executes the create: the executed goal appears
+      // (the EXECUTED-only law flips the honest empty state to the real
+      // resource).
+      const createExecutedAt = clock.advanceMinutes();
+      await tick();
+      const goals = await journey.app.client().listExperienceIntents();
+      expect(goals).toHaveLength(1);
+      const goal = goals.at(0);
+      if (goal === undefined) throw new Error("the executed goal did not appear");
+      expect(goal.status).toBe("draft");
+      expect(goal.revision).toBe(1);
+      const intentId = goal.intentId;
+
+      // The versioned ACTIVATION leg — the read-first discipline now finds
+      // the executed goal: the flow reads revision 1 and issues the
+      // versioned command (no more honest not-found).
+      const activated = await journey.app.activateIntentFlow(
+        { intentId },
+        { idempotencyKey: "e2e-goal-executed-activate" },
+      );
+      expect(activated.status).toBe("ok");
+      if (activated.status !== "ok") return;
+
+      // ONE SIGNED delivery executes the activation: the goal is ACTIVE.
+      clock.advanceMinutes();
+      await tick();
+      const active = await journey.app.client().getExperienceIntent(intentId);
+      expect(active.status).toBe("active");
+      expect(active.revision).toBe(2);
+
+      // The versioned SUPERSESSION leg against the real revision 2.
+      const superseded = await journey.app.supersedeIntentFlow(
+        {
+          intentId,
+          rationale: "Prefer trusted Wi-Fi when it is good enough",
+          accessClasses: ["any_internet", "metered_cost_cap"],
+        },
+        { idempotencyKey: "e2e-goal-executed-supersede" },
+      );
+      expect(superseded.status).toBe("ok");
+      if (superseded.status !== "ok") return;
+
+      // The final SIGNED delivery executes the supersession: version 2 is
+      // the active one, revision 3 (the domain's immutable-version
+      // lifecycle, projected from the chronologically-ordered executed
+      // commands).
+      clock.advanceMinutes();
+      await tick();
+      const evolved = await journey.app.client().getExperienceIntent(intentId);
+      expect(evolved.revision).toBe(3);
+      expect(evolved.versions).toHaveLength(2);
+      expect(evolved.versions.at(0)?.status).toBe("superseded");
+      expect(evolved.versions.at(1)?.status).toBe("active");
+      expect(evolved.versions.at(1)?.rationale).toBe("Prefer trusted Wi-Fi when it is good enough");
+
+      // The unexecuted stage of the honest pipeline is still never claimed:
+      // delivered/billable-final remain absent on the create's stored view.
+      const stored = await journey.app.client().getCommandStatus(created.acknowledgement.commandId);
+      expect(stored.executedAt).toBe(createExecutedAt);
+      expect(stored.deliveredAt).toBeUndefined();
+      expect(stored.billableFinalAt).toBeUndefined();
     } finally {
       await journey.dispose();
     }

@@ -39,6 +39,13 @@ import {
   validateDestination,
   validateJobId,
 } from "./port.js";
+import {
+  type RecurringDeliverySchedule,
+  type RecurringDeliveryScheduleListing,
+  type RecurringDeliveryScheduleRequest,
+  type DurableJobSchedulePort,
+  validateCronExpression,
+} from "./schedule.js";
 import { canonicalJson } from "./fake.js";
 
 export const QSTASH_DEFAULT_BASE_URL = "https://qstash.upstash.io";
@@ -74,6 +81,11 @@ interface PublishResponse {
   messageId?: unknown;
 }
 
+/** The schedule route's success receipt (the pinned wire shape). */
+interface ScheduleResponse {
+  scheduleId?: unknown;
+}
+
 /**
  * Encodes a destination for the LIVE publish path: the route carries the
  * destination's scheme LITERALLY (`/v2/publish/https://host/path` - the
@@ -87,7 +99,7 @@ function encodePublishDestination(destination: string): string {
   return destination.replaceAll("?", "%3F").replaceAll("#", "%23");
 }
 
-export class UpstashQStashClient implements DurableJobDeliveryPort, TransportProbePort {
+export class UpstashQStashClient implements DurableJobDeliveryPort, TransportProbePort, DurableJobSchedulePort {
   readonly #baseUrl: string;
   readonly #token: string;
   readonly #doFetch: FetchLike;
@@ -254,6 +266,130 @@ export class UpstashQStashClient implements DurableJobDeliveryPort, TransportPro
         "the QStash probe request was rejected (provider text suppressed)",
       );
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // The recurring-delivery schedule surface (PA-025; see schedule.ts for the
+  // pinned wire contract). Schedules are transport cadence, never correctness.
+  // --------------------------------------------------------------------------
+
+  /**
+   * Publishes the recurring delivery over the pinned route
+   * `POST /v2/schedules/{destination}` (Bearer auth; JSON `{cron, body?}`;
+   * `{"scheduleId"}` on success). The destination rides the path with its
+   * scheme LITERAL — the same law as the publish route.
+   */
+  async createSchedule(request: RecurringDeliveryScheduleRequest): Promise<RecurringDeliverySchedule> {
+    if (request === null || typeof request !== "object") {
+      throw new ValidationError("RecurringDeliveryScheduleRequest must be an object", {
+        reason: "SCHEDULE_REQUEST_INVALID",
+        details: [{ path: "request", issue: "not an object" }],
+      });
+    }
+    validateDestination(request.destination);
+    validateCronExpression(request.cron);
+    if (request.body !== undefined && (typeof request.body !== "string" || Buffer.byteLength(request.body, "utf8") > this.#maxPayloadBytes)) {
+      throw new ValidationError(
+        `schedule bodies are admitted only up to ${this.#maxPayloadBytes} bytes (transport budget discipline)`,
+        {
+          reason: "SCHEDULE_BODY_INVALID",
+          details: [{ path: "body", issue: "not a bounded string" }],
+        },
+      );
+    }
+
+    const url = `${this.#baseUrl}/v2/schedules/${encodePublishDestination(request.destination)}`;
+    const payload = canonicalJson({
+      cron: request.cron,
+      ...(request.body !== undefined ? { body: request.body } : {}),
+    });
+
+    let response: Response;
+    try {
+      response = await this.#doFetch(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.#token}`,
+          "content-type": "application/json",
+        },
+        body: payload,
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      });
+    } catch {
+      throw new QStashProviderError(
+        "request-not-sent",
+        null,
+        "the QStash schedule request did not complete (connection/timeout); outcome unknown - the setup step may be retried (details suppressed)",
+      );
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new QStashProviderError("response-unusable", response.status, "the QStash schedule response body is not JSON (details suppressed)");
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new QStashProviderError("provider-error", response.status, "the QStash schedule API rejected the request (provider text suppressed)");
+    }
+    if (body === null || typeof body !== "object" || typeof (body as ScheduleResponse).scheduleId !== "string") {
+      throw new QStashProviderError("response-unusable", response.status, "the QStash schedule response did not carry a scheduleId (failing closed)");
+    }
+    const scheduleId = (body as ScheduleResponse).scheduleId as string;
+    return { scheduleId };
+  }
+
+  /**
+   * Lists the existing schedules over the pinned read route
+   * `GET /v2/schedules` (Bearer auth; a JSON array on success). Entries are
+   * parsed DEFENSIVELY (scheduleId required; destination/topic and cron
+   * optional) — see schedule.ts for the honest live-shape caveat.
+   */
+  async listSchedules(): Promise<readonly RecurringDeliveryScheduleListing[]> {
+    const url = `${this.#baseUrl}/v2/schedules`;
+    let response: Response;
+    try {
+      response = await this.#doFetch(url, {
+        method: "GET",
+        headers: {
+          authorization: `Bearer ${this.#token}`,
+          accept: "application/json",
+        },
+        signal: AbortSignal.timeout(this.#timeoutMs),
+      });
+    } catch {
+      throw new QStashProviderError(
+        "request-not-sent",
+        null,
+        "the QStash schedule list request did not complete (connection/timeout; details suppressed)",
+      );
+    }
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      throw new QStashProviderError("response-unusable", response.status, "the QStash schedule list response body is not JSON (details suppressed)");
+    }
+    if (response.status < 200 || response.status >= 300) {
+      throw new QStashProviderError("provider-error", response.status, "the QStash schedule list request was rejected (provider text suppressed)");
+    }
+    if (!Array.isArray(body)) {
+      throw new QStashProviderError("response-unusable", response.status, "the QStash schedule list response is not an array (failing closed)");
+    }
+    const listings: RecurringDeliveryScheduleListing[] = [];
+    for (const entry of body) {
+      if (entry === null || typeof entry !== "object") continue;
+      const record = entry as Record<string, unknown>;
+      const scheduleId = record["scheduleId"];
+      if (typeof scheduleId !== "string" || scheduleId.length === 0) continue;
+      const destination = record["destination"] ?? record["topic"];
+      const cron = record["cron"];
+      listings.push({
+        scheduleId,
+        destination: typeof destination === "string" ? destination : null,
+        cron: typeof cron === "string" ? cron : null,
+      });
+    }
+    return listings;
   }
 
   /** Log-safe identity (token never included - RL-LOCK-016). */

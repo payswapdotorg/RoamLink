@@ -22,6 +22,7 @@ import { isApiClientError } from "@roamlink/app-kit";
 
 import {
   bootHostedJourney,
+  createJourneyClock,
   signedWebhookRequest,
 } from "../src/host.js";
 
@@ -267,6 +268,110 @@ describe("RL-113 hosted journey: automatic recovery", () => {
       expect(overview.deviceObservations).toEqual([]);
       const html = await journey.app.renderDocument({ page: "connectivity" });
       expect(html).toContain('data-shell-connectivity="no-reference"');
+    } finally {
+      await journey.dispose();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PA-025 — the live command-execution path: the COMPOSED direction of
+// Journey 4 (both directions are pinned: the uncomposed suite above keeps
+// the honest pre-execution terrain UNCHANGED; this leg boots the SAME
+// hosted composition with the bounded worker-tick endpoint composed and
+// drives it with SIGNED deliveries exactly the way the QStash scheduled
+// transport would).
+// ---------------------------------------------------------------------------
+
+describe("PA-025 hosted journey: devices over the composed execution path (Journey 4)", () => {
+  it("enrolls, ticks, and the executed device appears; the versioned update and retire legs complete against the real revisions", async () => {
+    const clock = createJourneyClock();
+    const journey = await bootHostedJourney({
+      seed: 0x0b5,
+      email: "devices-executed@example.com",
+      composeWorkerTickEndpoint: true,
+      now: clock.now,
+    });
+    try {
+      const tick = journey.workerTick;
+      if (tick === null) throw new Error("the worker tick endpoint was not composed");
+
+      // The enrollment command is durably accepted; the devices read is
+      // honestly empty (accepted is NOT executed).
+      const enrolled = await journey.app.enrollDeviceFlow(
+        { name: "Executed Router", platform: "linux" },
+        { idempotencyKey: "e2e-device-executed-enroll" },
+      );
+      expect(enrolled.status).toBe("ok");
+      if (enrolled.status !== "ok") return;
+      expect(await journey.app.client().listDevices()).toEqual([]);
+
+      // ONE SIGNED delivery executes it: the devices page renders the REAL
+      // device (the executed resource appears; the empty panel is gone).
+      const enrollExecutedAt = clock.advanceMinutes();
+      const firstTick = await tick();
+      expect(firstTick.status).toBe(200);
+      const devicesPage = await journey.app.renderDocument({ page: "devices" });
+      expect(devicesPage).not.toContain('data-devices-empty="true"');
+      expect(devicesPage).toContain('data-device-status="enrolled"');
+
+      // The executed device's real id comes from the enrollment REPLAY (the
+      // acknowledgement now carries the executed stage + the resource).
+      const replay = await journey.app.enrollDeviceFlow(
+        { name: "Executed Router", platform: "linux" },
+        { idempotencyKey: "e2e-device-executed-enroll" },
+      );
+      expect(replay.status).toBe("ok");
+      if (replay.status !== "ok") return;
+      expect(replay.acknowledgement.executedAt).toBe(enrollExecutedAt);
+      const deviceId = replay.acknowledgement.resource?.id;
+      expect(deviceId).toBeDefined();
+
+      // The device detail read now serves the REAL projection (the honest
+      // 404 of the uncomposed terrain is closed by EXECUTION, not by
+      // invention).
+      const device = await journey.app.client().getDevice(deviceId as string);
+      expect(device.deviceId).toBe(deviceId);
+      expect(device.name).toBe("Executed Router");
+      expect(device.status).toBe("enrolled");
+      expect(device.revision).toBe(1);
+
+      // The versioned UPDATE leg — the read-first discipline now finds the
+      // executed device: revision 1, the versioned command accepted.
+      const updated = await journey.app.updateDeviceFlow(
+        { deviceId: deviceId as string, name: "Executed Router (renamed)" },
+        { idempotencyKey: "e2e-device-executed-update" },
+      );
+      expect(updated.status).toBe("ok");
+      if (updated.status !== "ok") return;
+
+      // ONE SIGNED delivery executes the update: the projection carries the
+      // new name at revision 2.
+      clock.advanceMinutes();
+      await tick();
+      const renamed = await journey.app.client().getDevice(deviceId as string);
+      expect(renamed.name).toBe("Executed Router (renamed)");
+      expect(renamed.revision).toBe(2);
+
+      // The versioned RETIRE leg against the real revision 2, executed by
+      // the final SIGNED delivery: the device is RETIRED.
+      const retired = await journey.app.retireDeviceFlow(
+        { deviceId: deviceId as string },
+        { idempotencyKey: "e2e-device-executed-retire" },
+      );
+      expect(retired.status).toBe("ok");
+      if (retired.status !== "ok") return;
+      clock.advanceMinutes();
+      await tick();
+      const retiredDevice = await journey.app.client().getDevice(deviceId as string);
+      expect(retiredDevice.status).toBe("retired");
+      expect(retiredDevice.revision).toBe(3);
+
+      // The outbox obligations all committed their terminal outcomes (the
+      // durable execution facts behind every projection above).
+      const persistence = createPostgresPersistence(journey.composition.driver);
+      expect(await persistence.outbox.count("DELIVERED")).toBe(3);
+      expect(await persistence.outbox.count("PENDING")).toBe(0);
     } finally {
       await journey.dispose();
     }
