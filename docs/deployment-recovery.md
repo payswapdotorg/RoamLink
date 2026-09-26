@@ -260,3 +260,20 @@ deploy trigger for the current head (PA-024/PA-025/PA-026 merged): if the
 webhook is again refused, the next push after any window re-opening
 deploys; the commit statuses remain the ground truth for what actually
 deployed.
+
+## 2026-09-26 12:0x UTC — deploy-trigger attempt #3 (peak-hours strain record)
+
+- Production remains at 3b079d4 (PA-020/PA-023 live). main is at 1acdbf9
+  (adds the merged PA-024 read models, PA-025 execution path, PA-026
+  enterprise runtime — PRs #55/#56/#57 — plus docs records). The Vercel
+  deployment rate-limit clamp refused 1acdbf9 on both project webhooks
+  (commit statuses: "Deployment rate limited — retry in 24 hours"); the
+  clamp is intermittent at the webhook level, so each new main push is a
+  deploy-trigger attempt. This note is that push.
+- Platform context this window: chat.z.ai peak-hours capacity strain
+  (model-capacity soft gate) destroyed two worker chats server-side
+  (the original PA-021 dispatch and the redundant PA-025 re-dispatch —
+  3-signal verdict: chat-fetch 500, absent from the chats list, no
+  workspace). Both were recovered registry-side (void + re-dispatch);
+  no code impact. Recorded here because the wave's PA-021 deployed
+  acceptance and PA-027 deployment both depend on the deploy window.
