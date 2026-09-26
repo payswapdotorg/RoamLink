@@ -25,6 +25,12 @@
  *                       partial-progress guard - the free-tier-compatible
  *                       execution path the authenticated worker endpoint
  *                       drives; the production host's loop is unchanged;
+ *  - `enterprise-executors.ts` the enterprise command executors (PA-026):
+ *                       the @roamlink/enterprise domain's own transition
+ *                       functions (enrollment journey + connector
+ *                       negotiation) over the shared-persistence store
+ *                       adapters, composable into commandLedgerDeliveryPort
+ *                       on the same bounded-tick path;
  *  - `timer.ts`         the injectable timer port (deterministic tests).
  *
  * `src/main.ts` is the standalone long-running entry; `scripts/adcos-probe.ts`
@@ -33,6 +39,7 @@
 export * from "./timer.js";
 export * from "./delivery.js";
 export * from "./command-ledger.js";
+export * from "./enterprise-executors.js";
 export * from "./outbox-drain.js";
 export * from "./inbox-drain.js";
 export * from "./tick.js";

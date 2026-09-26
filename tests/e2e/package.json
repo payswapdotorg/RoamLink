@@ -14,17 +14,21 @@
   },
   "dependencies": {
     "@roamlink/adcos": "workspace:*",
+    "@roamlink/api-service": "workspace:*",
     "@roamlink/app-kit": "workspace:*",
     "@roamlink/auth": "workspace:*",
     "@roamlink/contracts": "workspace:*",
     "@roamlink/edge": "workspace:*",
     "@roamlink/edge-actions": "workspace:*",
+    "@roamlink/enterprise": "workspace:*",
     "@roamlink/mobile": "workspace:*",
+    "@roamlink/persistence": "workspace:*",
     "@roamlink/persistence-postgres": "workspace:*",
     "@roamlink/provider-qstash": "workspace:*",
     "@roamlink/testkit": "workspace:*",
     "@roamlink/web": "workspace:*",
-    "@roamlink/webhook-inbox": "workspace:*"
+    "@roamlink/webhook-inbox": "workspace:*",
+    "@roamlink/workers": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

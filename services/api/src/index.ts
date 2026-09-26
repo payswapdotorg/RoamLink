@@ -24,6 +24,13 @@
  *  - `commands.ts`    the durable command ingestion: header-envelope
  *    validation, tenant authorization, idempotency-key dedupe, the stored
  *    command ledger + outbox enqueue in ONE real unit of work;
+ *  - `enterprise.ts`  the enterprise workspace source bindings (PA-026):
+ *    the enrollment journey / policy / integration / connector-provisioning
+ *    records persisted through the SHARED PERSISTENCE port, validated by
+ *    the @roamlink/enterprise domain's own fail-closed parsers (the
+ *    authority - this service binds their stores, never re-implements
+ *    them), plus the persistence-backed store adapters the worker seam's
+ *    enterprise executors compose;
  *  - `read-models.ts` the composed business read models (PA-019, closes
  *    F-016-2): the identity-backed reads (users, organizations) and the
  *    durable command-ledger / reconciliation-job projections (devices,
@@ -41,6 +48,7 @@ export * from "./http.js";
 export * from "./readiness.js";
 export * from "./envelope.js";
 export * from "./commands.js";
+export * from "./enterprise.js";
 export * from "./read-models.js";
 export * from "./rate-limit.js";
 export * from "./edge.js";
