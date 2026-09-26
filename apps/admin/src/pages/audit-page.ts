@@ -8,12 +8,15 @@
 import {
   healthBadge,
   instantView,
+  isUnavailableRead,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
   type AuditEventListResource,
   type HtmlFragment,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pageHeading } from "../page-kit.js";
@@ -21,9 +24,29 @@ import { pageHeading } from "../page-kit.js";
 const CATEGORIES = ["auth", "secret-access", "authority-decision", "admin-override"] as const;
 
 export function auditPage(input: {
-  readonly audit: AuditEventListResource;
+  /**
+   * PA-020: the audit event read is the page's data-plane read. When its
+   * source refuses (the typed 501 with its named reason, or any
+   * unavailability-class typed error), the event section degrades to the
+   * quiet unavailable panel - the console navigation and every healthy
+   * diagnostic page stay usable.
+   */
+  readonly audit: ReadOrUnavailable<AuditEventListResource>;
   readonly activeCategory?: (typeof CATEGORIES)[number];
 }): HtmlFragment {
+  if (isUnavailableRead(input.audit)) {
+    return fragment(
+      pageHeading(
+        "Audit & security events",
+        "The append-only, digest-chained record of security-relevant actions. Tampering with any recorded field breaks the chain at the first modified event.",
+      ),
+      unavailablePanelFor(input.audit, {
+        section: "audit-events",
+        meaning:
+          "The audit event record cannot be shown right now. The rest of the console stays usable from the navigation above, and this page will show the record again once its source answers.",
+      }),
+    );
+  }
   const chain = input.audit.chain;
   return fragment(
     pageHeading(

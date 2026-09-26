@@ -118,11 +118,21 @@ describe("RL-113 hosted journey: connectivity observation", () => {
       expect(html).toContain('data-shell-connectivity="no-reference"');
       expect(html).toContain("No active connectivity reference");
       expect(html).toContain("nothing is currently set up to deliver connectivity");
-      // The page body still fails closed: the connectivity center's read set
-      // includes the notification read model, which honestly keeps its
-      // typed 501 (no notification store is bound on this runtime).
-      expect(html).toContain('data-error-kind="unavailable"');
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-020: the page body degrades COMPONENT-SCOPED. The core
+      // connectivity read composes (the real empty aggregate), so the
+      // center renders its honest no-reference content - status, journey,
+      // observations; the notification read honestly keeps its typed 501
+      // (no notification store is bound on this runtime), so ONLY the
+      // recent-events section degrades to the quiet unavailable panel.
+      expect(html).toContain('data-connectivity-status="true"');
+      expect(html).toContain('data-connection-journey="true"');
+      expect(html).toContain('data-device-observations="true"');
+      expect(html).toContain('data-unavailable="true"');
+      expect(html).toContain('data-unavailable-section="recent-connectivity-events"');
+      expect(html).toContain('data-unavailable-reason="READ_MODEL_NOT_COMPOSED"');
+      expect(html).toContain("NOTIFICATION_STORE_NOT_BOUND");
+      // The degraded body is NOT the fail-closed panel.
+      expect(html).not.toContain('data-error-kind=');
       expect(html).not.toContain('data-connectivity-overview="true"');
 
       // The typed client now SUCCEEDS on the composed read and surfaces the
@@ -142,12 +152,22 @@ describe("RL-113 hosted journey: degraded connectivity", () => {
     const journey = await bootHostedJourney({ seed: 0x0b3, email: "degraded@example.com" });
     try {
       const html = await journey.app.renderDocument({ page: "connectivity" });
-      // THE HONEST-STATE LAW over the real composition: no stage of the
-      // lifecycle vocabulary is rendered (nothing is asserted by a read
-      // that refused), and "recovered" is never claimed from anywhere.
+      // THE HONEST-STATE LAW over the real composition (PA-020: the core
+      // sections render, the recent-events section degrades quietly): no
+      // stage of the lifecycle vocabulary is CONFIRMED (nothing is asserted
+      // by a read that refused), and "recovered" is never claimed from
+      // anywhere; the observations section renders its honest empty state.
       expect(html).not.toContain("Confirmed by the linked delivery evidence");
-      expect(html).not.toContain("No device observations have been recorded yet");
-      expect(html).not.toContain("What RoamLink did");
+      expect(html).toContain("No device observations have been recorded yet");
+      // The Activity narrative itself does not leak into the connectivity
+      // page (the journey's own not-recorded fact may POINT to Activity,
+      // but no activity timeline content renders here).
+      expect(html).not.toContain('data-activity-feed="true"');
+      expect(html).not.toContain('data-activity-needs-you="true"');
+      // The degraded section is the quiet panel with the typed reason —
+      // never invented event records.
+      expect(html).toContain('data-unavailable-section="recent-connectivity-events"');
+      expect(html).not.toContain('data-event-id=');
       // Commerce can never leak into the connectivity journey (payment is
       // not delivery, RL-LOCK-008) — trivially true and pinned fail-closed.
       expect(html).not.toContain("Payment confirmed?");

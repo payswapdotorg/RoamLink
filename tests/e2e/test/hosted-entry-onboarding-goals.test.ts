@@ -15,11 +15,14 @@
  * composes the durable COMMAND plane, the principal/session reads, and
  * the PA-019 command-ledger read projections. No command has executed on
  * this composition, so the device/goal read models serve their real EMPTY
- * state and those pages render the real empty journey content; pages whose
- * read set includes a kept-501 route (the home page needs the notification
- * read model) still fail closed into the typed READ_MODEL_NOT_COMPOSED
- * panel — and versioned flows fail closed on the honest 404 instead of
- * issuing blind commands. Nothing is invented either way.
+ * state and those pages render the real empty journey content. Since
+ * PA-020 the pages with a PARTIAL kept-501 read set degrade
+ * COMPONENT-SCOPED instead of failing the whole body closed: the Home
+ * surface renders its core hero/goal/devices cards while the
+ * notification-derived attention card renders the quiet unavailable panel
+ * for the typed 501 (named reason NOTIFICATION_STORE_NOT_BOUND) — nothing
+ * invented either way, and versioned flows still fail closed on the honest
+ * 404 instead of issuing blind commands.
  */
 import { describe, expect, it } from "vitest";
 
@@ -66,12 +69,27 @@ function expectShellChrome(html: string): void {
   expect(html).toContain('href="/connectivity"');
 }
 
-/** Scans a rendered document for the typed fail-closed read refusal. */
-function expectFailClosedRead(html: string): void {
-  expect(html).toContain('data-error-kind="unavailable"');
-  expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
-  // Fail-closed means the body carries NO invented page content either way.
-  expect(html).not.toContain('data-connectivity-overview="true"');
+/**
+ * Scans a rendered document for the PA-020 component-scoped degradation on
+ * Home: the core cards render from the composed reads, and ONLY the
+ * notification-derived attention card is the quiet unavailable panel (the
+ * typed 501 with its named reason) — never a blank page, never invented
+ * feed content.
+ */
+function expectHomeComponentScopedDegradation(html: string): void {
+  // CORE: the hero + the goal/devices cards render their real empty-journey
+  // content from the composed reads.
+  expect(html).toContain('data-home-hero="true"');
+  expect(html).toContain("RoamLink is not managing any connectivity yet.");
+  expect(html).toContain('data-home-fact="goal"');
+  expect(html).toContain('data-home-fact="devices"');
+  // SECONDARY: the attention card is the quiet unavailable panel.
+  expect(html).toContain('data-unavailable="true"');
+  expect(html).toContain('data-unavailable-section="home-attention"');
+  expect(html).toContain('data-unavailable-reason="READ_MODEL_NOT_COMPOSED"');
+  expect(html).toContain("NOTIFICATION_STORE_NOT_BOUND");
+  // The degraded body is NOT the fail-closed panel.
+  expect(html).not.toContain('data-error-kind=');
 }
 
 describe("RL-113 hosted journey: entry (land -> sign in -> Home)", () => {
@@ -105,10 +123,14 @@ describe("RL-113 hosted journey: entry (land -> sign in -> Home)", () => {
 
       const html = await journey.app.renderDocument({ page: "home" });
       expectShellChrome(html);
-      // The Home body still fails closed: its read set includes the
-      // notification read model, which honestly keeps its typed 501 (no
-      // notification store is bound on this runtime — the named skip).
-      expectFailClosedRead(html);
+      // PA-020: the Home body degrades COMPONENT-SCOPED over the real
+      // composition. Its core reads (connectivity/intents/devices) are
+      // composed and serve the real empty state, so the hero and the
+      // goal/devices cards render the real empty journey content; the
+      // notification read honestly keeps its typed 501 (no notification
+      // store is bound on this runtime — the named skip), so the attention
+      // card alone degrades to the quiet unavailable panel.
+      expectHomeComponentScopedDegradation(html);
       // ...and no journey vocabulary is fabricated anywhere in the document.
       expect(html).not.toContain("data-journey-stage");
       expect(html).not.toContain("Confirmed by the linked delivery evidence");

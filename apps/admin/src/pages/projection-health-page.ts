@@ -10,18 +10,41 @@ import {
   freshnessBadge,
   healthBadge,
   instantView,
+  isUnavailableRead,
+  unavailablePanelFor,
   el,
   fragment,
   text,
   type HtmlFragment,
   type ProjectionHealthResource,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pageHeading } from "../page-kit.js";
 
 export function projectionHealthPage(input: {
-  readonly health: ProjectionHealthResource;
+  /**
+   * PA-020: the projection-health read is the page's data-plane read. When
+   * its source refuses (the typed 501 with its named reason, or any
+   * unavailability-class typed error), the dashboard degrades to the quiet
+   * unavailable panel - the console navigation and every healthy diagnostic
+   * page stay usable.
+   */
+  readonly health: ReadOrUnavailable<ProjectionHealthResource>;
 }): HtmlFragment {
+  if (isUnavailableRead(input.health)) {
+    return fragment(
+      pageHeading(
+        "Projection health",
+        "ADCOS-derived projections with provenance, freshness and evidence. Stale/unknown projections are degraded, never guessed healthy.",
+      ),
+      unavailablePanelFor(input.health, {
+        section: "projection-health",
+        meaning:
+          "The projection freshness and SLO tables cannot be shown right now. The rest of the console stays usable from the navigation above, and this page will show them again once its source answers.",
+      }),
+    );
+  }
   return fragment(
     pageHeading(
       "Projection health",

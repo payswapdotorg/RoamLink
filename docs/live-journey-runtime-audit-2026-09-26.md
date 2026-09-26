@@ -418,6 +418,69 @@ The mobile edge surface and tests cover:
 
 The remaining deployment work is making the hosted/customer enrollment journey clearly lead users to the mobile experience and running final device/browser acceptance.
 
+### Additive closure note (2026-09-26, PA-020 — component-scoped degradation)
+
+This note is additive; the findings above are unchanged. PA-020 implements the
+§5 graceful-composition direction for Journeys 1, 6, 7, 10 and 11: the five
+multi-source surfaces now degrade per component instead of failing the whole
+page body closed when a secondary read is unavailable.
+
+What now degrades per-component:
+- Journey 1 (Login → Home): core = connectivity + intents + devices (hero,
+  goal card, devices card); secondary = the notification feed (the
+  "Does RoamLink need you?" card renders the quiet panel when
+  /v1/notifications keeps its typed 501 NOTIFICATION_STORE_NOT_BOUND).
+- Journey 6 (Connectivity): core = the connectivity overview (the whole
+  explanation center); secondary = the notification feed (the
+  "Recent connectivity events" section degrades to the quiet panel).
+- Journey 7 (Activity/Notifications): core = intents + devices (the
+  automation-status section renders its honest state); secondary = the
+  notification feed (the needs-attention list and the timeline degrade to
+  the quiet panel — never a fabricated narrative).
+- Journey 10 (Enterprise Workspace): core = session + devices + intents +
+  connectivity (the fleet, goals, org-connectivity and support sections, plus
+  the journey's devices/capability/first-goal/live-overview steps); secondary
+  = the enterprise workspace read (the not-composed 404 degrades the
+  switcher, the four workspace-composed journey steps, the connector
+  enrollment, the policy summary, the integrations and the enrollment status
+  sections each to the quiet panel).
+- Journey 11 (Admin/Operations): core = the session gate (a denied or
+  unresolvable actor still never sees surface data — the fail-closed
+  authorization law is unchanged, including "no data even fetched");
+  secondary = each console page's data-plane read (Audit & security,
+  Reconciliation, Projection health, Support triage, Integration health
+  each render their heading plus the quiet panel when their source refuses,
+  while the navigation and every healthy diagnostic page stay usable).
+
+The panel contract (packages/app-kit, additive): a small, quiet,
+section-scoped block — title "Not available right now", the WHY (the typed
+reason rendered verbatim, plus the contract-borne explanation with the named
+reason when the source gave one), and one what-this-means line naming what
+still renders on the page and where help is reachable. No retry buttons that
+cannot work, no fake data, no full-page alarm styling. Degradation applies
+only to unavailability-class typed errors (unavailable — the typed 501
+READ_MODEL_NOT_COMPOSED, 503s, transport failures; not-found; rate-limited);
+authorization refusals and contract-integrity failures keep the existing
+honest full-body fail-closed law, as does any CORE read failure.
+
+Battery evidence (the three mandated states per surface — core available +
+secondary unavailable asserting BOTH the core content and the quiet panel;
+core unavailable asserting the unchanged fail-closed body; mixed
+fresh/stale/unknown asserting each section's truthful state):
+- packages/app-kit/test/degradation.test.ts — the panel contract and the
+  secondary-read helper's degradable/non-degradable error classes;
+- apps/web/test/component-scoped-degradation.test.ts — Home, Connectivity,
+  Activity and Workspace over the deterministic fake with the real runtime's
+  typed refusal bodies (kept-501 named reasons; the not-composed workspace
+  route's 404);
+- apps/admin/test/component-scoped-degradation.test.ts — the five console
+  pages, the unchanged gate law (including the no-data-fetched proof) and
+  the healthy-sibling pages.
+- tests/e2e (RL-113) — the hosted journeys on Home/Connectivity/Activity/
+  Workspace now assert the component-scoped degradation over the REAL
+  composition; the Commerce and Order journeys keep their full fail-closed
+  assertions (their read sets are entirely kept-501).
+
 ## 5. Product-level design learning
 
 The ShareNet-inspired shell is the correct visual interaction direction.

@@ -8,11 +8,14 @@
 import {
   healthBadge,
   instantView,
+  isUnavailableRead,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
   type HtmlFragment,
+  type ReadOrUnavailable,
   type ReconciliationJobResource,
 } from "@roamlink/app-kit";
 
@@ -29,8 +32,28 @@ const OUTCOME_HEALTH: Readonly<Record<string, string>> = Object.freeze({
 });
 
 export function reconciliationPage(input: {
-  readonly jobs: readonly ReconciliationJobResource[];
+  /**
+   * PA-020: the reconciliation job read is the page's data-plane read. When
+   * its source refuses (the typed 501 with its named reason, or any
+   * unavailability-class typed error), the job section degrades to the quiet
+   * unavailable panel - the console navigation and every healthy diagnostic
+   * page stay usable.
+   */
+  readonly jobs: ReadOrUnavailable<readonly ReconciliationJobResource[]>;
 }): HtmlFragment {
+  if (isUnavailableRead(input.jobs)) {
+    return fragment(
+      pageHeading(
+        "Reconciliation jobs",
+        "Periodic/triggered repair comparing projections against canonical ADCOS resources. Re-running a crashed job converges instead of duplicating.",
+      ),
+      unavailablePanelFor(input.jobs, {
+        section: "reconciliation-jobs",
+        meaning:
+          "The reconciliation job history cannot be shown right now. The rest of the console stays usable from the navigation above, and this page will show the history once its source answers.",
+      }),
+    );
+  }
   return fragment(
     pageHeading(
       "Reconciliation jobs",

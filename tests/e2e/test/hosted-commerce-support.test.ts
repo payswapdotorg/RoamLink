@@ -24,12 +24,23 @@ import { bootHostedJourney } from "../src/host.js";
 const VARIANT_ID = "05050505-0000-4000-8000-000000000005";
 
 describe("RL-113 hosted journey: activity explanation", () => {
-  it("keeps the activity narrative fail-closed (the notification read model keeps its named 501) while the read-marking command stays durable", async () => {
+  it("degrades the activity narrative component-scoped (the notification read model keeps its named 501) while the read-marking command stays durable", async () => {
     const journey = await bootHostedJourney({ seed: 0x0c1, email: "activity@example.com" });
     try {
       const activityPage = await journey.app.renderDocument({ page: "activity" });
-      expect(activityPage).toContain('data-error-kind="unavailable"');
-      expect(activityPage).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-020: Activity degrades COMPONENT-SCOPED over the real runtime -
+      // the intents/devices core reads compose, so the automation status
+      // renders its honest idle state; the notification-derived sections
+      // (the needs-attention list and the timeline) degrade to the quiet
+      // unavailable panel with the typed reason and the named WHY, never a
+      // fabricated narrative and never a blank page.
+      expect(activityPage).not.toContain('data-error-kind=');
+      expect(activityPage).toContain('data-automation-idle="true"');
+      expect(activityPage).toContain('data-unavailable-section="activity-needs-you"');
+      expect(activityPage).toContain('data-unavailable-section="activity-timeline"');
+      expect(activityPage).toContain('data-unavailable-reason="READ_MODEL_NOT_COMPOSED"');
+      expect(activityPage).toContain("NOTIFICATION_STORE_NOT_BOUND");
+      expect(activityPage).not.toContain('data-activity-feed="true"');
       // The activity destination is discoverable from the persistent shell.
       expect(activityPage).toContain('href="/activity"');
 
