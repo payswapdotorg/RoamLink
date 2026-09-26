@@ -224,3 +224,29 @@ bucket separate from API creates). Sequencing impact recorded honestly:
 PA-021 (deployed browser acceptance) was held behind the deploy;
 deploy-independent work orders (PA-024) continued. The quota resets at
 ~04:00 UTC 2026-09-27 regardless.
+
+### Correction (2026-09-26, later the same hour — the honest-record discipline)
+
+The remediation paragraph above was written on a wrong premise and is
+superseded by this note (kept additive; the record does not rewrite
+itself). The facts established after full diagnosis:
+
+- The alias `roamlink-ten.vercel.app` is owned by the `roamlink` project
+  (`prj_ZnOFB8LA...`), which has ALWAYS been the real production pipeline
+  (GitHub integration, rootDirectory `apps/portal-host`, production
+  branch `main`). The earlier `roamlink-ten` project deploys (including
+  every v13 `gitSource` API create this campaign recorded as "deployed")
+  were EMPTY no-op builds on an unconfigured project — the live
+  verifications that followed them were, in truth, verifying the
+  `roamlink` project's git-auto-deployed production of the same commits.
+- The actual blocker for deploying current main (`10dbe80`, PA-020 +
+  PA-023 merged) is the free-tier DEPLOYMENT RATE LIMIT on the `roamlink`
+  project: the commit status reads "Deployment rate limited — retry in 24
+  hours" (visible on the commit's Vercel status; the blocked webhooks do
+  not retry). Production therefore serves `7b3f6a7` (the pre-PA-020/023
+  docs head) until the limit resets (~2026-09-27 04:00 UTC).
+- The remediation that actually works when the limit resets: ANY new push
+  to `main` triggers the production deploy (the integration is healthy —
+  branch pushes deployed previews minutes before the limit clamped).
+- The diagnostic branch `deploy/main-current` was deleted after the
+  diagnosis (the blocked webhook will not retroactively deploy it).
