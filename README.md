@@ -667,19 +667,21 @@ is pinned to `2.0`, the only supported ADCOS Developer API line.
 
 ## Current implementation handoff
 
-The architecture and deterministic release-gate baseline are complete, and RL-082 through RL-118 are now implemented/evidenced. RL-118 deployment acceptance is recorded for the live demo environment.
+The architecture and the RL-001..RL-118 baseline are complete, and PA-001..PA-019 are implemented/evidenced.
 
-The canonical current Tech Lead/Orchestrator handoff is:
+The current canonical Tech Lead / Orchestrator handoff is:
 
-- `spec/tech-lead-handoff-2026-09-21.md`
+- spec/tech-lead-handoff-2026-09-26.md
 
-Supporting current evidence:
+Current runtime evidence:
 
-- `docs/capability-discoverability.md` — RL-115 capability entry/link/view/recovery audit and findings.
-- RL-114 accessibility findings are pinned in the Wave 8 verification suites.
-- `docs/reports/rl-118-deployment-acceptance.md` — live demo deployment record.
-- `spec/current-state.md` — current implementation/deployment status.
+- docs/live-journey-runtime-audit-2026-09-26.md
+- spec/current-state.md
+- spec/post-release-roadmap.md
+- spec/orchestrator.md
+- spec/deployment.md
+- docs/reports/rl-118-deployment-acceptance.md
 
-The accepted demo runs on Vercel Hobby with Neon Free PostgreSQL. The RL-118 record contains 8 green checks, 4 named operator-phase skips, and 0 red rows. Cloudflare R2 and Upstash Redis/QStash were not enabled in the accepted demo, and ADCOS production credentials were not configured at acceptance time.
+The customer portal, admin console and mobile/edge interface are real. The remaining work is live-runtime composition/execution: several required API reads are still explicitly unbound, some rendered mutation actions are not yet in the live API mutation route table, and the deployed demo needs the command-execution worker path to advance accepted commands.
 
-Post-acceptance work is now focused on closing the RL-114/RL-115 discoverability and capability gaps rather than restarting RL-082..RL-118.
+Do not declare the current phase complete until the live browser journey suite, current-main deployment acceptance and the PA-020..PA-029 exit criteria pass.
