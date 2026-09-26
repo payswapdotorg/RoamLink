@@ -2,155 +2,152 @@
 
 ## Mission
 
-Build the complete RoamLink architecture in this repository without architectural drift. The repository is the source of truth.
+Build the complete RoamLink architecture without architectural drift. The repository is the source of truth.
 
 ## Authority hierarchy
 
-1. `spec/architecture-lock.md`
-2. `spec/architecture.md`
-3. `spec/authority-model.md`
-4. `spec/adcos-integration.md`
+1. spec/architecture-lock.md
+2. spec/architecture.md
+3. spec/authority-model.md
+4. spec/adcos-integration.md
 5. approved ADRs
 6. work-item definitions and dependency graph
 7. implementation code
 8. tests/fixtures as verification evidence
 
-When lower layers disagree with higher layers, stop and resolve the discrepancy; do not reinterpret the higher layer locally.
+When lower layers disagree with higher layers, stop and resolve the discrepancy.
 
-## Startup procedure
+## Current baseline
 
-Before assigning work:
+RL-001..RL-118 and PA-001..PA-019 are implemented/evidenced.
 
-1. Read all `spec/*.md` architecture/governance files.
-2. Read every approved ADR.
-3. Inspect repository tree and current implementation.
-4. Inspect the supported ADCOS Developer API contract and version used by the integration.
-5. Run the baseline test/lint/type/build commands.
-6. Construct the current work graph from `spec/work-items.md` and `spec/dependency-graph.md`.
-7. Record the current implementation state in the work-item tracker/PR descriptions.
+The current phase is not architecture construction. It is live-runtime completion.
 
-## Worker contract
-
-Each worker receives:
-
-- exact work-item IDs;
-- relevant architecture sections/locks;
-- explicit input contracts;
-- allowed files/modules;
-- dependencies already satisfied;
-- definition of done;
-- required tests.
-
-Workers must:
-- implement only assigned scope;
-- reuse existing contracts rather than inventing parallel ones;
-- update tests/specs when behavior changes;
-- stop when an architectural dependency is missing;
-- never silently modify a frozen invariant.
+Read first:
+- spec/tech-lead-handoff-2026-09-26.md
+- docs/live-journey-runtime-audit-2026-09-26.md
+- spec/current-state.md
+- spec/ux-architecture.md
+- spec/deployment.md
 
 ## Three-worker operating model
 
-Use three concurrent workers where dependencies permit. Prefer one bounded context per worker:
+### Worker A — Experience / browser validation
 
-**Worker A — Experience/Commerce**
-Owns Experience, customer, device registry, intent, product, order/subscription and customer payment domains.
+Owns:
+- component-scoped degradation;
+- current deployed browser journey suite;
+- final customer/mobile accessibility;
+- ShareNet-inspired UX polish.
 
-**Worker B — ADCOS Integration/Data**
-Owns ADCOS client/mappers, webhook inbox, projections, reconciliation and ADCOS contract tests.
+Work:
+- PA-020
+- PA-021
+- PA-022
 
-**Worker C — Edge/Platform**
-Owns edge contracts/implementation, sync/outbox, platform security/observability/deployment foundations and conformance harness.
+### Worker B — API / runtime / execution
 
-The orchestrator owns cross-worker contracts, merges, release gates and any shared authority changes.
+Owns:
+- services/api mutation route parity;
+- remaining read models;
+- services/workers execution;
+- enterprise runtime composition.
 
-## Before merge
+Work:
+- PA-023
+- PA-024
+- PA-025
+- PA-026
 
-Orchestrator checks:
+### Worker C — deployment / providers / release
 
-- architecture locks remain intact;
-- no new authority exists;
-- imports/dependencies are directional;
-- state transitions are explicit;
-- retries/reordering/failure are covered;
-- evidence/freshness is preserved;
-- tests prove the intended architectural invariant;
-- no worker has duplicated another worker's authority.
+Owns:
+- current-main deployment;
+- free-tier provider configuration;
+- smoke/acceptance/rollback;
+- current deployment evidence.
+
+Work:
+- PA-027
+- PA-028
+- PA-029
+
+## Shared-contract ownership
+
+The orchestrator owns:
+- app flow ↔ API mutation parity contract;
+- read-model coverage matrix;
+- worker-execution trigger contract;
+- browser acceptance contract;
+- deployment acceptance record;
+- any architecture/ADR changes.
+
+## Mandatory parity checks
+
+Before merging:
+1. Every CustomerWebApp mutation flow maps to a real services/api mutation route or to an explicitly documented multi-command orchestration.
+2. Every customer/admin primary surface has an explicit read dependency map.
+3. Every read dependency is either composed, locally degraded, or explicitly unavailable with a named reason.
+4. Accepted commands are never rendered as executed.
+5. Executed commands are never rendered as delivered without delivery evidence.
+6. Payment never renders as connectivity delivery.
+7. The worker path is idempotent and restart-safe.
+
+## UX review rule
+
+A feature is incomplete when the user cannot discover:
+- what it does;
+- where it is;
+- why it changed;
+- what RoamLink knows;
+- what RoamLink does not know;
+- what the user can do next;
+- how to get help.
+
+A primary page should remain useful when a secondary data source is unavailable.
+
+## Deployment review rule
+
+Use spec/deployment.md as the source of truth.
+
+Provider roles:
+- Neon/PostgreSQL = durable truth;
+- Redis = ephemeral acceleration;
+- QStash = delivery;
+- R2 = object storage;
+- Vercel = hosting/runtime;
+- ADCOS = connectivity authority.
+
+A provider limit that threatens correctness is a blocker.
+
+## Validation sequence
+
+After each worker lane:
+1. pnpm check
+2. relevant focused tests
+3. architecture conformance
+4. journey suite
+5. inspect changed dependency edges
+6. update work-item status
+
+At integration:
+1. deploy current main;
+2. run smoke;
+3. run live browser journeys;
+4. run demo acceptance;
+5. run rollback check;
+6. refresh current-state and deployment evidence.
 
 ## Stop conditions
 
-Stop implementation and write an ADR/blocker when:
-
-- ADCOS public API cannot support an assumed operation;
-- an implementation requires internal ADCOS imports;
-- a mobile/platform capability is unavailable;
-- two modules both need to become authoritative for the same state;
-- a state transition is ambiguous between customer commerce and connectivity delivery;
-- security/privacy requirements conflict with a proposed feature.
-
-## Integration gates
-
-After every wave:
-
-1. run all checks;
-2. inspect changed dependency edges;
-3. run architecture conformance tests;
-4. exercise end-to-end scenario(s);
-5. update work-item status;
-6. only then release the next wave.
-
-## Dogfood scenarios
-
-At minimum test:
-
-- individual travel with preferred Wi-Fi and cellular fallback;
-- small business with primary/fallback networks;
-- enterprise organization with policies and multiple devices;
-- offline edge followed by reconnect/reconciliation;
-- ADCOS webhook duplication/reordering/drop;
-- customer payment success followed by connectivity failure;
-- ADCOS reservation/path success followed by provider/access degradation;
-- unsupported mobile capability requiring graceful degradation.
+Stop and write an ADR/blocker if:
+- a new connectivity authority is required;
+- an internal ADCOS dependency is proposed;
+- a required provider capability is not exposed by the public contract;
+- a read model can only be made “complete” by inventing state;
+- serverless execution would violate persistence semantics;
+- the design requires copying ShareNet code/branding.
 
 ## Final release rule
 
-Do not declare completion because all tickets are green. Completion requires all release gates plus an architecture audit showing that RoamLink remains a Connectivity Experience OS above ADCOS rather than a second connectivity OS.
-
-
-## Post-gate worker dispatch
-
-Wave 6:
-- Worker A: RL-082..RL-088.
-- Worker B: RL-089..RL-094.
-- Worker C: RL-095..RL-100.
-
-Wave 7:
-- Worker A: RL-101..RL-104.
-- Worker B: RL-105..RL-108.
-- Worker C: RL-109..RL-112.
-
-Wave 8:
-- Workers parallelize validation; RL-118 remains orchestrator-owned.
-
-### UX review rule
-
-A feature is incomplete when the user cannot reasonably discover what it does, where it is, why it changed, what RoamLink knows, what it does not know, what the user can do next, and how to get help. Use spec/ux-architecture.md and spec/user-journey-audit.md as the source of truth.
-
-### Deployment review rule
-
-Use spec/deployment.md as the source of truth. Free-tier providers are replaceable infrastructure, never domain authorities.
-
-At minimum:
-- Neon/Postgres owns durable relational state.
-- Redis is ephemeral.
-- QStash is asynchronous delivery.
-- R2 is object storage.
-- Vercel is the hosted runtime, not a domain authority.
-
-A provider limit that can threaten correctness is a blocker, not an optimization.
-
-### Additional dogfood journeys
-
-- first-run onboarding -> goal -> device -> connectivity -> activity -> support;
-- purchase -> delivery evidence -> billable-final;
-- enterprise visual onboarding -> live organization overview;
-- hosted ADCOS compatibility failure -> read-only/degraded experience.
+The phase is complete only when the current deployed SHA supports the major individual, enterprise and operator journeys end-to-end, remains truthful under degradation, and passes architecture conformance.
