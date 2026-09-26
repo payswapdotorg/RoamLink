@@ -495,6 +495,64 @@ The connector action is also only host-wired: the services/api mutation route ta
 
 So the architecture is present, but the hosted enterprise journey is not yet executable end-to-end.
 
+**Enterprise runtime closure note (2026-09-26, PA-026 — additive; the findings above are unchanged as the
+historical record; the PA-024 note in §3 closed the workspace-route 404 and composed the honest-null sections,
+and this note closes the remaining source bindings + the execution legs):** every honest-NULL section of the
+PA-024 workspace composition was re-surveyed for bindability and BOUND through the service's own construction —
+the AUTHORITY LAW held throughout (the @roamlink/enterprise domain owns every enrollment/policy/connector/
+integration state machine; the API layer binds its stores and consumes its parsers, never re-implementing or
+shadowing its logic). What bound: **`enrollment`** — the domain's `EnterpriseEnrollmentRecord` store through
+the SHARED PERSISTENCE port the api service is already constructed with (the new records-port partition
+`enterprise-enrollments`; the default source binding needs no host change, and an explicit source override
+remains composable for in-process domain-service compositions); **`policy`** — the upstream organization
+administration's read-only `OrganizationPolicyRecord` observations through the partition
+`enterprise-policies` (the domain owns no policy command by design — RoamLink never duplicates connectivity
+policy authority); **`integrations`** — the read-only SSO/SCIM/MDM `EnterpriseIntegrationStatusRecord`
+observations through `enterprise-integrations` (same law); **`connector`** — the executed-command ledger's
+EXECUTED-only existence fact, now enriched with the domain's own `ConnectorProvisioningRecord`
+(`enterprise-connector-provisionings`) when execution persisted one (the PA-024 ledger-only projection —
+the creation state `provisioning` — remains the honest answer for a ledger-executed resource with no store
+record). Every served section is a real fact of the bound state, parsed by the domain's own fail-closed
+parsers; a partition that holds nothing for the acting tenant serves the contract's honest NULL section
+("an absent section is not an assertion"); no section stays NULL for unbindability. The enrollment scoping
+follows the domain's own reference discipline: an organization workspace serves the enrollment whose
+provisioned tenant is that organization; a personal workspace serves the authenticated actor's own in-flight
+request (requestedBy + unbound tenant); everything else is out of scope (no existence oracle). The EXECUTION
+legs: `services/workers/src/enterprise-executors.ts` binds the domain's pure functions as executors on the
+worker seam PA-025 composed (the same `createBoundedWorkerTick` + `commandLedgerDeliveryPort` bounded-tick
+path): `applyEnterpriseEnrollmentCommand` (the RL-063 journey transitions, the enrollment id resolved from the
+stored route path — the command plane's targeted-command law) and `negotiateConnectorProvisioning` (the
+RL-044 negotiation over the composition's available set, defaulting to the guaranteed degradation floor —
+observation + user-guided actions — so an enterprise operating mode is never claimed without enterprise
+infrastructure), over the shared-persistence store adapters; the registrar port is REQUIRED at composition
+(verification's only tenant source — bound in the battery to the REAL @roamlink/auth administration boundary,
+which provisions the organization and the requesting user's owner membership as real identity facts). The
+enrollment commands reach the command plane through the REAL `ingestCommand` discipline at packages/
+enterprise's own pinned route templates (`/v1/enterprise/enrollments[...]`) — the recorded finding: **apps/web
+renders NO enrollment action** (the workspace page renders the enrollment journey read-only; the connector
+enrollment command is the surface's only enterprise mutation), so services/api's MUTATION_ROUTES gains NO
+enrollment route (the PA-023 parity law governs; the UI-journey gap belongs to a surface work order). Battery
+evidence: `services/workers/test/enterprise-executors.test.ts` (5 tests — the enrollment journey draft →
+submitted → verified (registrar-bound tenant) → active executed through the bounded tick over real
+PostgreSQL; the honest pre-execution state; the same-tick sibling-ordering convergence; the connector
+negotiation persisted with its resource; the no-enrollment retryable refusal), and the executed-state e2e leg
+in `tests/e2e/test/hosted-offline-edge-enterprise.test.ts` (the full journey over the REAL hosted
+composition: the personal-tenant honest negatives → the enrollment executed via the tick at every step → the
+verify-accepted-not-ticked negative (submitted, never the future state) → the registrar-provisioned
+organization composing its own REAL identity record → activation → the connector through the real
+provisionConnectorFlow accepted-then-executed serving the PROVISIONED state → the policy/integration
+observations published through the shared persistence serving the configured/not-configured/unknown states →
+the fleet device + the first goal through the hosted demo tick → the eight-step walk rendering every step's
+REAL state, with the honest waiting/action-needed states where the capability-verification and connectivity
+planes hold nothing). The pre-existing PA-024 assertions stay pinned unchanged. Honest remaining gaps: the
+hosted demo endpoint's own executor table (services/worker-endpoint — outside this work order's surface)
+still composes only the demo kinds, so the HOSTED tick route does not yet execute the enterprise kinds (the
+battery drives the same bounded-tick seam directly over the hosted composition's own persistence; wiring the
+enterprise table into the endpoint's composition is the execution wave's remaining work), and no web surface
+renders the enrollment commands yet (the recorded UI-journey finding). The `pnpm check` floor held (46 test
+suites, 2840 passed / 23 skipped — six new tests, zero regressions, the domain packages' own suites untouched
+and green); no existing test was weakened, skipped or deleted.
+
 ### Journey 11 — Admin / Operations
 
 Result: ◐

@@ -23,6 +23,8 @@
     "@roamlink/api-service": "workspace:*",
     "@roamlink/compat": "workspace:*",
     "@roamlink/contracts": "workspace:*",
+    "@roamlink/edge-connector": "workspace:*",
+    "@roamlink/enterprise": "workspace:*",
     "@roamlink/integration": "workspace:*",
     "@roamlink/observability": "workspace:*",
     "@roamlink/persistence": "workspace:*",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.2.17",
+    "@roamlink/auth": "workspace:*",
     "@roamlink/testkit": "workspace:*",
     "@types/node": "^22.10.0",
     "@types/pg": "^8.11.10",

@@ -21,6 +21,7 @@
     "@roamlink/app-kit": "workspace:*",
     "@roamlink/auth": "workspace:*",
     "@roamlink/contracts": "workspace:*",
+    "@roamlink/enterprise": "workspace:*",
     "@roamlink/observability": "workspace:*",
     "@roamlink/persistence": "workspace:*",
     "@roamlink/resilience": "workspace:*",

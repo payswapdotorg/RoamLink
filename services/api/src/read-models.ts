@@ -17,21 +17,21 @@
  *     persistence. Honest skips, recorded in the route table below (and in
  *     the PA-019 closure note), never papered over.
  *
- * PA-024 composes the remaining journey read whose source binds through the
+ * PA-024 composed the remaining journey read whose source binds through the
  * service's existing ports: the ENTERPRISE WORKSPACE read
  * (`/v1/enterprise/workspace`, previously the audit §3 plain 404). Its
  * sections compose exactly what the bound state asserts: `organization` from
  * the bound identity stores (the acting org tenant's real organization
  * record; the honest null for a personal tenant), `connector` from the
  * command-ledger projection of EXECUTED connector.provision commands (the
- * PA-023 mutation; the domain's creation state, advanced by no executed
- * transition this bound state records), and `enrollment` / `policy` /
- * `integrations` as the contract's honest NULL sections (their owning
- * sources - the enterprise enrollment journey store, the upstream policy
- * administration, the integration status records - have no port bound in
- * this service's construction; the application contract models the absent
- * section as null, "an absent section is not an assertion", never a guessed
- * one). No enterprise state machine is invented in this API layer.
+ * PA-023 mutation; enriched by PA-026 with the domain's own provisioning
+ * record when execution persisted one), and `enrollment` / `policy` /
+ * `integrations` from the enterprise source bindings PA-026 landed
+ * (./enterprise.ts): the domain's records persisted through the SHARED
+ * PERSISTENCE port the service is already constructed with - the honest null
+ * where the source holds nothing for the acting tenant, "an absent section
+ * is not an assertion", never a guessed one. No enterprise state machine is
+ * invented in this API layer.
  *
  * THE PROJECTION LAW (the standing truthfulness law, applied to reads): a
  * business resource exists in a composed read model ONLY when its creating
@@ -85,6 +85,11 @@ import type { PersistenceReader } from "@roamlink/persistence";
 
 import { COMMAND_REPOSITORY, type StoredCommand } from "./commands.js";
 import { readContextHeaders, type AuthenticatedPrincipal } from "./envelope.js";
+import {
+  createPersistenceEnterpriseSources,
+  type EnterpriseIntegrationStatusRecord,
+  type EnterpriseWorkspaceSources,
+} from "./enterprise.js";
 import {
   jsonResponse,
   readModelNotComposed,
@@ -170,6 +175,16 @@ export interface ReadModelOptions {
   readonly authorization: AuthorizationService;
   /** Injected clock: every presented instant is explicit and testable. */
   readonly now: () => UtcInstant;
+  /**
+   * PA-026: the enterprise workspace sources (the enrollment journey store,
+   * the policy administration records, the integration status records, the
+   * connector provisioning records). ABSENT -> the DEFAULT binding: the
+   * SHARED PERSISTENCE the service is already constructed with (the same
+   * records-port partitions the command ledger lives in) — the binding needs
+   * no composition change, and a partition that holds nothing for the acting
+   * tenant serves the contract's honest NULL section.
+   */
+  readonly enterprise?: EnterpriseWorkspaceSources;
 }
 
 /** The per-request read context (the authorized tenant scope of the read). */
@@ -182,8 +197,18 @@ export interface ReadRequestContext {
   readonly tenantId: TenantId;
 }
 
+/**
+ * The resolved composition the composed handlers run over (the dispatcher
+ * binds the enterprise sources before any handler runs — PA-026).
+ */
+export type ResolvedReadModelOptions = Omit<ReadModelOptions, "enterprise"> & {
+  readonly enterprise: NonNullable<ReadModelOptions["enterprise"]>;
+};
+
 /** A composed read handler: the request context + the bound composition. */
-type ComposedReadHandler = (input: ReadRequestContext & ReadModelOptions) => Promise<HttpResponse>;
+type ComposedReadHandler = (
+  input: ReadRequestContext & ResolvedReadModelOptions,
+) => Promise<HttpResponse>;
 
 export type ReadModelDispatcher = (
   request: HttpRequest,
@@ -199,6 +224,15 @@ export type ReadModelDispatcher = (
  * read-model route (the caller answers its own 404).
  */
 export function createReadModelDispatcher(options: ReadModelOptions): ReadModelDispatcher {
+  // PA-026: the enterprise workspace sources bind through the service's
+  // construction — the DEFAULT is the SHARED PERSISTENCE port the service is
+  // already composed with (the domain's records persist in its records-port
+  // partitions); an explicit binding (the in-process domain services
+  // composition) overrides it. Either way the sections serve only what the
+  // bound source actually asserts.
+  const enterprise: EnterpriseWorkspaceSources =
+    options.enterprise ?? createPersistenceEnterpriseSources(options.persistence);
+  const composed = { ...options, enterprise };
   return async (request, path, principal): Promise<HttpResponse | null> => {
     if (request.method !== "GET") return null;
     const segments = pathSegments(path);
@@ -245,7 +279,7 @@ export function createReadModelDispatcher(options: ReadModelOptions): ReadModelD
     }
     const tenantId = parseTenantId(context.tenantId);
     await options.authorization.resolveActorTenant(principal.actorId, tenantId, options.now());
-    return handler({ request, path, principal, tenantId, ...options });
+    return handler({ request, path, principal, tenantId, ...composed });
   };
 }
 
@@ -1035,7 +1069,8 @@ async function handleSupportCaseRead(
 }
 
 // --------------------------------------------------------------------------------
-// The enterprise workspace read (PA-024: the audit §3 404, composed)
+// The enterprise workspace read (PA-024 composed it; PA-026 binds the
+// enrollment/policy/integration sources through the shared persistence port)
 // --------------------------------------------------------------------------------
 
 /**
@@ -1045,7 +1080,7 @@ async function handleSupportCaseRead(
  * workspace identity, never an existence probe).
  */
 async function workspaceOrganizationOf(
-  input: ReadRequestContext & ReadModelOptions,
+  input: ReadRequestContext & ResolvedReadModelOptions,
 ): Promise<Record<string, unknown> | null> {
   if (!input.tenantId.startsWith("org:")) return null;
   const organizationId = parseOrganizationId(input.tenantId.slice("org:".length));
@@ -1063,15 +1098,19 @@ async function workspaceOrganizationOf(
 }
 
 /**
- * The workspace's connector section: the command-ledger projection of the
- * tenant's EXECUTED connector.provision commands (the PA-023 mutation
- * route). The projection law: accepted is NOT executed - a provisioned
- * connector exists only when its command executed and recorded its
- * `connector_provisioning` resource id. The projected state is the domain's
- * creation state (`provisioning` - the in-flight vocabulary
- * packages/enterprise's provisioning record owns); the provisioned/failed/
- * revoked transitions are domain-execution facts this bound state never
- * asserts, so they are never invented here.
+ * The workspace's connector section (PA-024's projection law, extended by
+ * PA-026 to serve the domain's own record when execution persisted one):
+ *
+ *  - EXISTENCE stays the command-ledger's EXECUTED fact: a provisioning
+ *    exists only when its connector.provision command executed and recorded
+ *    its `connector_provisioning` resource id (accepted is NOT executed);
+ *  - STATE comes from the bound provisioning store when it holds the domain's
+ *    record for that executed resource — the negotiated state the domain's
+ *    own machinery recorded at execution (provisioned/failed with its
+ *    closed-vocabulary reason); the ledger keeps the timing facts;
+ *  - a ledger-executed resource with no store record (a simulated or
+ *    partial execution) still serves the domain's creation state
+ *    `provisioning` — the PA-024 semantics, never a guessed transition.
  *
  * The one-active-attempt law (the domain rejects a second active
  * provisioning) means at most the LATEST executed attempt is the current
@@ -1079,9 +1118,10 @@ async function workspaceOrganizationOf(
  * could execute. The read composes the latest, never a transition the
  * ledger does not record.
  */
-function workspaceConnectorOf(
+async function workspaceConnectorOf(
+  input: ReadRequestContext & ResolvedReadModelOptions,
   commands: readonly ExecutedCommand[],
-): Record<string, unknown> | null {
+): Promise<Record<string, unknown> | null> {
   let latest: ExecutedCommand | null = null;
   // executedCommandsOf sorts ascending by (executedAt, commandId): the last
   // matching executed command is the current provisioning attempt.
@@ -1090,49 +1130,227 @@ function workspaceConnectorOf(
     if (command.resourceId === null) continue; // executed without its recorded resource: nothing to project
     latest = command;
   }
-  if (latest === null) return null;
+  if (latest === null || latest.resourceId === null) return null;
+  const record = await input.enterprise.connectorProvisioning.get(
+    latest.resourceId,
+    input.tenantId,
+  );
+  if (record === null) {
+    return {
+      provisioningId: latest.resourceId,
+      state: "provisioning", // the domain's creation state at execution
+      createdAt: latest.executedAt, // a provisioning record exists from execution
+      updatedAt: latest.executedAt,
+    };
+  }
+  // The domain's own record (validated by its parser at the source): its
+  // state and instants are the authority; the fields the record does not
+  // carry (provisionedAt/revokedAt) are never invented.
   return {
-    provisioningId: latest.resourceId,
-    state: "provisioning", // the domain's creation state at execution
-    createdAt: latest.executedAt, // a provisioning record exists from execution
-    updatedAt: latest.executedAt,
+    provisioningId: record.provisioningId,
+    state: record.state,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    ...(record.failureReason !== undefined ? { failureReason: record.failureReason } : {}),
   };
 }
 
 /**
- * PA-024: the enterprise workspace read (GET /v1/enterprise/workspace).
+ * The workspace's enrollment section (PA-026): the acting workspace's REAL
+ * enrollment journey record from the bound source (the shared persistence's
+ * enrollment partition, validated by the domain's own parser).
  *
- * The customer workspace composes ONLY what the service's bound state
- * asserts, section by section (the application contract's
- * EnterpriseWorkspaceResource - every section honestly present or absent):
+ * The scoping follows the domain's own reference discipline (the journey
+ * record's foreign-reference fields, RL-063):
+ *  - an ORGANIZATION workspace serves the enrollment whose provisioned
+ *    tenant is that organization (the record binds its tenant at
+ *    verification — the registrar port's own fact);
+ *  - a PERSONAL workspace serves the authenticated actor's own IN-FLIGHT
+ *    request (requestedBy === the principal, tenant still unbound) — the
+ *    journey the actor started, before the organization exists;
+ *  - everything else (another actor's requests, other organizations'
+ *    records) is out of scope: no existence oracle, no cross-tenant leak.
+ *
+ * The latest matching record (by updatedAt, then revision, then id — the
+ * publication ordering) is the workspace's current journey.
+ */
+async function workspaceEnrollmentOf(
+  input: ReadRequestContext & ResolvedReadModelOptions,
+): Promise<Record<string, unknown> | null> {
+  const records = await input.enterprise.enrollments.list();
+  const inScope = records.filter((record) =>
+    input.tenantId.startsWith("org:")
+      ? record.tenantId === input.tenantId
+      : record.tenantId === null && record.requestedBy === input.principal.actorId,
+  );
+  const current = latestOf(
+    inScope,
+    (record) => record.updatedAt,
+    (record) => record.revision,
+    (record) => record.enrollmentId,
+  );
+  if (current === undefined) return null;
+  return {
+    enrollmentId: current.enrollmentId,
+    organizationName: current.organizationName,
+    state: current.state,
+    tenantId: current.tenantId,
+    requestedBy: current.requestedBy,
+    createdAt: current.createdAt,
+    updatedAt: current.updatedAt,
+    ...(current.verifiedAt !== undefined ? { verifiedAt: current.verifiedAt } : {}),
+    ...(current.activatedAt !== undefined ? { activatedAt: current.activatedAt } : {}),
+    ...(current.rejectionReason !== undefined
+      ? { rejectionReason: current.rejectionReason }
+      : {}),
+    ...(current.cancelledAt !== undefined ? { cancelledAt: current.cancelledAt } : {}),
+  };
+}
+
+/**
+ * The workspace's policy section (PA-026): the acting tenant's REAL policy
+ * read record from the bound source — the upstream organization
+ * administration's published observation (the domain record is READ-ONLY by
+ * construction; this service owns no policy command and invents no policy).
+ * The latest record for the tenant serves; a source that holds nothing for
+ * the tenant serves the honest NULL section ("an absent section is not an
+ * assertion").
+ */
+async function workspacePolicyOf(
+  input: ReadRequestContext & ResolvedReadModelOptions,
+): Promise<Record<string, unknown> | null> {
+  const records = (await input.enterprise.policies.list()).filter(
+    (record) => record.tenantId === input.tenantId,
+  );
+  const current = latestOf(
+    records,
+    (record) => record.updatedAt,
+    (record) => record.revision,
+    (record) => record.policyId,
+  );
+  if (current === undefined) return null;
+  return {
+    policyId: current.policyId,
+    state: current.state,
+    source: current.source,
+    ...(current.policyVersion !== undefined ? { policyVersion: current.policyVersion } : {}),
+    ...(current.summary !== undefined ? { summary: current.summary } : {}),
+    ...(current.effectiveAt !== undefined ? { effectiveAt: current.effectiveAt } : {}),
+    freshness: current.freshness,
+  };
+}
+
+/**
+ * The workspace's integrations section (PA-026): the acting tenant's REAL
+ * integration status records from the bound source — one view per §8 kind
+ * (sso/scim/mdm), the LATEST observation per kind (the domain's closed
+ * four-state vocabulary; this service owns no integration command and
+ * invents no status). A source that holds nothing for the tenant serves the
+ * honest NULL section; a kind without a record is simply absent from the
+ * array (the surface renders its honest per-kind state from the section's
+ * own discipline — never a guessed row here).
+ */
+async function workspaceIntegrationsOf(
+  input: ReadRequestContext & ResolvedReadModelOptions,
+): Promise<readonly Record<string, unknown>[] | null> {
+  const records = (await input.enterprise.integrations.list()).filter(
+    (record) => record.tenantId === input.tenantId,
+  );
+  if (records.length === 0) return null;
+  const latestByKind = new Map<string, EnterpriseIntegrationStatusRecord>();
+  for (const record of records) {
+    const existing = latestByKind.get(record.kind);
+    if (
+      existing === undefined ||
+      later(
+        [record.updatedAt, record.revision, record.integrationId],
+        [existing.updatedAt, existing.revision, existing.integrationId],
+      )
+    ) {
+      latestByKind.set(record.kind, record);
+    }
+  }
+  return [...latestByKind.values()]
+    .sort((a, b) => (a.kind < b.kind ? -1 : 1))
+    .map((record) => ({
+      kind: record.kind,
+      state: record.state,
+      ...(record.summary !== undefined ? { summary: record.summary } : {}),
+      freshness: record.freshness,
+    }));
+}
+
+/** Orders candidates by (instant, revision, id) and picks the latest. */
+function latestOf<T>(
+  candidates: readonly T[],
+  instantOf: (candidate: T) => string,
+  revisionOf: (candidate: T) => number,
+  idOf: (candidate: T) => string,
+): T | undefined {
+  let latest: T | undefined;
+  for (const candidate of candidates) {
+    if (
+      latest === undefined ||
+      later(
+        [instantOf(candidate), revisionOf(candidate), idOf(candidate)],
+        [instantOf(latest), revisionOf(latest), idOf(latest)],
+      )
+    ) {
+      latest = candidate;
+    }
+  }
+  return latest;
+}
+
+/** The deterministic (instant, revision, id) ordering. */
+function later(
+  left: readonly [string, number, string],
+  right: readonly [string, number, string],
+): boolean {
+  if (left[0] !== right[0]) return left[0] > right[0];
+  if (left[1] !== right[1]) return left[1] > right[1];
+  return left[2] > right[2];
+}
+
+/**
+ * PA-024 composed the enterprise workspace read (GET
+ * /v1/enterprise/workspace); PA-026 binds its remaining sources. The
+ * customer workspace composes ONLY what the service's bound state asserts,
+ * section by section (the application contract's EnterpriseWorkspaceResource
+ * - every section honestly present or absent):
  *  - organization: the bound identity stores' organization record of the
  *    acting org tenant (null for a personal tenant);
- *  - enrollment / policy / integrations: the honest NULL sections - their
- *    owning sources (the enterprise enrollment journey store, the upstream
- *    policy administration read, the integration status records) are not
- *    bound through any port of this service's construction, and "an absent
- *    section is not an assertion" (the application contract's law) - never
- *    a guessed enrollment state, policy or integration status;
- *  - connector: the executed-command projection above;
+ *  - enrollment: the bound enrollment source's record for this workspace
+ *    (the domain's own journey record; null when the source holds nothing
+ *    in scope - never a guessed journey state);
+ *  - connector: the executed-command projection + the domain's provisioning
+ *    record (above);
+ *  - policy / integrations: the bound read-only sources' records for the
+ *    acting tenant (the upstream administration's observations; null when
+ *    the source holds nothing - "an absent section is not an assertion");
  *  - presentedAt: the injected clock.
  *
- * No enterprise state machine is invented in this API layer: the section
- * vocabularies are the application contract's own closed vocabularies, and
- * the workspace page renders its journey content from exactly these facts.
+ * No enterprise state machine is invented in this API layer: every section's
+ * state vocabulary and every record is the domain's own (parsed by its own
+ * fail-closed parsers at the source), and the workspace page renders its
+ * journey content from exactly these facts.
  */
 async function handleEnterpriseWorkspaceRead(
-  input: ReadRequestContext & ReadModelOptions,
+  input: ReadRequestContext & ResolvedReadModelOptions,
 ): Promise<HttpResponse> {
   const organization = await workspaceOrganizationOf(input);
   const commands = await executedCommandsOf(input.persistence, input.tenantId);
-  const connector = workspaceConnectorOf(commands);
+  const enrollment = await workspaceEnrollmentOf(input);
+  const connector = await workspaceConnectorOf(input, commands);
+  const policy = await workspacePolicyOf(input);
+  const integrations = await workspaceIntegrationsOf(input);
   return jsonResponse(200, {
     presentedAt: input.now(),
     organization,
-    enrollment: null,
+    enrollment,
     connector,
-    policy: null,
-    integrations: null,
+    policy,
+    integrations,
   });
 }
 

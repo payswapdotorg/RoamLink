@@ -950,6 +950,9 @@ importers:
       '@roamlink/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@roamlink/enterprise':
+        specifier: workspace:*
+        version: link:../../packages/enterprise
       '@roamlink/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -1054,6 +1057,12 @@ importers:
       '@roamlink/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@roamlink/edge-connector':
+        specifier: workspace:*
+        version: link:../../packages/edge-connector
+      '@roamlink/enterprise':
+        specifier: workspace:*
+        version: link:../../packages/enterprise
       '@roamlink/integration':
         specifier: workspace:*
         version: link:../../packages/integration
@@ -1085,6 +1094,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.2.17
         version: 0.2.17
+      '@roamlink/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@roamlink/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
@@ -1380,6 +1392,9 @@ importers:
       '@roamlink/adcos':
         specifier: workspace:*
         version: link:../../packages/adcos
+      '@roamlink/api-service':
+        specifier: workspace:*
+        version: link:../../services/api
       '@roamlink/app-kit':
         specifier: workspace:*
         version: link:../../packages/app-kit
@@ -1395,9 +1410,15 @@ importers:
       '@roamlink/edge-actions':
         specifier: workspace:*
         version: link:../../packages/edge-actions
+      '@roamlink/enterprise':
+        specifier: workspace:*
+        version: link:../../packages/enterprise
       '@roamlink/mobile':
         specifier: workspace:*
         version: link:../../apps/mobile
+      '@roamlink/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       '@roamlink/persistence-postgres':
         specifier: workspace:*
         version: link:../../packages/persistence-postgres
@@ -1413,6 +1434,9 @@ importers:
       '@roamlink/webhook-inbox':
         specifier: workspace:*
         version: link:../../packages/webhook-inbox
+      '@roamlink/workers':
+        specifier: workspace:*
+        version: link:../../services/workers
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
