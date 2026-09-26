@@ -1,13 +1,14 @@
 # Current State
 
-**Reviewed:** 2026-09-21  
-**Repository:** `payswapdotorg/RoamLink`  
-**Current main:** `acb3a827661a2b1b94c18f2c037e567c6b8c0eed`
+**Reviewed:** 2026-09-26
+**Repository:** payswapdotorg/RoamLink
+**Current main:** a68cf94537d247401c2368c8446fb300136680e6
 
-**Architecture:** v1.0.0, FROZEN FOR IMPLEMENTATION.  
-**Implementation:** RL-001 through RL-118 are implemented/evidenced.  
-**Deployment:** RL-118 deployment acceptance passed for the live demo environment.  
-**Next phase:** post-acceptance capability/discoverability closure.
+**Architecture:** v1.0.0, FROZEN FOR IMPLEMENTATION.
+**Implementation:** RL-001 through RL-118 implemented/evidenced.
+**Post-acceptance:** PA-001 through PA-019 implemented/evidenced.
+**Deployment:** hosted Vercel + Neon demo exists; current main has a successful Vercel check.
+**Next phase:** live-runtime composition and final hosted journey completion.
 
 ## Delivered baseline
 
@@ -15,92 +16,155 @@
 - Frozen layered architecture and authority model.
 - ADCOS public Developer API boundary and lifecycle mapping.
 - Customer/ADCOS state separation.
-- Customer domain, commerce, edge, platform/security and integration packages.
+- Customer, commerce, edge, platform/security and integration packages.
 - Architecture conformance, simulation, dogfood, load, security and deployment verification.
 - RL-080 MVP release gate: PASS.
 - RL-081 production-readiness gate: PASS.
 
 ### Hosted productization
-- RL-082/083 onboarding and customer application shell.
-- RL-084/085 Connectivity Center and Activity narrative.
-- RL-086/087 Goals and Device capability experience.
-- RL-088 responsive/accessibility verification.
-- RL-089/090 hosted Next.js portal + API/BFF composition.
-- RL-091 PostgreSQL persistence.
-- RL-092 SQL migrations.
-- RL-093/094 durable recovery and inbox progression.
-- RL-095..099 provider adapters and deployment manifests.
-- RL-100 real health/readiness + synthetic smoke.
-- RL-101..104 journey completion.
-- RL-105..108 runtime/ADCOS hardening.
-- RL-109..112 operations verification.
-- RL-113..116 journey, UX, discoverability and SLO validation.
-- RL-117 demo acceptance gate.
-- RL-118 deployment acceptance.
+- RL-082..RL-088 customer shell, onboarding, Connectivity, Activity, Goals, Devices and accessibility.
+- RL-089..RL-094 hosted runtime, API/BFF, PostgreSQL, SQL migrations and durable recovery.
+- RL-095..RL-100 provider adapters, deployment manifests, health/readiness and smoke.
+- RL-101..RL-112 journey completion, hardening, worker/maintenance and ops verification.
+- RL-113..RL-118 journey validation, discoverability/accessibility audits, demo acceptance and deployment acceptance.
 
-## Live demo deployment
+### Post-acceptance
+- PA-001 eSIM customer journey.
+- PA-002 refund read model.
+- PA-003 order discoverability + notifications compatibility-only contract.
+- PA-004 web accessibility closure.
+- PA-005 mobile accessibility/navigation closure.
+- PA-006 enterprise connector UX.
+- PA-007 organization policy read model.
+- PA-008 enterprise integrations UX.
+- PA-009 SLO navigation.
+- PA-010 integration-health surface.
+- PA-011 real PostgreSQL verification.
+- PA-012 real R2 verification.
+- PA-013 real Redis verification.
+- PA-014..PA-016 deployment/provider acceptance work.
+- PA-017 real QStash wire verification.
+- PA-018 hosted form-action wiring.
+- PA-019 real business read-model composition.
 
-The accepted deployment record is `docs/reports/rl-118-deployment-acceptance.md`.
+## Current interfaces
 
-Current recorded demo stack:
-- Vercel Hobby / Next.js portal-host.
+Customer:
+- hosted Next.js portal composing apps/web;
+- onboarding;
+- Home;
+- Connectivity;
+- Activity;
+- Devices;
+- eSIM/SIM & Profiles;
+- Goals;
+- Plans & Billing;
+- Orders;
+- Support;
+- Workspace;
+- Settings/More.
+
+Admin:
+- tenants;
+- audit/security;
+- reconciliation;
+- projection health;
+- SLO health;
+- support triage;
+- integration health.
+
+Mobile/edge:
+- Now;
+- Capabilities;
+- Controls;
+- Outbox.
+
+## Current live-runtime qualification
+
+The surface-level RL-114/RL-115 discoverability audit is closed.
+
+The newer runtime audit is recorded in:
+docs/live-journey-runtime-audit-2026-09-26.md
+
+The key distinction is:
+
+**surface capability != live-runtime capability**
+
+PA-019 composes real reads for:
+- users;
+- organizations;
+- devices;
+- experience intents/versions;
+- payments;
+- connectivity;
+- reconciliation jobs;
+- support cases.
+
+The real API still keeps named 501 reads for:
+- products;
+- orders;
+- order detail;
+- subscriptions;
+- notifications;
+- audit events;
+- projection health;
+- integration health.
+
+Enterprise workspace is currently not composed and returns a real 404.
+
+services/api mutation routes currently do not yet cover:
+- eSIM install/enable/remove;
+- enterprise connector provisioning.
+
+The current live demo also does not yet provide the complete command-execution path that advances accepted commands to executed/delivered/billable-final. Consequently some pages correctly render empty/read-first-not-found states instead of inventing resources.
+
+## Current deployment
+
+The accepted demo history uses:
+- Vercel Hobby;
 - Neon Free PostgreSQL.
-- Webhook signing configured.
-- Redis/QStash not configured in the demo.
-- Cloudflare R2 not enabled in the demo.
-- ADCOS production compatibility credentials not configured at the time of acceptance.
-- Live smoke: 7/7 green.
-- RL-118: 8 green, 4 named-skip, 0 red, exit 0.
 
-The named skips are explicit operator-phase state, not silently passed criteria.
+Provider wire verification has also been completed for:
+- Cloudflare R2;
+- Upstash Redis;
+- Upstash QStash.
 
-## Journey/discoverability state
+Those providers may be optional or disabled in the current demo environment; their active runtime configuration must be re-recorded against current main.
 
-The current customer journey is coherent across:
-`onboarding -> goals -> devices -> connectivity -> activity -> support`.
+ADCOS production credentials are still a required external integration flip for live connectivity delivery.
 
-The current enterprise journey is visible as:
-`workspace -> organization verification -> policy -> connector -> devices -> capability verification -> first goal -> live overview`.
-
-The remaining post-acceptance gaps are recorded in `docs/capability-discoverability.md` and the RL-114 verification suites.
-
-### RL-115 capability gaps
-- F1 eSIM profile management has no customer action journey.
-- F2 SLO dashboard has no navigable admin entry point.
-- F3 enterprise connector enrollment is status-only.
-- F4 refunds have no customer surface.
-- F5 SSO/SCIM/MDM have no enterprise UX/status surface.
-- F6 ADCOS compatibility health has no admin surface.
-- F7 organization policy has no real read model/surface.
-- F8 order delivery journey is URL-only from the orders list.
-
-### RL-114 accessibility/discoverability findings
-- no web h1 contract on pages;
-- heading hierarchy skips on some paths;
-- 44px target floor is not universal;
-- Notifications is URL-only;
-- mobile shell lacks the web accessibility layer;
-- mobile fragment links point at dead ids;
-- mobile tables need proper header scoping and labelled scroll regions.
+The formal RL-118 acceptance report predates the latest PA-018/PA-019 merges. The next tech lead must regenerate the final live acceptance record against the current main.
 
 ## Next implementation phase
 
-Use `spec/tech-lead-handoff-2026-09-21.md`.
+Canonical handoff:
+spec/tech-lead-handoff-2026-09-26.md
 
-Three workers operate concurrently:
+Three workers:
 
-- **Worker A — Customer/Edge UX:** eSIM journey, refunds, order/notification discoverability, web accessibility, mobile accessibility/navigation.
-- **Worker B — Enterprise/Admin:** connector enrollment, organization policy read model, enterprise integrations status, SLO navigation, ADCOS compatibility-health surface.
-- **Worker C — Deployment/Operations:** R2, Redis, QStash and ADCOS live-wire configuration/verification, then final deployment acceptance.
-
-The orchestrator owns shared contracts, architecture decisions, integration, release gates and the final capability audit.
+- Worker A: component-scoped UI degradation, browser-level deployed journeys, final UX closure.
+- Worker B: mutation-route parity, remaining real read models, live command execution, enterprise runtime.
+- Worker C: current-main deployment, provider configuration, live acceptance and release record.
 
 ## Completion definition
 
-“Deployed” means the RL-118 accepted demo state.
+Architecture:
+✅ complete.
 
-“Post-acceptance complete” means every architecture-promised capability is either:
-1. directly discoverable and actionable through a normal user journey, or
-2. explicitly surfaced as unavailable/unsupported with a clear reason and support path,
+Surface discoverability:
+✅ RL-114/RL-115 closure.
 
-while ADCOS remains the sole connectivity authority and all evidence/freshness rules remain truthful.
+Hosted product:
+pending the live-runtime completion wave.
+
+A journey is complete only when:
+1. the user can discover it;
+2. the UI action reaches the real API;
+3. durable state is written;
+4. execution advances the command where required;
+5. the correct read model observes the result;
+6. evidence/freshness is shown;
+7. failure/degradation is honest;
+8. recovery/support is reachable.
+
+RoamLink must remain a Connectivity Experience OS above ADCOS.
