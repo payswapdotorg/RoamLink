@@ -645,6 +645,69 @@ fresh/stale/unknown asserting each section's truthful state):
   composition; the Commerce and Order journeys keep their full fail-closed
   assertions (their read sets are entirely kept-501).
 
+**Deployed-browser closure note (2026-09-27, PA-021 — additive; the findings
+above are unchanged as the historical record):** the §6 simulation is now a
+repeatable MEASUREMENT. `tests/acceptance` (@roamlink/tests-acceptance, the
+PA-021 work item) is a black-box, real-browser (Playwright/Chromium
+headless) journey suite against the deployed `ACCEPTANCE_BASE_URL` — it
+knows only the URL and the public demo-roster credentials, never the
+repository internals — and every journey leg records WHICH of six levels it
+actually evidenced: route reachable / surface rendered / read available /
+mutation accepted / mutation executed / user-visible evidence. The
+honest-level law is the suite's whole point: a leg stopped by an honest
+runtime limitation PASSES while RECORDING that level and its named stop
+reason; the exit contract is "no lies", not "everything executed" (a leg
+fails only when the route never answered, the shell contract broke, or a
+submitted form produced NO typed outcome panel). The suite runs env-gated
+(fail-closed to a NAMED skip with no `ACCEPTANCE_BASE_URL` — never a fake
+pass, never a hard fail on an unconfigured box), at both viewport classes
+(desktop 1280x800, mobile 390x844 — the bottom-nav breakpoint), for the
+customer and owner personas, with the a11y/interaction battery on every
+walked page (exactly one h1; no heading-level skips; the skip link; the
+44px touch-target floor over the VERIFIED selector families; keyboard tab
+order + focus visibility; the mobile bottom nav; keyboard form submission),
+and mutations submitted through the real `/flows/*` plane with the typed
+result panel asserted (acknowledgement with command id + idempotency key,
+or the honest typed refusal). Its offline selftest (part of `pnpm check`)
+drives the same runner machinery against a loopback-only fixture site with
+BOTH drivers (the offline fake driver always; the real browser when the box
+has one — otherwise another named skip), including a lying-terrain leg that
+proves the no-lie law's teeth. The real deployed run (2026-09-27, against
+the repo-documented demo origin https://roamlink-ten.vercel.app, driver
+"playwright chromium 153.0.8010.12 (headless)", 56 legs, 0 leg failures, 2
+recorded relogins) measured EXACTLY the §6 terrain: login
+user-visible-evidence; onboarding mutation-accepted (the enrollment is
+durably accepted, the executed stage unreached — the honest
+accepted-not-executed state; the finish step honestly unreachable); goals
+read-available (the create form requires an executed device; none exists);
+devices read-available + enroll mutation-accepted; eSIM UNREACHED (no device
+in the read model to open the SIM journey); connectivity read-available
+(the center composes; the notification-derived section degrades to the
+quiet panel); activity read-available (core composes; needs-attention and
+timeline degrade); plans & billing surface-rendered (the page-level
+fail-closed typed panel, reason READ_MODEL_NOT_COMPOSED); support
+mutation-accepted (case creation accepted; the thread requires an executed
+case) with the contextual escape rendering its carried context; workspace
+read-available (core composes; the enterprise secondary degrades); admin
+surface-rendered for every demo persona (the fail-closed access-denied
+gate is the honest answer — no org:read through the hosted personal-tenant
+session, and no surface data was fetched). Level terrain across the 56
+legs: 22 surface-rendered / 20 read-available / 6 mutation-accepted / 0
+mutation-executed / 2 user-visible-evidence (+ 6 honestly unreached legs
+with named reasons). The run's exit was 1 under the no-lies contract for
+ONE genuine finding class the browser level adds to the record: the
+ops access-denied documents (`/admin`'s console gate panel, `/ops/slo` and
+`/admin/integration-health`'s host-side denied documents) render an
+h1 → h3 heading-level skip ("Access denied") — a violation of the §14
+semantic-heading law as closed by RL-114-F2's "no level skips remain
+anywhere", on documents that verification pass never covered (the fix is a
+one-line heading change in the ops denied documents — a surface work
+order, deliberately not PA-021's to make). Every other a11y check passed
+on every walked page (one-h1 36/36, tab order 36/36, focus visibility
+36/36, the touch-target floor 30/30 over the verified families, the skip
+link 28/28 on shell pages, the mobile bottom nav 14/14, the desktop
+sidebar 14/14).
+
 ## 5. Product-level design learning
 
 The ShareNet-inspired shell is the correct visual interaction direction.

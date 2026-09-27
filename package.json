@@ -19,6 +19,7 @@
     "rollback:check:selftest": "node infra/deployment/rollback/selftest.mjs",
     "demo:acceptance": "node infra/deployment/demo-acceptance/check.mjs",
     "demo:acceptance:selftest": "node infra/deployment/demo-acceptance/selftest.mjs",
+    "acceptance:deployed": "pnpm --filter @roamlink/tests-acceptance run acceptance:deployed",
     "dev": "pnpm -r --parallel --if-present dev",
     "prepare": "node scripts/hooks/install.mjs"
   },
