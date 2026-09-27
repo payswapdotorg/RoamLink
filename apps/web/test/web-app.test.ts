@@ -311,3 +311,59 @@ describe("fail-closed rendering across pages", () => {
     expect(page.html).not.toContain("Phone");
   });
 });
+
+// ---------------------------------------------------------------------------
+// PA-022 — the honest middle state on Home: an ACTIVE goal that RoamLink
+// has not evaluated yet. The old wording ("Nothing yet. RoamLink starts
+// managing once you have a goal and a device.") contradicted the adjacent
+// goal card the moment the customer finished onboarding; the three states
+// are now distinct (no goal / active + evaluated / active + not evaluated).
+// ---------------------------------------------------------------------------
+
+describe("PA-022 Home: what RoamLink is doing (the three honest states)", () => {
+  /** The default seed's active goal carries a decision; null it for the unevaluated world. */
+  function unevaluatedGoalSeed() {
+    const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as ReturnType<typeof fakeApiSeed>;
+    const tenant = seed.tenants[TENANT];
+    if (tenant === undefined) throw new Error("missing tenant in seed");
+    const tenants = {
+      ...seed.tenants,
+      [TENANT]: {
+        ...tenant,
+        intents: tenant.intents.map((intent) => ({ ...intent, decision: null })),
+      },
+    };
+    return { ...seed, tenants };
+  }
+
+  it("an active goal without an evaluation states exactly that (never 'nothing yet')", async () => {
+    const clock = new DeterministicClock("2025-01-06T09:45:00.000Z");
+    const fakeIds = new DeterministicUuidGenerator(10_000);
+    const fake = createInMemoryApi(unevaluatedGoalSeed(), {
+      now: () => clock.now(),
+      ids: () => fakeIds.next(),
+    });
+    const client = new RoamLinkApiClient({
+      transport: fake.transport,
+      actor: { actorId: MEMBER_ACTOR, tenantId: TENANT },
+      ids: new DeterministicUuidGenerator(40_000),
+    });
+    const app = new CustomerWebApp({ client });
+    const home = await app.renderDocument({ page: "home" });
+    // The goal card shows the active goal...
+    expect(home).toContain('data-home-fact="goal"');
+    expect(home).toContain("Widen to any internet with a cost cap.");
+    // ...and the management card states the honest middle state instead of
+    // contradicting it.
+    expect(home).toContain('data-management-unevaluated="true"');
+    expect(home).toContain("RoamLink has not evaluated this goal yet");
+    expect(home).not.toContain("RoamLink starts managing once you have a goal and a device");
+  });
+
+  it("the evaluated world keeps the derived-status card (unchanged)", async () => {
+    const { app } = buildApp();
+    const home = await app.renderDocument({ page: "home" });
+    expect(home).toContain('data-home-fact="management"');
+    expect(home).not.toContain('data-management-unevaluated="true"');
+  });
+});

@@ -234,3 +234,63 @@ describe("surface language discipline", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// PA-022 — the automation status's honest middle state: an ACTIVE goal that
+// RoamLink has not evaluated yet. The old wording ("No goal is active yet,
+// so RoamLink is not managing anything.") contradicted the customer's own
+// Goals page right after onboarding; the three states are now distinct.
+// ---------------------------------------------------------------------------
+
+describe("PA-022 Activity: automation status (the three honest states)", () => {
+  it("an active goal without an evaluation states exactly that (never 'no goal is active')", async () => {
+    const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+    const tenant = seed.tenants[TENANT];
+    if (tenant === undefined) throw new Error("missing tenant in seed");
+    const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+    tenants[TENANT] = {
+      ...tenant,
+      // One ACTIVE goal, no decision recorded (the post-onboarding world on
+      // the real runtime: the evaluator plane has not run yet).
+      intents: [
+        {
+          intentId: "cccccccc-0000-4000-8000-0000000000e1",
+          deviceId: "dddddddd-0000-4000-8000-000000000001",
+          status: "active",
+          revision: 1,
+          versions: [
+            {
+              intentVersionId: "cccccccc-0000-4000-8000-0000000000e2",
+              versionNumber: 1,
+              status: "active",
+              rationale: "Stay connected while traveling",
+              accessClasses: ["any_internet"],
+              createdAt: "2025-01-06T09:00:00.000Z",
+            },
+          ],
+          decision: null,
+        },
+      ],
+    };
+    const { app } = buildApp({ seed: { ...seed, tenants } });
+    const page = await app.renderPage({ page: "activity" });
+    expect(page.html).toContain('data-automation-unevaluated="true"');
+    expect(page.html).toContain("your goal &quot;Stay connected while traveling&quot; is active");
+    expect(page.html).toContain("RoamLink has not evaluated this goal yet");
+    expect(page.html).not.toContain("No goal is active yet");
+    // The idle marker is reserved for the truly-no-goal world.
+    expect(page.html).not.toContain('data-automation-idle="true"');
+  });
+
+  it("the no-goal world keeps the idle marker (unchanged honest state)", async () => {
+    const seed = JSON.parse(JSON.stringify(fakeApiSeed())) as FakeApiSeed;
+    const tenant = seed.tenants[TENANT];
+    if (tenant === undefined) throw new Error("missing tenant in seed");
+    const tenants: Record<string, FakeTenantSeed> = { ...seed.tenants };
+    tenants[TENANT] = { ...tenant, intents: [] };
+    const { app } = buildApp({ seed: { ...seed, tenants } });
+    const page = await app.renderPage({ page: "activity" });
+    expect(page.html).toContain('data-automation-idle="true"');
+    expect(page.html).not.toContain('data-automation-unevaluated="true"');
+  });
+});

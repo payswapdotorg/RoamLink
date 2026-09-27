@@ -11,11 +11,13 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  ApiClientError,
   createInMemoryApi,
   fakeApiSeed,
   RoamLinkApiClient,
   type FakeApiSeed,
   type FakeTenantSeed,
+  type MutationFlowResult,
 } from "@roamlink/app-kit";
 import { DeterministicClock, DeterministicUuidGenerator } from "@roamlink/testkit";
 
@@ -246,5 +248,151 @@ describe("onboarding journey (land -> understand -> choose -> enroll -> confirm 
     expect(result.status).toBe("error");
     const rendered = await app.renderPage({ page: "onboarding", params: { step: "preferences", goal: "travel" }, lastResult: result });
     expect(rendered.html).toContain('data-mutation-result="error"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PA-022 — the finish flow's read-first completion + the pending-goal
+// explainer (the multi-tick first attempt's honest outcome, presented with
+// journey guidance instead of a bare retryable error).
+// ---------------------------------------------------------------------------
+
+describe("PA-022 onboarding finish: read-first completion (never a duplicate draft)", () => {
+  it("activates a prior attempt's matching draft instead of creating another goal", async () => {
+    const { app, client } = buildApp({ freshCustomer: true });
+    const devices = await client.listDevices();
+    expect(devices).toHaveLength(0);
+
+    // A prior finish attempt's create, already executed as a DRAFT goal for
+    // the "travel" choice (exactly the post-tick state the read-first leg
+    // looks for — same device, same statement, still draft).
+    const enrolled = await app.enrollDeviceFlow(
+      { name: "Retry Phone", platform: "ios" },
+      { idempotencyKey: "pa022-retry-enroll" },
+    );
+    expect(enrolled.status).toBe("ok");
+    const device = (await client.listDevices()).find((d) => d.name === "Retry Phone");
+    expect(device).toBeDefined();
+    const created = await app.createIntentFlow(
+      {
+        deviceId: device?.deviceId ?? "",
+        rationale: "Stay connected while traveling",
+        accessClasses: ["any_internet"],
+      },
+      { idempotencyKey: "pa022-prior-create" },
+    );
+    expect(created.status).toBe("ok");
+
+    // The RETRY (a fresh idempotency key, exactly what a hosted form POST
+    // carries): the flow must find and ACTIVATE the existing draft — no
+    // second goal is created.
+    const retry = await app.completeOnboardingFlow(
+      { deviceId: device?.deviceId ?? "", goalChoiceId: "travel" },
+      { idempotencyKey: "pa022-finish-retry-fresh-key" },
+    );
+    expect(retry.status).toBe("ok");
+
+    const intents = await client.listExperienceIntents();
+    expect(intents).toHaveLength(1);
+    expect(intents[0]?.status).toBe("active");
+    expect(intents[0]?.versions).toHaveLength(1);
+    expect(intents[0]?.versions[0]?.rationale).toBe("Stay connected while traveling");
+  });
+
+  it("does not adopt a draft with a DIFFERENT statement (a distinct goal is a distinct goal)", async () => {
+    const { app, client } = buildApp({ freshCustomer: true });
+    const enrolled = await app.enrollDeviceFlow(
+      { name: "Other Phone", platform: "android" },
+      { idempotencyKey: "pa022-other-enroll" },
+    );
+    expect(enrolled.status).toBe("ok");
+    const device = (await client.listDevices()).find((d) => d.name === "Other Phone");
+    const created = await app.createIntentFlow(
+      {
+        deviceId: device?.deviceId ?? "",
+        rationale: "Keep work reliable",
+        accessClasses: ["work_apps_only"],
+      },
+      { idempotencyKey: "pa022-other-create" },
+    );
+    expect(created.status).toBe("ok");
+
+    // Finishing with the TRAVEL choice: the work-reliability draft is NOT a
+    // match, so the flow creates the customer's chosen goal separately.
+    const finished = await app.completeOnboardingFlow(
+      { deviceId: device?.deviceId ?? "", goalChoiceId: "travel" },
+      { idempotencyKey: "pa022-other-finish" },
+    );
+    expect(finished.status).toBe("ok");
+    const intents = await client.listExperienceIntents();
+    expect(intents).toHaveLength(2);
+    const travel = intents.find((i) => i.status === "active");
+    expect(travel?.versions[0]?.rationale).toBe("Stay connected while traveling");
+    const workDraft = intents.find((i) => i.status === "draft");
+    expect(workDraft?.versions[0]?.rationale).toBe("Keep work reliable");
+  });
+});
+
+describe("PA-022 onboarding preferences: the pending-goal explainer", () => {
+  /** The typed error the honest multi-tick first attempt returns. */
+  function pendingGoalResult(): MutationFlowResult {
+    return {
+      status: "error",
+      error: new ApiClientError({
+        kind: "unknown-state",
+        reason: "ONBOARDING_GOAL_NOT_CREATED",
+        message: "the created goal id was not returned; the goal cannot be activated safely",
+        retryable: true,
+        status: 0,
+      }),
+    };
+  }
+
+  it("renders the calm explainer under the honest typed error for the retryable pending state", async () => {
+    const { app } = buildApp();
+    const document = await app.renderDocument({
+      page: "onboarding",
+      params: { step: "preferences", goal: "travel", deviceId: PHONE_ID },
+      lastResult: pendingGoalResult(),
+    });
+    // The honest typed error panel still renders first...
+    expect(document).toContain('data-mutation-result="error"');
+    expect(document).toContain("ONBOARDING_GOAL_NOT_CREATED");
+    // ...and the preferences step adds the journey-scoped explainer.
+    expect(document).toContain('data-onboarding-pending-goal="true"');
+    expect(document).toContain("Your goal choice is recorded");
+    expect(document).toContain("Choose Finish and go to Home again in a moment");
+    // The wizard stays completable: the finish form still renders.
+    expect(document).toContain('data-onboarding-form="finish"');
+  });
+
+  it("renders NO explainer for other failure kinds (only the pending state is explained)", async () => {
+    const { app } = buildApp();
+    const document = await app.renderDocument({
+      page: "onboarding",
+      params: { step: "preferences", goal: "travel", deviceId: PHONE_ID },
+      lastResult: {
+        status: "error",
+        error: new ApiClientError({
+          kind: "validation",
+          reason: "REQUEST_PAYLOAD_INVALID",
+          message: "the onboarding goal choice does not exist",
+          retryable: false,
+          status: 0,
+        }),
+      },
+    });
+    expect(document).toContain('data-mutation-result="error"');
+    expect(document).not.toContain('data-onboarding-pending-goal="true"');
+  });
+
+  it("renders no explainer on a clean render (nothing pending)", async () => {
+    const { app } = buildApp();
+    const document = await app.renderDocument({
+      page: "onboarding",
+      params: { step: "preferences", goal: "travel", deviceId: PHONE_ID },
+    });
+    expect(document).toContain('data-onboarding-form="finish"');
+    expect(document).not.toContain('data-onboarding-pending-goal="true"');
   });
 });

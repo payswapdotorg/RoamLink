@@ -23,6 +23,8 @@ import {
   instantView,
   stateBadge,
   disclosureSection,
+  isUnavailableRead,
+  unavailablePanelFor,
   el,
   fragment,
   text,
@@ -31,6 +33,7 @@ import {
   type ExperienceIntentResource,
   type HtmlFragment,
   type NotificationResource,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
@@ -401,8 +404,29 @@ function deviceGoalsSection(
 
 function deviceActionsSection(
   device: DeviceResource,
-  notifications: readonly NotificationResource[],
+  notifications: ReadOrUnavailable<readonly NotificationResource[]>,
 ): HtmlFragment {
+  // PA-022: the recent-actions section is SECONDARY on the device detail
+  // page. When the notification source refuses (the typed 501 with its
+  // named reason, or any unavailability-class typed error), ONLY this
+  // section degrades to the quiet panel — the capability card, the SIM
+  // entry, the observations and the goals sections above still render from
+  // their own core reads, and Activity remains reachable.
+  if (isUnavailableRead(notifications)) {
+    return el(
+      "section",
+      { "data-device-actions": "true" },
+      fragment(
+        pageHeading("Recent actions on this device"),
+        unavailablePanelFor(notifications, {
+          section: "device-actions",
+          meaning:
+            "RoamLink cannot show this device's recent action records right now. What this device can do, its connectivity observations and its goals above are unaffected, and the full story remains reachable from Activity.",
+        }),
+        el("p", {}, el("a", { href: pagePath("activity") }, text("Open Activity"))),
+      ),
+    );
+  }
   const deviceNotifications = notifications.filter((notification) =>
     notification.related.some((ref) => ref.kind === "device" && ref.id === device.deviceId),
   );
@@ -496,7 +520,13 @@ function deviceSimSection(device: DeviceResource): HtmlFragment {
 export function deviceDetailPage(input: {
   readonly device: DeviceResource;
   readonly connectivity: ConnectivityOverviewResource;
-  readonly notifications: readonly NotificationResource[];
+  /**
+   * PA-022: the notification feed is a SECONDARY read on this page (the
+   * "Recent actions" section only). When its source refuses, that section
+   * degrades to the quiet unavailable panel; the rest of the page still
+   * renders from its core reads.
+   */
+  readonly notifications: ReadOrUnavailable<readonly NotificationResource[]>;
   readonly intents: readonly ExperienceIntentResource[];
 }): HtmlFragment {
   const device = input.device;

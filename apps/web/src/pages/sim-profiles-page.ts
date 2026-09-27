@@ -29,8 +29,10 @@
 import {
   freshnessBadge,
   instantView,
+  isUnavailableRead,
   mutationStages,
   stateBadge,
+  unavailablePanelFor,
   el,
   fragment,
   text,
@@ -41,6 +43,7 @@ import {
   type HtmlFragment,
   type MutationAcknowledgement,
   type MutationFlowResult,
+  type ReadOrUnavailable,
 } from "@roamlink/app-kit";
 
 import { pagePath } from "../routes.js";
@@ -56,7 +59,16 @@ import { supportEscape } from "./support-context.js";
 
 export interface SimProfilesPageInput {
   readonly device: DeviceResource;
-  readonly sim: DeviceSimResource;
+  /**
+   * PA-022: the SIM read may arrive as the typed unavailable marker (the
+   * real runtime honestly answers a typed 404 for the not-composed route —
+   * the same class the pre-PA-024 workspace read answered). The page then
+   * renders its heading, the device context and the command pipeline, and
+   * the SIM-derived sections degrade to the quiet unavailable panel. No
+   * action form renders without the capability gate evidence (the page's
+   * frozen law — an ungated mutation does not exist).
+   */
+  readonly sim: ReadOrUnavailable<DeviceSimResource>;
   /**
    * The last eSIM command's acknowledgement (the four-stage pipeline),
    * when the caller knows the command. Absent renders the honest
@@ -485,6 +497,37 @@ function failureEscapeSection(
 
 export function simProfilesPage(input: SimProfilesPageInput): HtmlFragment {
   const device = input.device;
+  // PA-022: the not-composed SIM source degrades the SIM-derived sections
+  // to the quiet unavailable panel. The device identity, the command
+  // pipeline and the failure escape still render — the journey does not
+  // dead-end on a raw not-found panel, and no ungated action is composed.
+  if (isUnavailableRead(input.sim)) {
+    const sim = input.sim;
+    return fragment(
+      pageHeading(
+        "SIM & Profiles",
+        "The eSIM profiles on this device — what the platform reports it can do, what RoamLink has commanded, and what the device has actually confirmed. Every claimed state carries its evidence.",
+      ),
+      el(
+        "p",
+        {},
+        el("a", { href: pagePath("device", { deviceId: device.deviceId }) }, text("Open this device")),
+      ),
+      el(
+        "section",
+        { "data-sim-profiles-page": "true", "data-device-id": device.deviceId },
+        fragment(
+          unavailablePanelFor(sim, {
+            section: "sim-profiles",
+            meaning:
+              "RoamLink cannot show this device's eSIM capability truth or profile inventory right now, so no eSIM action is offered here — an action without its capability evidence would be a guess. This device's own page still shows everything else RoamLink knows about it, any eSIM command you already issued stays recorded (its pipeline renders below when known), and Support can help with eSIM profiles.",
+          }),
+          commandPipelineSection(input.command ?? null),
+          failureEscapeSection(device, input.lastResult),
+        ),
+      ),
+    );
+  }
   const sim = input.sim;
   // Degraded capability evidence (stale/unknown) carries the contextual
   // support escape (RL-103) alongside the closed guidance map.

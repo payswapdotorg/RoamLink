@@ -262,11 +262,20 @@ export class CustomerWebApp {
           return devicesPage({ devices, connectivity });
         });
       case "device":
+        // PA-022: the device/connectivity/intents reads are the CORE of the
+        // device detail page (the identity, capability card, SIM entry,
+        // observations and goals sections render from them); the
+        // notification feed is SECONDARY (the "Recent actions on this
+        // device" section only). An unavailable notification source degrades
+        // that one section to the quiet panel — the same PA-020 law Home,
+        // Connectivity and Activity already follow — instead of blanking the
+        // whole page. A core read failing keeps the page-level fail-closed
+        // law.
         return this.#withReads("the device", async () => {
           const [device, connectivity, notifications, intents] = await Promise.all([
             this.#client.getDevice(request.params?.deviceId ?? ""),
             this.#client.getConnectivityOverview(),
-            this.#client.listNotifications(),
+            optionalRead(() => this.#client.listNotifications()),
             this.#client.listExperienceIntents(),
           ]);
           return deviceDetailPage({ device, connectivity, notifications, intents });
@@ -276,12 +285,24 @@ export class CustomerWebApp {
         // capability truth + profile inventory render from the SIM read; the
         // optional `commandId` param adds the last eSIM command's four-stage
         // pipeline (never fabricated from reads); a failed flow result rides
-        // through as the page's contextual support escape. Any failed read
-        // fails closed like every page.
+        // through as the page's contextual support escape. A failed DEVICE
+        // read fails closed like every page.
+        //
+        // PA-022: the SIM read is this page's SECONDARY-degradable body —
+        // on the real runtime the route is honestly not composed (the typed
+        // 404, the same class the pre-PA-024 workspace read answered).
+        // Instead of dead-ending the whole journey on a raw not-found panel,
+        // the device identity + the command pipeline still render and the
+        // SIM-derived sections degrade to the quiet unavailable panel (the
+        // PA-020 not-found degradation class). The page still composes no
+        // ungated action: without the capability gate evidence, no action
+        // form renders at all.
         return this.#withReads("the SIM and profiles", async () => {
           const [device, sim, command] = await Promise.all([
             this.#client.getDevice(request.params?.deviceId ?? ""),
-            this.#client.getDeviceSim(request.params?.deviceId ?? ""),
+            optionalRead(() =>
+              this.#client.getDeviceSim(request.params?.deviceId ?? ""),
+            ),
             request.params?.commandId === undefined
               ? Promise.resolve(undefined)
               : this.#client.getCommandStatus(request.params.commandId),
@@ -447,6 +468,12 @@ export class CustomerWebApp {
         devices,
         ...(deviceId !== undefined ? { deviceId } : {}),
         ...(notice !== undefined ? { notice } : {}),
+        // PA-022: the preferences step renders its own calm explainer under
+        // the honest typed error panel when the finish flow ended in the
+        // retryable ONBOARDING_GOAL_NOT_CREATED state (the multi-tick first
+        // attempt) — the customer needs to know their choice was recorded
+        // and that finishing again completes setup.
+        ...(request.lastResult !== undefined ? { lastResult: request.lastResult } : {}),
       });
     });
   }
@@ -592,6 +619,19 @@ export class CustomerWebApp {
    * full command envelope. Returns the activate acknowledgement on success
    * or the typed failure of whichever command failed; the app never
    * decides outcomes.
+   *
+   * PA-022 (read-first, the same discipline as the versioned flows above):
+   * the multi-tick truth law means a FRESH create command is only ever
+   * acknowledged as accepted — the resource id (and therefore the
+   * activation leg) does not exist until the worker plane executes it. A
+   * hosted form retry carries a fresh idempotency key, so without this
+   * read-first leg every retry would issue ANOTHER create and the wizard
+   * could never complete (each click stacking another draft goal). The fix
+   * is composition only: before creating, look for the customer's own
+   * DRAFT of this exact goal (same device, same statement — a prior
+   * attempt's recorded choice) in the composed intent read and activate
+   * THAT; only create when no such draft exists. An already-executed prior
+   * choice is never duplicated, and the retry completes the wizard.
    */
   async completeOnboardingFlow(
     input: {
@@ -614,15 +654,36 @@ export class CustomerWebApp {
       };
     }
     return this.#runMutation(async () => {
-      const created = await this.#client.createExperienceIntent(
-        {
-          deviceId: input.deviceId,
-          rationale: goal.statement,
-          accessClasses: goal.accessClasses,
-        },
-        options,
-      );
-      const intentId = created.resource?.id;
+      // PA-022 read-first: a prior finish attempt may already have its
+      // create executed as a draft goal. Matching is exact — the same
+      // device, the same goal statement (the statement IS the rationale
+      // the wizard records), still in draft (never activated by anything
+      // else). The statement rides the intent's LATEST version: a freshly
+      // created draft carries its version in `versions` with a NULL
+      // `currentVersion` (the read model only points `currentVersion` at
+      // ACTIVE versions), so matching on currentVersion would miss exactly
+      // the draft this flow is looking for. The first match wins.
+      const intents = await this.#client.listExperienceIntents();
+      const existingDraft = intents.find((intent) => {
+        if (intent.deviceId !== input.deviceId || intent.status !== "draft") {
+          return false;
+        }
+        const versions = intent.versions;
+        const latest = versions.length > 0 ? versions[versions.length - 1] : undefined;
+        return latest?.rationale === goal.statement;
+      });
+      const intentId =
+        existingDraft?.intentId ??
+        (
+          await this.#client.createExperienceIntent(
+            {
+              deviceId: input.deviceId,
+              rationale: goal.statement,
+              accessClasses: goal.accessClasses,
+            },
+            options,
+          )
+        ).resource?.id;
       if (intentId === undefined) {
         throw new ApiClientError({
           kind: "unknown-state",
