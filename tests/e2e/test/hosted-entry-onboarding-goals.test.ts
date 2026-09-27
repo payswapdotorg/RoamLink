@@ -34,7 +34,7 @@ import {
   runtimeOf,
   WORKER_TICK_JOB_BODY,
 } from "../src/host.js";
-import { handleWorkerTick } from "../../../apps/portal-host/src/index.js";
+import { handleFlowSubmit, handleWorkerTick } from "../../../apps/portal-host/src/index.js";
 
 const DESKTOP_NAV_HREFS = [
   "/",
@@ -475,6 +475,111 @@ describe("PA-025 hosted journey: first-run onboarding over the composed executio
       // The activation's stored-command view carries the executed stage.
       const stored = await journey.app.client().getCommandStatus(activateAck.commandId);
       expect(stored.executedAt).toBe(activateExecutedAt);
+    } finally {
+      await journey.dispose();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PA-022 — the hosted finish FORM completes end to end over the composed
+// execution path. The host gives every form POST a FRESH idempotency key,
+// so the pre-PA-022 flow (create-then-activate in one attempt, the resource
+// id read from the fresh create's acknowledgement) could NEVER complete:
+// the multi-tick truth law means a fresh create is only ever acknowledged
+// as accepted, so every retry issued ANOTHER create and stacked duplicate
+// draft goals. The read-first find-or-create in completeOnboardingFlow
+// (apps/web) closes the journey at the surface level: the retry finds the
+// prior attempt's executed draft and activates IT.
+// ---------------------------------------------------------------------------
+
+describe("PA-022 hosted journey: the finish form completes over the composed execution path (the hosted form retry)", () => {
+  /** A same-origin form-encoded POST to /flows/onboarding-finish (the real hosted form path). */
+  function finishFormPost(token: string, deviceId: string): Request {
+    const body = new URLSearchParams();
+    body.set("goal", "travel");
+    body.set("deviceId", deviceId);
+    return new Request("https://host.test/flows/onboarding-finish", {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://host.test",
+        cookie: `roamlink_session=${token}`,
+      },
+      body: body.toString(),
+    });
+  }
+
+  it("first attempt: the honest typed failure + the pending-goal explainer; retry after the tick: 303 to Home, the goal active, NO duplicate drafts", async () => {
+    const clock = createJourneyClock();
+    const journey = await bootHostedJourney({
+      seed: 0x0a8,
+      email: "onboarding-hosted-form@example.com",
+      composeWorkerTickEndpoint: true,
+      now: clock.now,
+    });
+    try {
+      const tick = journey.workerTick;
+      if (tick === null) throw new Error("the worker tick endpoint was not composed");
+
+      // Enroll the device and execute it (one tick).
+      const enrolled = await journey.app.enrollDeviceFlow(
+        { name: "Hosted Form Phone", platform: "ios" },
+        { idempotencyKey: "e2e-pa022-hosted-form-enroll" },
+      );
+      expect(enrolled.status).toBe("ok");
+      clock.advanceMinutes();
+      await tick();
+      const deviceId = (await journey.app.client().listDevices())[0]?.deviceId;
+      expect(deviceId).toBeDefined();
+
+      // FIRST hosted form attempt: the create is durably accepted (no
+      // resource id yet — the truth law), so the page re-renders with the
+      // honest typed error panel AND the PA-022 pending-goal explainer.
+      const first = await handleFlowSubmit(
+        finishFormPost(journey.token, deviceId as string),
+        runtimeOf(journey.composition),
+      );
+      expect(first.status).toBe(200);
+      const firstHtml = await first.text();
+      expect(firstHtml).toContain('data-mutation-result="error"');
+      expect(firstHtml).toContain("ONBOARDING_GOAL_NOT_CREATED");
+      expect(firstHtml).toContain('data-onboarding-pending-goal="true"');
+      expect(firstHtml).toContain("Your goal choice is recorded");
+      expect(firstHtml).toContain('data-onboarding-form="finish"');
+
+      // ONE SIGNED delivery executes the create.
+      clock.advanceMinutes();
+      await tick();
+
+      // The hosted RETRY (a FRESH idempotency key — exactly what the host
+      // gives every form POST): the read-first leg finds the prior
+      // attempt's executed draft and activates it. The wizard COMPLETES:
+      // the redirect law sends the customer to Home.
+      const retry = await handleFlowSubmit(
+        finishFormPost(journey.token, deviceId as string),
+        runtimeOf(journey.composition),
+      );
+      expect(retry.status).toBe(303);
+      expect(retry.headers.get("location")).toBe("/");
+
+      // The activation executes on the next tick.
+      clock.advanceMinutes();
+      await tick();
+      const goals = await journey.app.client().listExperienceIntents();
+      // ONE goal — active — never a stack of duplicate drafts.
+      expect(goals).toHaveLength(1);
+      expect(goals[0]?.status).toBe("active");
+      const versions = goals[0]?.versions ?? [];
+      expect(versions).toHaveLength(1);
+      expect(versions[0]?.rationale).toBe("Stay connected while traveling");
+
+      // Home reflects the completed journey: the active goal card + the
+      // honest unevaluated management card (PA-022's middle state).
+      const home = await journey.app.renderDocument({ page: "home" });
+      expect(home).toContain("Stay connected while traveling");
+      expect(home).toContain('data-management-unevaluated="true"');
+      expect(home).not.toContain("RoamLink starts managing once you have a goal and a device");
     } finally {
       await journey.dispose();
     }

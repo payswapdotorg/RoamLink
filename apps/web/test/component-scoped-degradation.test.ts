@@ -406,3 +406,118 @@ describe("PA-020 Workspace: the org view survives an unavailable workspace compo
     expect(page.html).not.toContain('data-workspace-journey="true"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// PA-022 — the two surfaces the original PA-020 battery did not cover:
+// the DEVICE DETAIL page (the notification feed is secondary there — the
+// "Recent actions" section only) and the SIM & PROFILES page (the SIM read
+// is the page's degradable body on the not-composed route; the device read
+// is core). Same law, same three states, same quiet panel contract.
+// ---------------------------------------------------------------------------
+
+/** The seeded device the default fake carries (the device detail target). */
+const SEEDED_DEVICE_ID = "dddddddd-0000-4000-8000-000000000001";
+
+/** The not-composed SIM route's honest 404 (the real hosted runtime). */
+const SIM_404: TypedRefusal = {
+  status: 404,
+  body: JSON.stringify({
+    kind: "not-found",
+    reason: "NOT_FOUND",
+    message: "no API resource exists at this path (method and path)",
+    retryable: false,
+    details: [],
+  }),
+};
+
+describe("PA-022 device detail: the notification feed is secondary (the Recent actions section)", () => {
+  it("state 1 - the capability/SIM/observations/goals sections render + the quiet panel renders in the actions section (both asserted)", async () => {
+    const { app } = buildApp({ refusals: { "/v1/notifications": NOTIFICATIONS_501 } });
+    const page = await app.renderPage({ page: "device", params: { deviceId: SEEDED_DEVICE_ID } });
+    // CORE: the device identity + the capability card + the SIM entry + the
+    // observations + the goals sections render from the composed reads.
+    expect(page.html).not.toContain('data-error-kind=');
+    expect(page.html).toContain('data-device-capability="true"');
+    expect(page.html).toContain('data-device-sim="true"');
+    expect(page.html).toContain('data-device-connectivity="true"');
+    expect(page.html).toContain('data-device-goals="true"');
+    expect(page.html).toContain('data-device-manage="true"');
+    // SECONDARY: the recent-actions section is the quiet unavailable panel
+    // with the typed reason and the named WHY rendered verbatim.
+    expect(page.html).toContain('data-unavailable="true"');
+    expect(page.html).toContain('data-unavailable-section="device-actions"');
+    expect(page.html).toContain('data-unavailable-reason="READ_MODEL_NOT_COMPOSED"');
+    expect(page.html).toContain("NOTIFICATION_STORE_NOT_BOUND");
+    // No feed content is invented into the degraded section.
+    expect(page.html).not.toContain(SEEDED_NOTIFICATION_TITLE);
+    // The Activity link stays reachable from the degraded section.
+    expect(page.html).toContain('href="/activity"');
+  });
+
+  it("state 2 - a core read failure keeps the honest fail-closed law", async () => {
+    const { app } = buildApp({
+      refusals: { "/v1/connectivity": UNAVAILABLE_503 },
+    });
+    const page = await app.renderPage({ page: "device", params: { deviceId: SEEDED_DEVICE_ID } });
+    expect(page.html).toContain('data-error-kind=');
+    expect(page.html).not.toContain('data-device-capability="true"');
+    expect(page.html).not.toContain('data-unavailable="true"');
+  });
+
+  it("the healthy terrain (no refusals) still renders the real recent-actions content", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "device", params: { deviceId: SEEDED_DEVICE_ID } });
+    expect(page.html).not.toContain('data-unavailable="true"');
+    expect(page.html).not.toContain('data-error-kind=');
+    expect(page.html).toContain('data-device-actions="true"');
+  });
+});
+
+describe("PA-022 SIM & profiles: the not-composed SIM read degrades the SIM sections (never a raw dead end)", () => {
+  it("state 1 - the device context renders + the quiet panel replaces the SIM sections; no ungated action renders", async () => {
+    const { app } = buildApp({
+      refusals: { [`/v1/devices/${SEEDED_DEVICE_ID}/sim`]: SIM_404 },
+    });
+    const page = await app.renderPage({ page: "deviceSim", params: { deviceId: SEEDED_DEVICE_ID } });
+    // The page renders (NOT the fail-closed body): the journey does not
+    // dead-end on a raw not-found panel.
+    expect(page.html).not.toContain('data-error-kind=');
+    expect(page.html).toContain('data-sim-profiles-page="true"');
+    expect(page.html).toContain("SIM &amp; Profiles");
+    // The quiet panel carries the typed reason + the what-this-means line.
+    expect(page.html).toContain('data-unavailable="true"');
+    expect(page.html).toContain('data-unavailable-section="sim-profiles"');
+    expect(page.html).toContain('data-unavailable-reason="NOT_FOUND"');
+    expect(page.html).toContain("no eSIM action is offered here");
+    // The device context stays reachable.
+    expect(page.html).toContain(`href="/devices/${SEEDED_DEVICE_ID}"`);
+    // NO ungated action renders without the capability gate evidence (the
+    // page's frozen law) - and no capability/profile content is invented.
+    expect(page.html).not.toContain('data-flow="esim-install"');
+    expect(page.html).not.toContain('data-flow="esim-remove"');
+    expect(page.html).not.toContain('data-flow="esim-enable"');
+    expect(page.html).not.toContain('data-esim-capabilities="true"');
+    expect(page.html).not.toContain('data-esim-profiles="true"');
+  });
+
+  it("state 2 - a core DEVICE read failure keeps the honest fail-closed law", async () => {
+    const { app } = buildApp({
+      refusals: {
+        [`/v1/devices/${SEEDED_DEVICE_ID}`]: UNAVAILABLE_503,
+        [`/v1/devices/${SEEDED_DEVICE_ID}/sim`]: SIM_404,
+      },
+    });
+    const page = await app.renderPage({ page: "deviceSim", params: { deviceId: SEEDED_DEVICE_ID } });
+    expect(page.html).toContain('data-error-kind=');
+    expect(page.html).not.toContain('data-sim-profiles-page="true"');
+    expect(page.html).not.toContain('data-unavailable="true"');
+  });
+
+  it("the healthy terrain (no refusals) still renders the full capability truth + inventory", async () => {
+    const { app } = buildApp();
+    const page = await app.renderPage({ page: "deviceSim", params: { deviceId: SEEDED_DEVICE_ID } });
+    expect(page.html).not.toContain('data-unavailable="true"');
+    expect(page.html).not.toContain('data-error-kind=');
+    expect(page.html).toContain('data-esim-capabilities="true"');
+  });
+});

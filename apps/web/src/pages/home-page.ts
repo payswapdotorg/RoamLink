@@ -162,9 +162,19 @@ export function homePage(input: HomePageInput): HtmlFragment {
                 ),
               ),
             )
-          : fragment(
-              el("p", { class: "home-fact-muted" }, text("Nothing yet. RoamLink starts managing once you have a goal and a device.")),
-            ),
+          : activeGoal
+            ? // PA-022: the honest middle state — the goal IS active (the
+              // adjacent card shows it), but RoamLink has not evaluated it
+              // yet, so there is no management decision to report. The old
+              // wording ("starts managing once you have a goal and a
+              // device") contradicted the goal card beside it.
+              fragment(
+                el("p", { class: "home-fact-muted", "data-management-unevaluated": "true" }, text("Your goal is active and RoamLink is set to manage it. RoamLink has not evaluated this goal yet — the first management decision appears here once it does.")),
+                el("p", { class: "home-fact-muted" }, text(`Status: goal active · evaluation not recorded yet`)),
+              )
+            : fragment(
+                el("p", { class: "home-fact-muted" }, text("Nothing yet. RoamLink starts managing once you have a goal and a device.")),
+              ),
         el("a", { href: "/activity" }, text("See what RoamLink did")),
       ),
       factCard(

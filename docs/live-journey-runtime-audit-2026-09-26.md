@@ -699,3 +699,175 @@ read model
 user-visible evidence
 
 All six layers must be live for a major journey to count as complete.
+
+## Final UX closure note (2026-09-27, PA-022 — additive; the findings and
+closure notes above are unchanged as the historical record)
+
+The final UX closure pass AFTER the runtime composition closed (PA-024 read
+models + PA-025 execution path + PA-026 enterprise runtime on the base).
+Method: every major journey (the handoff §12's three) was re-walked against
+the CURRENT composition — the e2e harness boots the real runtime (embedded
+PostgreSQL, the real auth boundary, the real /v1 mount, the composed
+worker-tick execution path) and drives the REAL `CustomerWebApp`/`AdminConsoleApp`
+renders and flows. The PA-021 browser-acceptance record is NOT present on
+this base (the deploy record §"Operational record" holds the history — the
+original PA-021 dispatch was destroyed server-side and never landed), so the
+e2e harness was the walkable terrain. Per leg, the handoff §5's six clarity
+questions were asked: what RoamLink knows, how fresh, what it is doing, what
+the user can do, what it cannot do, what awaits an external authority.
+
+### The re-walk verdict (per major journey)
+
+- **Individual journey** (login → onboarding → goal → device → eSIM/
+  capabilities → connectivity → activity → purchase → payment → delivery
+  evidence → support): ◐ → now substantially closed at the surface. Login,
+  shell, onboarding (through the retry), goals, devices, connectivity,
+  support all answer the six questions honestly. Four surface defects were
+  found and fixed (the finish-form never-completes defect, the device-detail
+  blank page, the Home/Activity contradiction wording, the SIM dead-end).
+  The remaining honest gaps are runtime composition gaps, recorded as
+  findings below (eSIM read route + executors, notifications store, commerce
+  reads).
+- **Enterprise journey** (workspace → organization → policy → connector →
+  devices → capability verification → first goal → live overview): ◐ and
+  honest. The workspace journey renders every step from real state; the
+  connector enrollment is capability-gated on organization verification with
+  the honest "no start action yet" law; the PA-026 note's recorded gap (the
+  HOSTED tick endpoint does not execute the enterprise kinds) keeps the
+  connector at accepted-not-executed on the hosted demo — an honest runtime
+  limitation, not a surface defect. No surface fixes required.
+- **Operator journey** (admin → SLO → integration health → reconciliation →
+  projection health → audit → support): ❌ at the first leg for a RUNTIME
+  reason recorded as finding F-PA022-1 below — the admin console's session
+  gate can never pass on the real runtime because `/v1/users/me` always
+  answers the personal-tenant session. The console's own degradation battery
+  (over the typed-refusal terrain) and its access-denied discipline are
+  green; the block is upstream of the surface.
+
+### The fixes (problem → fix → journey; all surface-level, design language
+preserved)
+
+1. **The hosted onboarding-finish form could NEVER complete and stacked a
+   duplicate draft goal on every attempt.** The host gives every form POST a
+   fresh idempotency key; the flow's create-then-activate composition read
+   the goal id from the FRESH create's acknowledgement, which the multi-tick
+   truth law never provides (accepted ≠ executed). Fix: `completeOnboardingFlow`
+   (apps/web/src/app.ts) became read-first find-or-create — it looks for the
+   customer's own DRAFT of this exact goal (same device, same statement, the
+   latest version's rationale) in the composed intent read and activates
+   THAT; only a no-match world creates. Journey: the first-run journey's
+   final leg (onboarding) — the retry after the tick now completes (303 →
+   Home, the goal active, exactly one goal).
+2. **The finish failure rendered a bare retryable error with no journey
+   guidance.** Fix: the onboarding preferences step (apps/web/src/pages/
+   onboarding-page.ts) renders a calm explainer under the honest typed panel
+   for exactly the `ONBOARDING_GOAL_NOT_CREATED` state: the choice is
+   recorded, finishing again completes the setup, nothing is lost. Journey:
+   onboarding (the customer now knows what to do next).
+3. **The device detail page blanked entirely on the real runtime** (the one
+   page the PA-020 battery missed): the notification read — kept-501 on the
+   real runtime — was core-gated, so `/devices/{id}` rendered only "The
+   request failed (NOTIFICATION_STORE_NOT_BOUND)" while the device,
+   connectivity and intent reads all composed. Fix: the notification feed is
+   now SECONDARY on that page (optionalRead) and only the "Recent actions on
+   this device" section degrades to the quiet unavailable panel — the
+   PA-020 law, extended to the missed surface. Journey: the device →
+   capability → actions/fallback leg (previously dead).
+4. **Home's "What RoamLink is doing" card contradicted the goal card beside
+   it** — with an active goal and a device it still said "Nothing yet.
+   RoamLink starts managing once you have a goal and a device." Fix: the
+   three states are now distinct (no goal / active + evaluated / active +
+   not-yet-evaluated); the middle state states exactly that
+   (`data-management-unevaluated`). Journey: Home's "Is RoamLink actively
+   managing anything?" question is now answered truthfully right after
+   onboarding.
+5. **Activity's automation status said "No goal is active yet" while the
+   customer's goal WAS active** (same root cause: `activeGoal?.decision`
+   gated the wording). Fix: the same three-state distinction with its own
+   marker (`data-automation-unevaluated`) and a "Review this goal" link;
+   `data-automation-idle` stays reserved for the truly-no-goal world.
+   Journey: Activity's trust narrative no longer contradicts the Goals page.
+6. **The SIM & Profiles page dead-ended on a raw 404 error panel** (the SIM
+   read route is not composed on the real runtime — the same class the
+   pre-PA-024 workspace read answered). Fix: the device read is the page's
+   core; the SIM read degrades (the PA-020 not-found class) to the quiet
+   unavailable panel naming what is missing, while the device context and
+   the command pipeline still render. No ungated eSIM action composes
+   without capability evidence (the page's frozen law). Journey: the eSIM
+   leg explains itself instead of dead-ending; the missing read model stays
+   a recorded runtime finding.
+
+### The findings (out of scope for a surface work order — named, with owner
+suggestions; NOT silently dropped)
+
+- **F-PA022-1 (services/api)**: `/v1/users/me` always answers the
+  personal-tenant session (scope "user", `personalTenantPermissions()` =
+  account:read/manage only) and never resolves the actor's organization
+  membership/permissions, so the admin console's `org:read` gate — and the
+  host's `/ops/slo` gate, which resolves the same read — can NEVER pass on
+  the real runtime, even for a registered organization's owner. The operator
+  journey is blocked at its first leg by this one root cause. Owner
+  suggestion: Worker B / services-api — resolve the requested-tenant
+  membership (the client already carries the actor tenant context) in the
+  session read, or compose an org-scoped principal read.
+- **F-PA022-2 (services/api + services/worker-endpoint)**: the eSIM read
+  route `/v1/devices/{deviceId}/sim` is absent from the read dispatcher
+  (plain typed 404) and no eSIM executor is composed in the hosted tick, so
+  the eSIM journey's capability truth/inventory have no composed source and
+  eSIM commands stay accepted-not-executed forever on the hosted demo (the
+  surface now degrades honestly — fix 6 — but the capability itself waits on
+  runtime composition). Owner: Worker B — compose the SIM read model and the
+  eSIM executors (PA-023 landed the mutation routes; this is the read/execute
+  counterpart).
+- **F-PA022-3 (services/api — recorded since §3, unchanged)**: the
+  notifications store is not bound (`NOTIFICATION_STORE_NOT_BOUND`), so
+  Activity's timeline/needs-attention and Home's attention card keep their
+  quiet panels. Owner: Worker B.
+- **F-PA022-4 (services/api — recorded since §3, unchanged)**: the commerce
+  reads (products, orders, order detail, subscriptions) keep their typed
+  501s with named reasons, so the purchase → payment → delivery-evidence
+  legs keep their honest fail-closed commerce surface. Owner: Worker B
+  (catalog/price-fact binding).
+- **F-PA022-5 (apps/portal-host)**: every form POST carries a fresh
+  idempotency key, so multi-command wizard flows cannot dedupe across
+  clicks at the ledger. The surface-level find-or-create (fix 1) contains
+  the damage (retries complete; no duplicate drafts after execution), but an
+  impatient double-click BEFORE the first create executes still stacks a
+  second accepted create. Owner suggestion: portal-host maintainers — a
+  stable per-wizard idempotency key (or composing finish as create-then-
+  poll) would close the residual window.
+- **F-PA022-6 (services/worker-endpoint — recorded by PA-026, unchanged)**:
+  the HOSTED demo tick endpoint composes only the demo executor kinds; the
+  enterprise kinds (enrollment/connector) and eSIM/commerce kinds are not
+  executed by the hosted tick. Owner: the execution wave.
+
+### The evidence
+
+- New/updated assertions: apps/web — `test/onboarding-journey.test.ts`
+  (+5: the find-or-create adoption + the distinct-statement refusal + the
+  three explainer states), `test/component-scoped-degradation.test.ts` (+6:
+  the device-detail and SIM-page three-state batteries),
+  `test/web-app.test.ts` (+2: Home's honest middle state + the evaluated
+  world), `test/activity-timeline.test.ts` (+2: Activity's honest middle
+  state + the idle world). tests/e2e — a new PA-022 describe in
+  `hosted-entry-onboarding-goals.test.ts` (the hosted form's first-attempt
+  honest failure + explainer, the post-tick retry completing 303 → Home,
+  exactly one active goal), a new PA-022 leg in
+  `hosted-devices-connectivity-recovery.test.ts` (the executed device's
+  detail page component-scoped + the SIM page's quiet degradation), and the
+  two deterministic read-first pins in `hosted-flows-form-actions.test.ts`
+  (update-device/retire-device: the typed not-found refusal — the previous
+  READ_MODEL_NOT_COMPOSED pin matched a Promise.all rejection-order
+  coincidence between the page body's 501 and 404; the page body is
+  deterministic since the notification read became component-scoped, and
+  the read-first discipline + the zero-command assertion are unchanged).
+- RL-114/RL-115: `apps/web/test/rl114-extended-a11y.test.ts` (12) and
+  `apps/web/test/rl115-capability-discoverability.test.ts` (17) green — no
+  discoverability regression; the h1/heading/target laws are untouched
+  (every new panel reuses the established heading structure: h2 page / h3
+  panel under the shell h1).
+- The `pnpm check` floor held: 46 test suites, 2857 passed / 21 skipped
+  (the recorded baseline: 2840 passed / 21 skipped — net +17 new assertions,
+  zero regressions); no existing test was weakened, skipped or deleted; no
+  changes outside the owned surface (apps/web/src/**, apps/web/test/**,
+  tests/e2e/test/**, this note).

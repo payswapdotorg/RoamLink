@@ -20,12 +20,14 @@
  */
 import {
   DEVICE_PLATFORMS,
+  isApiClientError,
   el,
   fragment,
   text,
   type DeviceResource,
   type HtmlFragment,
   type IntentAccessClass,
+  type MutationFlowResult,
 } from "@roamlink/app-kit";
 
 import { DEVICE_PLATFORM_LANGUAGE } from "./language.js";
@@ -119,6 +121,13 @@ export interface OnboardingPageInput {
   readonly deviceId?: string;
   /** A previous flow failure to present honestly (typed panel rendered by the app). */
   readonly notice?: string;
+  /**
+   * PA-022: the last finish-flow result, when the app surfaces one on this
+   * page. Only the retryable ONBOARDING_GOAL_NOT_CREATED state gets the
+   * contextual explainer (below); every other result renders through the
+   * standard mutation-result panel alone.
+   */
+  readonly lastResult?: MutationFlowResult;
 }
 
 function stepHeader(current: OnboardingStep): HtmlFragment {
@@ -167,6 +176,13 @@ function stepLabel(step: OnboardingStep): string {
  * Renders the onboarding page for one step. All state arrives via the input
  * (params); the forms navigate between steps by carrying the choices in
  * hidden fields/links, so the wizard stays stateless and pure.
+ *
+ * PA-022: the app may pass the finish flow's `lastResult` through (the
+ * honest typed error panel still renders above the page body — this input
+ * only lets the PREFERENCES step add its calm, journey-scoped explainer for
+ * the retryable ONBOARDING_GOAL_NOT_CREATED state, the multi-tick first
+ * attempt's honest outcome). The explainer never claims success: it says
+ * the choice was recorded and that finishing again completes setup.
  */
 export function onboardingPage(input: OnboardingPageInput): HtmlFragment {
   const body = (() => {
@@ -362,6 +378,47 @@ function deviceStep(input: OnboardingPageInput): HtmlFragment {
   );
 }
 
+/**
+ * PA-022: the calm explainer for the finish flow's honest first-attempt
+ * outcome (ONBOARDING_GOAL_NOT_CREATED — the create command was accepted,
+ * and the goal id does not exist until the worker plane executes it). The
+ * honest typed error panel still renders above the page body; this section
+ * tells the customer what actually happened and what to do next: their
+ * choice IS recorded, and finishing again completes the setup. It never
+ * claims the goal exists yet and never invents success.
+ */
+function pendingGoalExplainer(): HtmlFragment {
+  return el(
+    "div",
+    { class: "panel", "data-onboarding-pending-goal": "true" },
+    fragment(
+      el("h3", {}, text("Your goal choice is recorded")),
+      el(
+        "p",
+        {},
+        text("RoamLink has your choice and is preparing the goal. This step is not instant — it happens moments after you finish."),
+      ),
+      el(
+        "p",
+        { class: "muted" },
+        text("Choose Finish and go to Home again in a moment to complete the setup. Your goal and device choices are kept — you do not need to start over."),
+      ),
+    ),
+  );
+}
+
+/** Narrows the finish-flow result to the retryable pending-goal state. */
+function isPendingGoalResult(
+  lastResult: OnboardingPageInput["lastResult"],
+): boolean {
+  return (
+    lastResult !== undefined &&
+    lastResult.status === "error" &&
+    isApiClientError(lastResult.error) &&
+    lastResult.error.reason === "ONBOARDING_GOAL_NOT_CREATED"
+  );
+}
+
 /** Step 4 — confirm preferences and finish. */
 function preferencesStep(input: OnboardingPageInput): HtmlFragment {
   const goal = findGoalChoice(input.goalId);
@@ -397,6 +454,9 @@ function preferencesStep(input: OnboardingPageInput): HtmlFragment {
       input.notice === undefined
         ? fragment()
         : el("p", { class: "onboarding-notice" }, text(input.notice)),
+      // PA-022: the retryable first-attempt outcome gets the journey-scoped
+      // explainer (in addition to the honest typed panel above the body).
+      isPendingGoalResult(input.lastResult) ? pendingGoalExplainer() : fragment(),
       device && goal
         ? el(
             "form",

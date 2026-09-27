@@ -376,4 +376,75 @@ describe("PA-025 hosted journey: devices over the composed execution path (Journ
       await journey.dispose();
     }
   });
+
+  it("PA-022: the executed device's DETAIL page renders component-scoped (the notification feed is secondary there)", async () => {
+    const clock = createJourneyClock();
+    const journey = await bootHostedJourney({
+      seed: 0x0b6,
+      email: "devices-detail-degraded@example.com",
+      composeWorkerTickEndpoint: true,
+      now: clock.now,
+    });
+    try {
+      const tick = journey.workerTick;
+      if (tick === null) throw new Error("the worker tick endpoint was not composed");
+
+      // Enroll + execute one device.
+      const enrolled = await journey.app.enrollDeviceFlow(
+        { name: "Detail Page Phone", platform: "ios" },
+        { idempotencyKey: "e2e-pa022-detail-enroll" },
+      );
+      expect(enrolled.status).toBe("ok");
+      clock.advanceMinutes();
+      await tick();
+      const deviceId = (await journey.app.client().listDevices())[0]?.deviceId;
+      expect(deviceId).toBeDefined();
+
+      // The device detail page over the REAL runtime: the device read, the
+      // connectivity read and the intents read compose (core), so the page
+      // renders its sections; the notification read keeps its honest typed
+      // 501 (NOTIFICATION_STORE_NOT_BOUND) and ONLY the "Recent actions"
+      // section degrades to the quiet unavailable panel — the PA-020 law,
+      // extended to the one surface the original battery missed (PA-022).
+      const detail = await journey.app.renderDocument({
+        page: "device",
+        params: { deviceId: deviceId as string },
+      });
+      expect(detail).not.toContain('data-error-kind=');
+      expect(detail).toContain("Detail Page Phone");
+      expect(detail).toContain('data-device-capability="true"');
+      expect(detail).toContain('data-device-sim="true"');
+      expect(detail).toContain('data-device-connectivity="true"');
+      expect(detail).toContain('data-device-goals="true"');
+      expect(detail).toContain('data-device-manage="true"');
+      expect(detail).toContain('data-unavailable="true"');
+      expect(detail).toContain('data-unavailable-section="device-actions"');
+      expect(detail).toContain('data-unavailable-reason="READ_MODEL_NOT_COMPOSED"');
+      expect(detail).toContain("NOTIFICATION_STORE_NOT_BOUND");
+      expect(detail).toContain('href="/activity"');
+
+      // The eSIM journey leg from this page: the SIM read is honestly NOT
+      // COMPOSED on this runtime (the route answers the typed 404), so the
+      // SIM page degrades its SIM-derived sections to the quiet panel
+      // instead of dead-ending on a raw not-found error — the device
+      // context and the journey stay reachable, and NO ungated eSIM action
+      // renders without capability evidence.
+      const sim = await journey.app.renderDocument({
+        page: "deviceSim",
+        params: { deviceId: deviceId as string },
+      });
+      expect(sim).not.toContain('data-error-kind=');
+      expect(sim).toContain('data-sim-profiles-page="true"');
+      expect(sim).toContain('data-unavailable="true"');
+      expect(sim).toContain('data-unavailable-section="sim-profiles"');
+      expect(sim).toContain('data-unavailable-reason="NOT_FOUND"');
+      expect(sim).toContain(`href="/devices/${deviceId}"`);
+      expect(sim).not.toContain('data-flow="esim-install"');
+      expect(sim).not.toContain('data-flow="esim-remove"');
+      expect(sim).not.toContain('data-flow="esim-enable"');
+      expect(sim).not.toContain('data-esim-capabilities="true"');
+    } finally {
+      await journey.dispose();
+    }
+  });
 });

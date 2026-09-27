@@ -275,10 +275,40 @@ export function activityPage(input: ActivityPageInput): HtmlFragment {
             ),
           ),
         )
-      : el(
-          "p",
-          { class: "muted", "data-automation-idle": "true" },
-          text("No goal is active yet, so RoamLink is not managing anything."),
-        ),
+      : activeGoal
+        ? // PA-022: the honest middle state — the goal IS active (the Goals
+          // page says so), but RoamLink has not evaluated it yet. The old
+          // wording ("No goal is active yet") contradicted the customer's
+          // own Goals page right after they finished onboarding.
+          el(
+            "section",
+            { class: "panel", "data-automation-unevaluated": "true" },
+            fragment(
+              el(
+                "p",
+                {},
+                text(
+                  `${deviceName(input.devices, activeGoal.deviceId)}: your goal "${activeGoal.currentVersion?.rationale ?? "goal in progress"}" is active.`,
+                ),
+              ),
+              el(
+                "p",
+                { class: "muted" },
+                text(
+                  "RoamLink has not evaluated this goal yet, so there is no automation decision to report. The decision and the evidence it used appear here once RoamLink runs it.",
+                ),
+              ),
+              el(
+                "p",
+                {},
+                el("a", { href: pagePath("intent", { intentId: activeGoal.intentId }) }, text("Review this goal")),
+              ),
+            ),
+          )
+        : el(
+            "p",
+            { class: "muted", "data-automation-idle": "true" },
+            text("No goal is active yet, so RoamLink is not managing anything."),
+          ),
   );
 }

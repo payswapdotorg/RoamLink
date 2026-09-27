@@ -169,8 +169,18 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain('data-mutation-result="error"');
-      expect(html).toContain('data-error-kind="unavailable"');
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-022: the assertion is now the DETERMINISTIC typed refusal of the
+      // flow's own read-first leg (the device does not exist on this
+      // runtime — the honest typed not-found). The previous
+      // READ_MODEL_NOT_COMPOSED pin matched the re-rendered page BODY's
+      // Promise.all rejection-order coincidence (the notification read's
+      // 501 racing the device read's 404); the device read is the page's
+      // CORE and the notification read is now component-scoped (PA-022),
+      // so the body fails closed on the same honest not-found — never a
+      // partial or invented device surface either way.
+      expect(html).toContain('data-error-kind="not-found"');
+      expect(html).toContain('data-error-reason="NOT_FOUND"');
+      expect(html).toContain("the requested device does not exist");
       // The originating page (/devices/<deviceId>) is re-rendered; the
       // read-first leg refused, so NO command was issued (the discipline
       // holds through the form plane — never a blind versionless write).
@@ -191,7 +201,13 @@ describe("PA-018 hosted form-actions: the positive matrix (every wired flow)", (
       expect(response.status).toBe(200);
       const html = await response.text();
       expect(html).toContain('data-mutation-result="error"');
-      expect(html).toContain('data-error-reason="READ_MODEL_NOT_COMPOSED"');
+      // PA-022: the deterministic typed refusal of the read-first leg (see
+      // the update-device test above for the full note — the page body now
+      // fails closed on the same honest not-found instead of racing the
+      // notification read's 501).
+      expect(html).toContain('data-error-kind="not-found"');
+      expect(html).toContain('data-error-reason="NOT_FOUND"');
+      expect(html).toContain("the requested device does not exist");
       expect(await commandCount(journey)).toBe(0);
     } finally {
       await journey.dispose();
