@@ -151,6 +151,30 @@ failure — the remaining gap is executor coverage, not the path.
 14. run rollback acceptance;
 15. record deployed SHA + provider states + named skips.
 
+**Env contract for step 12 (PA-021 — additive):** the browser-journey step
+is executed by the deployed-browser acceptance suite
+(`pnpm acceptance:deployed`, the `tests/acceptance` package), a black-box
+real-browser (Playwright/Chromium headless) journey matrix that knows only
+the deployed origin and the public demo-roster credentials. Its environment
+contract, nothing else: `ACCEPTANCE_BASE_URL` (the deployed web origin —
+required to run; without it the suite SKIPS with the named reason
+`ACCEPTANCE_BASE_URL_NOT_CONFIGURED`, never a fake pass and never a hard
+fail on an unconfigured box), `ACCEPTANCE_DEMO_EMAIL` /
+`ACCEPTANCE_DEMO_PASSWORD` (the customer persona's credentials; default to
+the public demo roster's customer persona and its shared public password),
+`ACCEPTANCE_ADMIN_EMAIL` (the admin-journey persona; defaults to the
+roster's owner persona), `ACCEPTANCE_TIMEOUT_MS` (per-navigation bound,
+default 45000) and `ACCEPTANCE_REPORT_DIR` (where the machine-readable JSON
+level report is written; default the package's gitignored `.tmp`
+directory). The suite records, per journey leg, which of six completion
+levels it actually evidenced (route reachable / surface rendered / read
+available / mutation accepted / mutation executed / user-visible evidence)
+and exits 0 under the no-lies contract — honest runtime limitations are
+named stops, not failures; the run fails only when a leg cannot evidence
+its floor or a walked page breaks the interaction contract. The suite's
+offline selftest (loopback-only, no deployed URL) is part of `pnpm check`
+and stays green on any box.
+
 ## 8. Free-tier facts to verify at deployment time
 
 Do not hard-code quotas into correctness.

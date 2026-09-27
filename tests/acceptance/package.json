@@ -1,0 +1,23 @@
+{
+  "name": "@roamlink/tests-acceptance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "sideEffects": false,
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "vitest",
+    "acceptance:deployed": "tsx ./src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.8.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}
